@@ -1,0 +1,298 @@
+// COMSA ERP - Esquema de datos (Etapa 1)
+// Convencion: modelos en camelCase; columnas/tablas en snake_case via @map/@@map.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -----------------------------------------------------------------------------
+// Enums
+// -----------------------------------------------------------------------------
+enum RecordStatus {
+  ACTIVE   @map("active")
+  INACTIVE @map("inactive")
+
+  @@map("record_status")
+}
+
+enum ItemType {
+  PRODUCT
+  RAW_MATERIAL
+  CONSUMABLE
+  TOOL
+  EQUIPMENT
+  SERVICE
+
+  @@map("item_type")
+}
+
+enum SupplierType {
+  PRODUCTS
+  SERVICES
+  BOTH
+
+  @@map("supplier_type")
+}
+
+// -----------------------------------------------------------------------------
+// Autenticacion / Usuarios
+// -----------------------------------------------------------------------------
+model User {
+  id                 String       @id @default(cuid())
+  name               String
+  email              String       @unique
+  passwordHash       String       @map("password_hash")
+  status             RecordStatus @default(ACTIVE)
+  lastLoginAt        DateTime?    @map("last_login_at")
+  mustChangePassword Boolean      @default(false) @map("must_change_password")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+  deletedAt DateTime? @map("deleted_at")
+
+  roles               UserRole[]
+  passwordResetTokens PasswordResetToken[]
+  auditLogs           AuditLog[]
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model Role {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  description String?
+  isSystem    Boolean      @default(false) @map("is_system")
+  status      RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  permissions RolePermission[]
+  users       UserRole[]
+
+  @@index([deletedAt])
+  @@map("roles")
+}
+
+model Permission {
+  id          String  @id @default(cuid())
+  module      String
+  action      String
+  code        String  @unique
+  description String?
+
+  roles RolePermission[]
+
+  @@index([module])
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String @map("role_id")
+  permissionId String @map("permission_id")
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model UserRole {
+  userId String @map("user_id")
+  roleId String @map("role_id")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@map("user_roles")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+// -----------------------------------------------------------------------------
+// Catalogos base
+// -----------------------------------------------------------------------------
+model Client {
+  id              String       @id @default(cuid())
+  commercialName  String       @map("commercial_name")
+  legalName       String?      @map("legal_name")
+  rfc             String?
+  address         String?
+  phone           String?
+  email           String?
+  mainContactName String?      @map("main_contact_name")
+  companyProfile  String?      @map("company_profile")
+  commercialTerms String?      @map("commercial_terms")
+  status          RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+  deletedAt DateTime? @map("deleted_at")
+
+  contacts ClientContact[]
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("clients")
+}
+
+model ClientContact {
+  id        String  @id @default(cuid())
+  clientId  String  @map("client_id")
+  name      String
+  position  String?
+  phone     String?
+  email     String?
+  isPrimary Boolean @default(false) @map("is_primary")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@map("client_contacts")
+}
+
+model Supplier {
+  id               String        @id @default(cuid())
+  name             String
+  legalName        String?       @map("legal_name")
+  rfc              String?
+  contactName      String?       @map("contact_name")
+  phone            String?
+  email            String?
+  address          String?
+  supplierType     SupplierType? @map("supplier_type")
+  productsServices String?       @map("products_services")
+  status           RecordStatus  @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("suppliers")
+}
+
+model Warehouse {
+  id          String       @id @default(cuid())
+  code        String       @unique
+  name        String
+  description String?
+  location    String?
+  status      RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("warehouses")
+}
+
+model ProductCategory {
+  id          String       @id @default(cuid())
+  name        String
+  description String?
+  parentId    String?      @map("parent_id")
+  status      RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+  deletedAt DateTime? @map("deleted_at")
+
+  parent   ProductCategory?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children ProductCategory[] @relation("CategoryTree")
+  items    Item[]
+
+  @@index([parentId])
+  @@index([deletedAt])
+  @@map("product_categories")
+}
+
+model Item {
+  id                    String       @id @default(cuid())
+  sku                   String       @unique
+  name                  String
+  description           String?
+  itemType              ItemType     @map("item_type")
+  categoryId            String?      @map("category_id")
+  unitOfMeasure         String?      @map("unit_of_measure")
+  minimumStock          Decimal      @default(0) @map("minimum_stock") @db.Decimal(14, 3)
+  isInventoryControlled Boolean      @default(true) @map("is_inventory_controlled")
+  status                RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+  deletedAt DateTime? @map("deleted_at")
+
+  category ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([itemType])
+  @@index([categoryId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("items")
+}
+
+// -----------------------------------------------------------------------------
+// Auditoria
+// -----------------------------------------------------------------------------
+model AuditLog {
+  id           String   @id @default(cuid())
+  userId       String?  @map("user_id")
+  module       String
+  entity       String
+  entityId     String?  @map("entity_id")
+  action       String
+  previousData Json?    @map("previous_data")
+  newData      Json?    @map("new_data")
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([module])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

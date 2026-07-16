@@ -1,0 +1,55 @@
+---
+alwaysApply: true
+---
+
+La aplicación deberá desarrollarse con:
+
+Next.js con App Router.
+JavaScript, sin TypeScript.
+Tailwind CSS.
+PostgreSQL.
+API existente como fuente de integración.
+Capa propia de acceso a datos para los nuevos módulos y tablas.
+Interfaz administrativa responsiva.
+Arquitectura modular por dominio.
+Autenticación, autorización y validaciones tanto en frontend como en backend.
+
+El sistema deberá reconstruir únicamente los módulos incluidos en el alcance: usuarios, roles, dashboard, cotizaciones, órdenes sin cotización, producción, inventario, almacenes, clientes, proveedores, órdenes de compra y catálogos relacionados. El menú mostrado en las referencias es únicamente ilustrativo y no debe copiarse completo.
+
+Reglas generales para todos los agentes
+Stack obligatorio
+Framework: Next.js App Router
+Lenguaje: JavaScript
+Estilos: Tailwind CSS
+Base de datos: PostgreSQL
+ORM recomendado: Prisma
+Validación: Zod
+Autenticación: Auth.js / NextAuth o solución equivalente
+Formularios: React Hook Form
+Iconos: Lucide React
+Tablas: implementación propia o TanStack Table
+API: Route Handlers de Next.js y cliente para consumir la API existente
+Restricciones técnicas
+No usar TypeScript.
+No usar datos hardcodeados fuera de seeds o mocks de desarrollo.
+Todas las operaciones críticas deben validarse en servidor.
+Los permisos no pueden depender únicamente de ocultar botones.
+Los folios deben generarse en backend y evitar duplicados mediante restricciones de PostgreSQL.
+Todos los registros operativos deben guardar:
+created_at
+updated_at
+created_by
+updated_by
+Las aprobaciones y cambios de estatus deben quedar registrados en bitácora.
+Usar borrado lógico en documentos históricos y catálogos relacionados.
+Los importes monetarios deben almacenarse con DECIMAL o NUMERIC, nunca como FLOAT.
+Las pantallas de listado deberán incluir, según corresponda:
+búsqueda;
+filtros;
+ordenamiento;
+paginación;
+estados vacíos;
+estados de carga;
+manejo de errores.
+No crear módulos que estén fuera del alcance, aunque aparezcan en las capturas o menú de referencia.
+Cada etapa debe dejar una versión desplegable y funcional.
