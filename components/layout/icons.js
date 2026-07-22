@@ -9,9 +9,15 @@ import {
   FolderTree,
   Package,
   Boxes,
+  FileText,
+  ClipboardList,
+  Library,
+  Factory,
+  Building2,
+  Cog,
+  Wrench,
 } from "lucide-react";
 
-// Mapa de nombres de icono (definidos en la config del menu) a componentes.
 export const ICONS = {
   LayoutDashboard,
   Users,
@@ -23,6 +29,13 @@ export const ICONS = {
   FolderTree,
   Package,
   Boxes,
+  FileText,
+  ClipboardList,
+  Library,
+  Factory,
+  Building2,
+  Cog,
+  Wrench,
 };
 
 export function getIcon(name) {

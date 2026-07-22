@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import {
@@ -26,16 +26,19 @@ import {
   SelectField,
   CheckboxField,
 } from "@/components/forms/fields";
+import { CategoryCatalogSelect } from "@/components/forms/catalog-selects";
 import { STATUS_FILTER_OPTIONS, STATUS_FORM_OPTIONS } from "@/lib/constants/ui";
 import { formatDate } from "@/lib/utils/format";
 
 const ENDPOINT = "/api/items";
 
-function ItemForm({ initial, categories, onSubmit, saving }) {
+function ItemForm({ initial, categories, onCategoriesChange, onSubmit, saving }) {
   const {
     register,
     handleSubmit,
     setError,
+    setValue,
+    control,
     formState: { errors },
   } = useForm({
     resolver: zodResolver(itemCreateSchema),
@@ -51,6 +54,8 @@ function ItemForm({ initial, categories, onSubmit, saving }) {
       status: initial?.status || "ACTIVE",
     },
   });
+
+  const categoryId = useWatch({ control, name: "categoryId" });
 
   const submit = handleSubmit(async (values) => {
     const result = await onSubmit(values);
@@ -73,12 +78,13 @@ function ItemForm({ initial, categories, onSubmit, saving }) {
             <option key={t} value={t}>{ITEM_TYPE_LABELS[t]}</option>
           ))}
         </SelectField>
-        <SelectField label="Categoria" name="categoryId" register={register} error={errors.categoryId?.message}>
-          <option value="">Sin categoria</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </SelectField>
+        <CategoryCatalogSelect
+          value={categoryId || ""}
+          onChange={(id) => setValue("categoryId", id || "")}
+          options={categories}
+          onOptionsChange={onCategoriesChange}
+          error={errors.categoryId?.message}
+        />
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <TextField label="Unidad de medida" name="unitOfMeasure" register={register} error={errors.unitOfMeasure?.message} placeholder="pza, kg, m..." />
@@ -190,6 +196,7 @@ export default function ItemsClient() {
         <ItemForm
           initial={modal.record}
           categories={categories}
+          onCategoriesChange={setCategories}
           saving={saving}
           onSubmit={async (values) => {
             const result = await save(values, modal.record?.id);

@@ -1,8 +1,10 @@
-# COMSA ERP - Etapa 1
+# COMSA ERP
 
-Base del ERP COMSA: autenticacion, roles y permisos, layout administrativo y
-catalogos base (usuarios, roles, clientes, proveedores, almacenes, categorias,
-productos e insumos) con bitacora de auditoria.
+ERP para COMSA PRO (manufactura CNC / industrial).
+
+- **Etapa 1**: autenticacion, roles/permisos, layout, catalogos base, bitacora.
+- **Etapa 2**: empresas emisoras, procesos, instalaciones, biblioteca de items,
+  cotizaciones, ordenes directas, produccion y KPIs del dashboard.
 
 ## Stack
 
@@ -11,116 +13,108 @@ productos e insumos) con bitacora de auditoria.
 - Tailwind CSS v4
 - PostgreSQL + Prisma 6
 - NextAuth v5 (Auth.js) - Credenciales + sesiones JWT
-- Zod (validacion), React Hook Form (formularios)
-- Lucide React (iconos)
-
-## Requisitos
-
-- Node.js 18.18+ (recomendado 20+)
-- Una base de datos PostgreSQL (local o en la nube: Neon, Supabase, RDS)
+- Zod, React Hook Form, Lucide React
 
 ## Instalacion
 
 ```bash
-# 1. Instalar dependencias
 npm install
-
-# 2. Configurar variables de entorno
 cp .env.example .env
-#   Edita .env y define al menos DATABASE_URL y AUTH_SECRET
-#   Genera un secreto: openssl rand -base64 32
+# Edita DATABASE_URL y AUTH_SECRET
 
-# 3. Generar el cliente de Prisma
 npm run db:generate
-
-# 4. Aplicar migraciones a la base de datos
-npm run db:deploy      # produccion/staging (aplica migraciones existentes)
-# o en desarrollo:
-npm run db:migrate     # crea/actualiza migraciones
-
-# 5. Cargar datos iniciales (permisos, roles y primer administrador)
+npm run db:deploy
 npm run db:seed
-
-# 6. Levantar el entorno de desarrollo
 npm run dev
 ```
 
-La app queda disponible en `http://localhost:3000`. Inicia sesion con las
-credenciales definidas en `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`.
+App en `http://localhost:3000`. Credenciales del admin: `SEED_ADMIN_EMAIL` /
+`SEED_ADMIN_PASSWORD`.
 
-## Variables de entorno
-
-| Variable | Requerida | Descripcion |
-| --- | --- | --- |
-| `DATABASE_URL` | Si | Cadena de conexion PostgreSQL (usar `sslmode=require` en la nube). |
-| `AUTH_SECRET` | Si | Secreto para firmar las sesiones JWT. |
-| `AUTH_URL` | Staging/Prod | URL base publica de la app. |
-| `AUTH_TRUST_HOST` | Staging/Prod | `true` cuando corre detras de un proxy. |
-| `NEXT_PUBLIC_APP_ENV` | No | `local` / `staging` / `production` (indicador de ambiente). |
-| `SEED_ADMIN_NAME` | Seed | Nombre del primer administrador. |
-| `SEED_ADMIN_EMAIL` | Seed | Correo del primer administrador. |
-| `SEED_ADMIN_PASSWORD` | Seed | Contrasena del primer administrador. |
-| `SMTP_*` | No | Configuracion SMTP para recuperar acceso (en local se imprime en consola). |
-
-## Ambientes
-
-- **local**: `.env` con `DATABASE_URL` local o de la nube. `NEXT_PUBLIC_APP_ENV=local`.
-- **staging**: variables configuradas en el proveedor. `NEXT_PUBLIC_APP_ENV=staging`,
-  `AUTH_URL` y `AUTH_TRUST_HOST=true`. Desplegar con `npm run build` y
-  `npm run db:deploy` + `npm run db:seed` la primera vez.
-- **produccion**: igual que staging con `NEXT_PUBLIC_APP_ENV=production` (oculta el
-  indicador de ambiente).
-
-No existen datos hardcodeados: todo dato inicial proviene del seed.
+Tras actualizar Etapa 2, vuelve a ejecutar `npm run db:seed` para sincronizar
+permisos y roles del sistema.
 
 ## Scripts
 
 | Script | Descripcion |
 | --- | --- |
-| `npm run dev` | Servidor de desarrollo. |
-| `npm run build` | Compilacion de produccion. |
-| `npm start` | Servidor de produccion. |
-| `npm run lint` | ESLint. |
-| `npm test` | Pruebas de permisos/menu (Node test runner). |
-| `npm run db:generate` | Genera el cliente Prisma. |
-| `npm run db:migrate` | Crea/aplica migraciones (desarrollo). |
-| `npm run db:deploy` | Aplica migraciones (staging/produccion). |
-| `npm run db:seed` | Carga permisos, roles y administrador. |
-| `npm run db:studio` | Explorador de datos Prisma. |
+| `npm run dev` | Desarrollo |
+| `npm run build` / `npm start` | Produccion |
+| `npm test` | Pruebas (permisos, calculos, transiciones) |
+| `npm run db:deploy` | Aplica migraciones |
+| `npm run db:seed` | Permisos, roles, admin |
 
-## Arquitectura
+## Migraciones
 
-```
-app/                # Rutas (App Router)
-  (auth)/           # login, recuperar-acceso
-  (dashboard)/      # layout + modulos protegidos
-  api/              # Route Handlers (nuestra API)
-components/         # UI: layout, forms, tables, feedback, permissions, ui
-domains/            # Logica por dominio (schemas Zod + services)
-lib/                # auth, db, permissions, audit, api, validations, utils
-prisma/             # schema, migraciones y seed
-proxy.js            # Proteccion optimista de rutas (Next 16)
-auth.js             # Configuracion NextAuth v5
-```
+1. `20260715000000_init` — Etapa 1
+2. `20260722000000_etapa2` — Folios, empresas, procesos, instalaciones,
+   templates, quotes, direct orders, production
 
-## Seguridad y permisos
+## Modulos Etapa 2 (rutas UI)
 
-- La autenticacion usa sesiones JWT (8 h). Un usuario inactivo o eliminado no
-  puede iniciar sesion y su sesion se invalida (revalidacion en servidor).
-- El menu se genera segun los permisos efectivos (union de roles).
-- Toda operacion sensible se valida en el servidor con `requirePermission(code)`;
-  un usuario sin permiso recibe **403** aunque llame directamente al endpoint.
-- Los cambios importantes se registran en la bitacora (`audit_logs`).
-- Los cambios de permisos surten efecto al renovar/validar la sesion.
+| Ruta | Modulo |
+| --- | --- |
+| `/empresas-emisoras` | Perfiles / empresas que emiten cotizaciones |
+| `/procesos` | Catalogo de procesos de manufactura |
+| `/instalaciones` | Catalogo de conceptos de instalacion |
+| `/biblioteca-items` | Templates reutilizables de items |
+| `/cotizaciones` | Cotizaciones (listado, nuevo, detalle, imprimir) |
+| `/ordenes-directas` | Ordenes sin cotizacion previa |
+| `/produccion` | Seguimiento de produccion |
 
-## Verificacion de permisos (403 directo)
+## APIs principales
 
-Con el servidor corriendo, autenticado como un usuario sin permiso (ej. Ventas):
+- `/api/empresas-emisoras`, `/api/procesos`, `/api/instalaciones`
+- `/api/biblioteca-items` (+ `[id]/duplicar`)
+- `/api/cotizaciones` (+ items, acciones: submit/approve/reject/return/cancel/send-production/insert-template/reorder)
+- `/api/ordenes-directas` (+ items, acciones)
+- `/api/produccion` (+ acciones de orden e item)
 
-```bash
-# Deberia responder 403
-curl -i http://localhost:3000/api/usuarios --cookie "authjs.session-token=<token>"
-```
+## Permisos nuevos (resumen)
 
-Las pruebas unitarias del modelo de permisos y del menu se ejecutan con
-`npm test`.
+- `issuing_companies.*` (view/create/edit/manage)
+- `manufacturing_processes.*`, `installation_concepts.*`
+- `quote_templates.*`
+- `quotes.*` (incluye approve, edit_benefit, apply_discount, send_to_production, print, …)
+- `direct_orders.*` (incluye convert_to_quote, send_to_production)
+- `production.*` (start, update_progress, complete_item, complete_order, cancel)
+
+Ventas puede crear/enviar cotizaciones pero **no** aprobar ni bajar el beneficio
+bajo 30% ni aplicar descuentos. Direccion/Administrador si.
+
+## Folios
+
+Formato `YYMM-CONSECUTIVO-A` (ej. `2607-38-A`), generados en transaccion via
+`folio_sequences` + unique en BD.
+
+## Calculos (servidor)
+
+Por item: costos (manufactura + materiales + extras + instalacion) → beneficio %
+→ subtotal → descuento % → IVA 16% → total. Cabecera = suma de items.
+Los precios de catalogo se copian como **snapshots** historicos.
+
+## Impresion
+
+`/cotizaciones/[id]/imprimir` — HTML imprimible (CSS `@media print`), sin PDF
+binario.
+
+## QA manual sugerido
+
+1. Seed + login como Administrador.
+2. Crear empresa emisora, proceso, concepto de instalacion.
+3. Crear template en biblioteca e insertarlo en una cotizacion borrador.
+4. Completar item, enviar a aprobacion (sin items debe fallar).
+5. Con usuario Ventas: no puede aprobar ni beneficio &lt; 30%.
+6. Aprobar como Direccion/Admin → enviar a produccion (segunda vez debe fallar).
+7. Avanzar items de produccion hasta completar la orden.
+8. Crear orden directa → aprobar → convertir a cotizacion o enviar a produccion.
+9. Verificar KPIs en el dashboard e impresion de cotizacion.
+10. Confirmar bitacora de aprobaciones/rechazos.
+
+## Supuestos
+
+- Revision de folio fija en `A` (sin versionado avanzado).
+- `CANCELLED` es terminal; `REJECTED` puede volver a `DRAFT`.
+- IVA fijo 16%; sin tipo de cambio MXN/USD.
+- Contacto de cliente debe pertenecer al cliente seleccionado.
+- Catalogos inactivos no se pueden seleccionar en documentos nuevos.

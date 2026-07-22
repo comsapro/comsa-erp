@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { categoryCreateSchema } from "@/domains/catalogs/schemas";
@@ -17,16 +17,19 @@ import { StatusBadge } from "@/components/ui/Badge";
 import { Can } from "@/components/permissions/Can";
 import { usePermissions } from "@/components/permissions/PermissionsProvider";
 import { TextField, TextareaField, SelectField } from "@/components/forms/fields";
+import { CategoryCatalogSelect } from "@/components/forms/catalog-selects";
 import { STATUS_FILTER_OPTIONS, STATUS_FORM_OPTIONS } from "@/lib/constants/ui";
 import { formatDate } from "@/lib/utils/format";
 
 const ENDPOINT = "/api/categorias";
 
-function CategoryForm({ initial, options, onSubmit, saving }) {
+function CategoryForm({ initial, options, onOptionsChange, onSubmit, saving }) {
   const {
     register,
     handleSubmit,
     setError,
+    setValue,
+    control,
     formState: { errors },
   } = useForm({
     resolver: zodResolver(categoryCreateSchema),
@@ -38,6 +41,8 @@ function CategoryForm({ initial, options, onSubmit, saving }) {
     },
   });
 
+  const parentId = useWatch({ control, name: "parentId" });
+
   const submit = handleSubmit(async (values) => {
     const result = await onSubmit(values);
     if (result?.fieldErrors) {
@@ -47,17 +52,19 @@ function CategoryForm({ initial, options, onSubmit, saving }) {
     }
   });
 
-  const parentOptions = options.filter((o) => o.id !== initial?.id);
-
   return (
     <form onSubmit={submit} className="flex flex-col gap-4" noValidate>
       <TextField label="Nombre" name="name" register={register} error={errors.name?.message} required />
-      <SelectField label="Categoria padre" name="parentId" register={register} error={errors.parentId?.message}>
-        <option value="">Sin categoria padre</option>
-        {parentOptions.map((o) => (
-          <option key={o.id} value={o.id}>{o.name}</option>
-        ))}
-      </SelectField>
+      <CategoryCatalogSelect
+        label="Categoria padre"
+        value={parentId || ""}
+        onChange={(id) => setValue("parentId", id || "")}
+        options={options}
+        onOptionsChange={onOptionsChange}
+        excludeId={initial?.id}
+        error={errors.parentId?.message}
+        clearLabel="Sin categoria padre"
+      />
       <TextareaField label="Descripcion" name="description" register={register} error={errors.description?.message} />
       <SelectField label="Estatus" name="status" register={register} error={errors.status?.message}>
         {STATUS_FORM_OPTIONS.map((o) => (
@@ -154,6 +161,7 @@ export default function CategoriesClient() {
         <CategoryForm
           initial={modal.record}
           options={options}
+          onOptionsChange={setOptions}
           saving={saving}
           onSubmit={async (values) => {
             const result = await save(values, modal.record?.id);

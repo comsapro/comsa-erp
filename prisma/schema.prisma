@@ -1,4 +1,4 @@
-// COMSA ERP - Esquema de datos (Etapa 1)
+// COMSA ERP - Esquema de datos (Etapas 1 y 2)
 // Convencion: modelos en camelCase; columnas/tablas en snake_case via @map/@@map.
 
 generator client {
@@ -39,6 +39,87 @@ enum SupplierType {
   @@map("supplier_type")
 }
 
+enum ProcessUnit {
+  HOUR
+  PIECE
+  LOT
+  METER
+  KILOGRAM
+  SERVICE
+
+  @@map("process_unit")
+}
+
+enum CurrencyCode {
+  MXN
+  USD
+
+  @@map("currency_code")
+}
+
+enum OrderType {
+  GENERAL
+  URGENT
+  WAREHOUSE
+  DIRECT_ORDER_REFERENCE
+
+  @@map("order_type")
+}
+
+enum QuoteStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  IN_PRODUCTION
+  REJECTED
+  CANCELLED
+
+  @@map("quote_status")
+}
+
+enum DirectOrderStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  QUOTED
+  IN_PRODUCTION
+  REJECTED
+  CANCELLED
+
+  @@map("direct_order_status")
+}
+
+enum ProductionSourceType {
+  QUOTE
+  DIRECT_ORDER
+
+  @@map("production_source_type")
+}
+
+enum ProductionStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+
+  @@map("production_status")
+}
+
+enum FolioScope {
+  QUOTE
+  DIRECT_ORDER
+  PRODUCTION
+
+  @@map("folio_scope")
+}
+
+enum DeliveryDaysType {
+  BUSINESS
+  CALENDAR
+
+  @@map("delivery_days_type")
+}
+
 // -----------------------------------------------------------------------------
 // Autenticacion / Usuarios
 // -----------------------------------------------------------------------------
@@ -60,6 +141,15 @@ model User {
   roles               UserRole[]
   passwordResetTokens PasswordResetToken[]
   auditLogs           AuditLog[]
+  quotesAsSeller      Quote[]              @relation("QuoteSeller")
+  quotesApproved      Quote[]              @relation("QuoteApprovedBy")
+  quotesRejected      Quote[]              @relation("QuoteRejectedBy")
+  quotesCancelled     Quote[]              @relation("QuoteCancelledBy")
+  directOrdersAsSeller DirectOrder[]       @relation("DirectOrderSeller")
+  directOrdersApproved DirectOrder[]       @relation("DirectOrderApprovedBy")
+  directOrdersRejected DirectOrder[]       @relation("DirectOrderRejectedBy")
+  directOrdersCancelled DirectOrder[]      @relation("DirectOrderCancelledBy")
+  productionItemsCompleted ProductionItem[] @relation("ProductionItemCompletedBy")
 
   @@index([status])
   @@index([deletedAt])
@@ -156,6 +246,9 @@ model Client {
   deletedAt DateTime? @map("deleted_at")
 
   contacts ClientContact[]
+  quotes   Quote[]
+  directOrders DirectOrder[]
+  productionOrders ProductionOrder[]
 
   @@index([status])
   @@index([deletedAt])
@@ -176,6 +269,8 @@ model ClientContact {
   deletedAt DateTime? @map("deleted_at")
 
   client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  quotes Quote[]
+  directOrders DirectOrder[]
 
   @@index([clientId])
   @@map("client_contacts")
@@ -200,6 +295,11 @@ model Supplier {
   updatedBy String?   @map("updated_by")
   deletedAt DateTime? @map("deleted_at")
 
+  quoteItemMaterials QuoteItemMaterial[]
+  quoteItemExtras    QuoteItemExtra[]
+  templateMaterials  QuoteItemTemplateMaterial[]
+  templateExtras     QuoteItemTemplateExtra[]
+
   @@index([status])
   @@index([deletedAt])
   @@map("suppliers")
@@ -218,6 +318,8 @@ model Warehouse {
   createdBy String?   @map("created_by")
   updatedBy String?   @map("updated_by")
   deletedAt DateTime? @map("deleted_at")
+
+  quoteItems QuoteItem[]
 
   @@index([status])
   @@index([deletedAt])
@@ -265,6 +367,11 @@ model Item {
   deletedAt DateTime? @map("deleted_at")
 
   category ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  quoteItems QuoteItem[]
+  quoteItemMaterials QuoteItemMaterial[]
+  templateItems QuoteItemTemplate[] @relation("TemplateCatalogItem")
+  templateMaterials QuoteItemTemplateMaterial[]
+  directOrderItems DirectOrderItem[]
 
   @@index([itemType])
   @@index([categoryId])
@@ -296,3 +403,558 @@ model AuditLog {
   @@index([createdAt])
   @@map("audit_logs")
 }
+
+// -----------------------------------------------------------------------------
+// Etapa 2 — Folios
+// -----------------------------------------------------------------------------
+model FolioSequence {
+  id        String     @id @default(cuid())
+  scope     FolioScope
+  yearMonth String     @map("year_month")
+  lastValue Int        @default(0) @map("last_value")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  @@unique([scope, yearMonth])
+  @@map("folio_sequences")
+}
+
+// -----------------------------------------------------------------------------
+// Etapa 2 — Catalogos comerciales
+// -----------------------------------------------------------------------------
+model IssuingCompany {
+  id               String       @id @default(cuid())
+  commercialName   String       @map("commercial_name")
+  legalName        String?      @map("legal_name")
+  rfc              String?
+  fiscalAddress    String?      @map("fiscal_address")
+  phone            String?
+  email            String?
+  website          String?
+  logoUrl          String?      @map("logo_url")
+  bankDetails      String?      @map("bank_details")
+  legalText        String?      @map("legal_text")
+  quotationFooter  String?      @map("quotation_footer")
+  status           RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+  deletedAt DateTime? @map("deleted_at")
+
+  quotes       Quote[]
+  directOrders DirectOrder[]
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("issuing_companies")
+}
+
+model ManufacturingProcess {
+  id          String       @id @default(cuid())
+  code        String       @unique
+  name        String
+  description String?
+  unit        ProcessUnit
+  defaultRate Decimal      @default(0) @map("default_rate") @db.Decimal(14, 2)
+  status      RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+  deletedAt DateTime? @map("deleted_at")
+
+  quoteItemManufacturing    QuoteItemManufacturing[]
+  templateManufacturing     QuoteItemTemplateManufacturing[]
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("manufacturing_processes")
+}
+
+model InstallationConcept {
+  id           String       @id @default(cuid())
+  code         String       @unique
+  name         String
+  description  String?
+  unit         ProcessUnit
+  defaultPrice Decimal      @default(0) @map("default_price") @db.Decimal(14, 2)
+  status       RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+  deletedAt DateTime? @map("deleted_at")
+
+  quoteItemInstallations QuoteItemInstallation[]
+  templateInstallations  QuoteItemTemplateInstallation[]
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("installation_concepts")
+}
+
+// -----------------------------------------------------------------------------
+// Etapa 2 — Biblioteca de items de cotizacion
+// -----------------------------------------------------------------------------
+model QuoteItemTemplate {
+  id                 String       @id @default(cuid())
+  name               String
+  category           String?
+  description        String?
+  defaultQuantity    Decimal      @default(1) @map("default_quantity") @db.Decimal(14, 3)
+  unit               String?
+  deliveryTimeMin    Int?         @map("delivery_time_min")
+  deliveryTimeMax    Int?         @map("delivery_time_max")
+  deliveryTimeUnit   String?      @map("delivery_time_unit")
+  deliveryDaysType   DeliveryDaysType? @map("delivery_days_type")
+  observations       String?
+  benefitPercentage  Decimal      @default(30) @map("benefit_percentage") @db.Decimal(8, 2)
+  itemId             String?      @map("item_id")
+  status             RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+  deletedAt DateTime? @map("deleted_at")
+
+  item            Item?                            @relation("TemplateCatalogItem", fields: [itemId], references: [id], onDelete: SetNull)
+  manufacturing   QuoteItemTemplateManufacturing[]
+  materials       QuoteItemTemplateMaterial[]
+  extras          QuoteItemTemplateExtra[]
+  installations   QuoteItemTemplateInstallation[]
+  quoteItems      QuoteItem[]
+
+  @@index([status])
+  @@index([category])
+  @@index([deletedAt])
+  @@map("quote_item_templates")
+}
+
+model QuoteItemTemplateManufacturing {
+  id                     String      @id @default(cuid())
+  templateId             String      @map("template_id")
+  manufacturingProcessId String?     @map("manufacturing_process_id")
+  processNameSnapshot    String      @map("process_name_snapshot")
+  unitSnapshot           ProcessUnit @map("unit_snapshot")
+  quantity               Decimal     @default(1) @db.Decimal(14, 3)
+  unitRate               Decimal     @default(0) @map("unit_rate") @db.Decimal(14, 2)
+  amount                 Decimal     @default(0) @db.Decimal(14, 2)
+  observations           String?
+  sortOrder              Int         @default(0) @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  template QuoteItemTemplate     @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  process  ManufacturingProcess? @relation(fields: [manufacturingProcessId], references: [id], onDelete: SetNull)
+
+  @@index([templateId])
+  @@map("quote_item_template_manufacturing")
+}
+
+model QuoteItemTemplateMaterial {
+  id                  String  @id @default(cuid())
+  templateId          String  @map("template_id")
+  itemId              String? @map("item_id")
+  supplierId          String? @map("supplier_id")
+  descriptionSnapshot String  @map("description_snapshot")
+  dimensions          String?
+  presentation        String?
+  unit                String?
+  quantity            Decimal @default(1) @db.Decimal(14, 3)
+  unitPrice           Decimal @default(0) @map("unit_price") @db.Decimal(14, 2)
+  amount              Decimal @default(0) @db.Decimal(14, 2)
+  observations        String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  template QuoteItemTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  item     Item?             @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  supplier Supplier?         @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
+  @@index([templateId])
+  @@map("quote_item_template_materials")
+}
+
+model QuoteItemTemplateExtra {
+  id           String  @id @default(cuid())
+  templateId   String  @map("template_id")
+  description  String
+  quantity     Decimal @default(1) @db.Decimal(14, 3)
+  unit         String?
+  unitPrice    Decimal @default(0) @map("unit_price") @db.Decimal(14, 2)
+  amount       Decimal @default(0) @db.Decimal(14, 2)
+  supplierId   String? @map("supplier_id")
+  observations String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  template QuoteItemTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  supplier Supplier?         @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
+  @@index([templateId])
+  @@map("quote_item_template_extras")
+}
+
+model QuoteItemTemplateInstallation {
+  id                    String      @id @default(cuid())
+  templateId            String      @map("template_id")
+  installationConceptId String?     @map("installation_concept_id")
+  conceptNameSnapshot   String      @map("concept_name_snapshot")
+  unitSnapshot          ProcessUnit @map("unit_snapshot")
+  quantity              Decimal     @default(1) @db.Decimal(14, 3)
+  unitPrice             Decimal     @default(0) @map("unit_price") @db.Decimal(14, 2)
+  amount                Decimal     @default(0) @db.Decimal(14, 2)
+  observations          String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  template QuoteItemTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  concept  InstallationConcept? @relation(fields: [installationConceptId], references: [id], onDelete: SetNull)
+
+  @@index([templateId])
+  @@map("quote_item_template_installations")
+}
+
+// -----------------------------------------------------------------------------
+// Etapa 2 — Cotizaciones
+// -----------------------------------------------------------------------------
+model Quote {
+  id                     String       @id @default(cuid())
+  folio                  String       @unique
+  version                String       @default("A")
+  clientId               String       @map("client_id")
+  clientContactId        String?      @map("client_contact_id")
+  sellerId               String       @map("seller_id")
+  issuingCompanyId       String       @map("issuing_company_id")
+  orderType              OrderType    @default(GENERAL) @map("order_type")
+  currency               CurrencyCode @default(MXN)
+  elaborationDate        DateTime     @map("elaboration_date") @db.Date
+  requestDate            DateTime?    @map("request_date") @db.Date
+  validUntil             DateTime     @map("valid_until") @db.Date
+  purchaseOrder          String?      @map("purchase_order")
+  requisition            String?
+  internalObservations   String?      @map("internal_observations")
+  clientDesignProvided   Boolean      @default(false) @map("client_design_provided")
+  advancePercentage      Decimal      @default(0) @map("advance_percentage") @db.Decimal(8, 2)
+  settlementPercentage   Decimal      @default(100) @map("settlement_percentage") @db.Decimal(8, 2)
+  paymentNotes           String?      @map("payment_notes")
+  status                 QuoteStatus  @default(DRAFT)
+
+  manufacturingTotal Decimal @default(0) @map("manufacturing_total") @db.Decimal(14, 2)
+  materialsTotal     Decimal @default(0) @map("materials_total") @db.Decimal(14, 2)
+  extrasTotal        Decimal @default(0) @map("extras_total") @db.Decimal(14, 2)
+  installationTotal  Decimal @default(0) @map("installation_total") @db.Decimal(14, 2)
+  costTotal          Decimal @default(0) @map("cost_total") @db.Decimal(14, 2)
+  subtotal           Decimal @default(0) @db.Decimal(14, 2)
+  discountTotal      Decimal @default(0) @map("discount_total") @db.Decimal(14, 2)
+  taxTotal           Decimal @default(0) @map("tax_total") @db.Decimal(14, 2)
+  total              Decimal @default(0) @db.Decimal(14, 2)
+
+  approvedBy         String?   @map("approved_by")
+  approvedAt         DateTime? @map("approved_at")
+  rejectedBy         String?   @map("rejected_by")
+  rejectedAt         DateTime? @map("rejected_at")
+  rejectionReason    String?   @map("rejection_reason")
+  cancelledBy        String?   @map("cancelled_by")
+  cancelledAt        DateTime? @map("cancelled_at")
+  cancellationReason String?   @map("cancellation_reason")
+  productionOrderId  String?   @unique @map("production_order_id")
+  directOrderId      String?   @unique @map("direct_order_id")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+  deletedAt DateTime? @map("deleted_at")
+
+  client         Client          @relation(fields: [clientId], references: [id])
+  clientContact  ClientContact?  @relation(fields: [clientContactId], references: [id], onDelete: SetNull)
+  seller         User            @relation("QuoteSeller", fields: [sellerId], references: [id])
+  issuingCompany IssuingCompany  @relation(fields: [issuingCompanyId], references: [id])
+  approvedByUser User?           @relation("QuoteApprovedBy", fields: [approvedBy], references: [id], onDelete: SetNull)
+  rejectedByUser User?           @relation("QuoteRejectedBy", fields: [rejectedBy], references: [id], onDelete: SetNull)
+  cancelledByUser User?          @relation("QuoteCancelledBy", fields: [cancelledBy], references: [id], onDelete: SetNull)
+  productionOrder ProductionOrder? @relation("QuoteProduction", fields: [productionOrderId], references: [id], onDelete: SetNull)
+  directOrder    DirectOrder?    @relation("DirectOrderQuote", fields: [directOrderId], references: [id], onDelete: SetNull)
+  items          QuoteItem[]
+
+  @@index([status, elaborationDate])
+  @@index([clientId])
+  @@index([sellerId])
+  @@index([deletedAt])
+  @@map("quotes")
+}
+
+model QuoteItem {
+  id                   String   @id @default(cuid())
+  quoteId              String   @map("quote_id")
+  position             Int      @default(1)
+  templateId           String?  @map("template_id")
+  itemId               String?  @map("item_id")
+  description          String
+  quantity             Decimal  @default(1) @db.Decimal(14, 3)
+  unit                 String?
+  deliveryTimeMin      Int?     @map("delivery_time_min")
+  deliveryTimeMax      Int?     @map("delivery_time_max")
+  deliveryTimeUnit     String?  @map("delivery_time_unit")
+  deliveryDaysType     DeliveryDaysType? @map("delivery_days_type")
+  clientObservations   String?  @map("client_observations")
+  internalObservations String?  @map("internal_observations")
+  benefitPercentage    Decimal  @default(30) @map("benefit_percentage") @db.Decimal(8, 2)
+  discountPercentage   Decimal  @default(0) @map("discount_percentage") @db.Decimal(8, 2)
+  discountAmount       Decimal  @default(0) @map("discount_amount") @db.Decimal(14, 2)
+  manufacturingTotal   Decimal  @default(0) @map("manufacturing_total") @db.Decimal(14, 2)
+  materialsTotal       Decimal  @default(0) @map("materials_total") @db.Decimal(14, 2)
+  extrasTotal          Decimal  @default(0) @map("extras_total") @db.Decimal(14, 2)
+  installationTotal    Decimal  @default(0) @map("installation_total") @db.Decimal(14, 2)
+  costTotal            Decimal  @default(0) @map("cost_total") @db.Decimal(14, 2)
+  saleSubtotal         Decimal  @default(0) @map("sale_subtotal") @db.Decimal(14, 2)
+  taxAmount            Decimal  @default(0) @map("tax_amount") @db.Decimal(14, 2)
+  total                Decimal  @default(0) @db.Decimal(14, 2)
+  isUrgent             Boolean  @default(false) @map("is_urgent")
+  warehouseId          String?  @map("warehouse_id")
+  status               RecordStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  quote          Quote                   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  template       QuoteItemTemplate?      @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  item           Item?                   @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  warehouse      Warehouse?              @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  manufacturing  QuoteItemManufacturing[]
+  materials      QuoteItemMaterial[]
+  extras         QuoteItemExtra[]
+  installations  QuoteItemInstallation[]
+
+  @@index([quoteId, position])
+  @@map("quote_items")
+}
+
+model QuoteItemManufacturing {
+  id                     String       @id @default(cuid())
+  quoteItemId            String       @map("quote_item_id")
+  manufacturingProcessId String?      @map("manufacturing_process_id")
+  processNameSnapshot    String       @map("process_name_snapshot")
+  unitSnapshot           ProcessUnit  @map("unit_snapshot")
+  quantity               Decimal      @default(1) @db.Decimal(14, 3)
+  unitRate               Decimal      @default(0) @map("unit_rate") @db.Decimal(14, 2)
+  amount                 Decimal      @default(0) @db.Decimal(14, 2)
+  observations           String?
+  sortOrder              Int          @default(0) @map("sort_order")
+  status                 RecordStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  quoteItem QuoteItem             @relation(fields: [quoteItemId], references: [id], onDelete: Cascade)
+  process   ManufacturingProcess? @relation(fields: [manufacturingProcessId], references: [id], onDelete: SetNull)
+
+  @@index([quoteItemId])
+  @@map("quote_item_manufacturing")
+}
+
+model QuoteItemMaterial {
+  id                  String  @id @default(cuid())
+  quoteItemId         String  @map("quote_item_id")
+  itemId              String? @map("item_id")
+  supplierId          String? @map("supplier_id")
+  descriptionSnapshot String  @map("description_snapshot")
+  dimensions          String?
+  presentation        String?
+  unit                String?
+  quantity            Decimal @default(1) @db.Decimal(14, 3)
+  unitPrice           Decimal @default(0) @map("unit_price") @db.Decimal(14, 2)
+  amount              Decimal @default(0) @db.Decimal(14, 2)
+  observations        String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  quoteItem QuoteItem @relation(fields: [quoteItemId], references: [id], onDelete: Cascade)
+  item      Item?     @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  supplier  Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
+  @@index([quoteItemId])
+  @@map("quote_item_materials")
+}
+
+model QuoteItemExtra {
+  id           String  @id @default(cuid())
+  quoteItemId  String  @map("quote_item_id")
+  description  String
+  quantity     Decimal @default(1) @db.Decimal(14, 3)
+  unit         String?
+  unitPrice    Decimal @default(0) @map("unit_price") @db.Decimal(14, 2)
+  amount       Decimal @default(0) @db.Decimal(14, 2)
+  supplierId   String? @map("supplier_id")
+  observations String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  quoteItem QuoteItem @relation(fields: [quoteItemId], references: [id], onDelete: Cascade)
+  supplier  Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
+  @@index([quoteItemId])
+  @@map("quote_item_extras")
+}
+
+model QuoteItemInstallation {
+  id                    String      @id @default(cuid())
+  quoteItemId           String      @map("quote_item_id")
+  installationConceptId String?     @map("installation_concept_id")
+  conceptNameSnapshot   String      @map("concept_name_snapshot")
+  unitSnapshot          ProcessUnit @map("unit_snapshot")
+  quantity              Decimal     @default(1) @db.Decimal(14, 3)
+  unitPrice             Decimal     @default(0) @map("unit_price") @db.Decimal(14, 2)
+  amount                Decimal     @default(0) @db.Decimal(14, 2)
+  observations          String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  quoteItem QuoteItem            @relation(fields: [quoteItemId], references: [id], onDelete: Cascade)
+  concept   InstallationConcept? @relation(fields: [installationConceptId], references: [id], onDelete: SetNull)
+
+  @@index([quoteItemId])
+  @@map("quote_item_installations")
+}
+
+// -----------------------------------------------------------------------------
+// Etapa 2 — Ordenes directas
+// -----------------------------------------------------------------------------
+model DirectOrder {
+  id               String            @id @default(cuid())
+  folio            String            @unique
+  orderType        OrderType         @default(GENERAL) @map("order_type")
+  clientId         String            @map("client_id")
+  clientContactId  String?           @map("client_contact_id")
+  sellerId         String            @map("seller_id")
+  issuingCompanyId String            @map("issuing_company_id")
+  requestDate      DateTime          @map("request_date") @db.Date
+  validUntil       DateTime?         @map("valid_until") @db.Date
+  requisition      String?
+  observations     String?
+  status           DirectOrderStatus @default(DRAFT)
+
+  approvedBy         String?   @map("approved_by")
+  approvedAt         DateTime? @map("approved_at")
+  rejectedBy         String?   @map("rejected_by")
+  rejectedAt         DateTime? @map("rejected_at")
+  rejectionReason    String?   @map("rejection_reason")
+  cancelledBy        String?   @map("cancelled_by")
+  cancelledAt        DateTime? @map("cancelled_at")
+  cancellationReason String?   @map("cancellation_reason")
+  productionOrderId  String?   @unique @map("production_order_id")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+  deletedAt DateTime? @map("deleted_at")
+
+  client          Client           @relation(fields: [clientId], references: [id])
+  clientContact   ClientContact?   @relation(fields: [clientContactId], references: [id], onDelete: SetNull)
+  seller          User             @relation("DirectOrderSeller", fields: [sellerId], references: [id])
+  issuingCompany  IssuingCompany   @relation(fields: [issuingCompanyId], references: [id])
+  approvedByUser  User?            @relation("DirectOrderApprovedBy", fields: [approvedBy], references: [id], onDelete: SetNull)
+  rejectedByUser  User?            @relation("DirectOrderRejectedBy", fields: [rejectedBy], references: [id], onDelete: SetNull)
+  cancelledByUser User?            @relation("DirectOrderCancelledBy", fields: [cancelledBy], references: [id], onDelete: SetNull)
+  productionOrder ProductionOrder? @relation("DirectOrderProduction", fields: [productionOrderId], references: [id], onDelete: SetNull)
+  quote           Quote?           @relation("DirectOrderQuote")
+  items           DirectOrderItem[]
+
+  @@index([status, requestDate])
+  @@index([clientId])
+  @@index([sellerId])
+  @@index([deletedAt])
+  @@map("direct_orders")
+}
+
+model DirectOrderItem {
+  id                String       @id @default(cuid())
+  directOrderId     String       @map("direct_order_id")
+  position          Int          @default(1)
+  itemId            String?      @map("item_id")
+  description       String
+  quantity          Decimal      @default(1) @db.Decimal(14, 3)
+  unit              String?
+  observations      String?
+  benefitPercentage Decimal      @default(30) @map("benefit_percentage") @db.Decimal(8, 2)
+  status            RecordStatus @default(ACTIVE)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  directOrder DirectOrder @relation(fields: [directOrderId], references: [id], onDelete: Cascade)
+  item        Item?       @relation(fields: [itemId], references: [id], onDelete: SetNull)
+
+  @@index([directOrderId, position])
+  @@map("direct_order_items")
+}
+
+// -----------------------------------------------------------------------------
+// Etapa 2 — Produccion
+// -----------------------------------------------------------------------------
+model ProductionOrder {
+  id                 String               @id @default(cuid())
+  folio              String               @unique
+  sourceType         ProductionSourceType @map("source_type")
+  clientId           String               @map("client_id")
+  approvalDate       DateTime             @map("approval_date") @db.Date
+  status             ProductionStatus     @default(PENDING)
+  totalItems         Int                  @default(0) @map("total_items")
+  completedItems     Int                  @default(0) @map("completed_items")
+  progressPercentage Decimal              @default(0) @map("progress_percentage") @db.Decimal(8, 2)
+  startedAt          DateTime?            @map("started_at")
+  completedAt        DateTime?            @map("completed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  client      Client            @relation(fields: [clientId], references: [id])
+  quote       Quote?            @relation("QuoteProduction")
+  directOrder DirectOrder?      @relation("DirectOrderProduction")
+  items       ProductionItem[]
+
+  @@index([status, approvalDate])
+  @@index([clientId])
+  @@map("production_orders")
+}
+
+model ProductionItem {
+  id                String           @id @default(cuid())
+  productionOrderId String           @map("production_order_id")
+  sourceItemId      String           @map("source_item_id")
+  sourceItemType    String           @map("source_item_type")
+  position          Int              @default(1)
+  description       String
+  quantity          Decimal          @default(1) @db.Decimal(14, 3)
+  completedQuantity Decimal          @default(0) @map("completed_quantity") @db.Decimal(14, 3)
+  status            ProductionStatus @default(PENDING)
+  startedAt         DateTime?        @map("started_at")
+  completedAt       DateTime?        @map("completed_at")
+  completedBy       String?          @map("completed_by")
+  observations      String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  completedByUser User?           @relation("ProductionItemCompletedBy", fields: [completedBy], references: [id], onDelete: SetNull)
+
+  @@index([productionOrderId, position])
+  @@map("production_items")
+}
+

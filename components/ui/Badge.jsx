@@ -38,4 +38,21 @@ export function StatusBadge({ status }) {
   );
 }
 
+const QUOTE_STATUS_TONES = {
+  DRAFT: "neutral",
+  PENDING_APPROVAL: "warning",
+  APPROVED: "success",
+  IN_PRODUCTION: "brand",
+  REJECTED: "danger",
+  CANCELLED: "neutral",
+};
+
+export function QuoteStatusBadge({ status, label }) {
+  return (
+    <Badge tone={QUOTE_STATUS_TONES[status] || "neutral"}>
+      {label || status || "-"}
+    </Badge>
+  );
+}
+
 export default Badge;

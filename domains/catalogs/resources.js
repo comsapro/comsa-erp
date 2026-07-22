@@ -8,6 +8,12 @@ import {
   itemUpdateSchema,
   supplierCreateSchema,
   supplierUpdateSchema,
+  issuingCompanyCreateSchema,
+  issuingCompanyUpdateSchema,
+  manufacturingProcessCreateSchema,
+  manufacturingProcessUpdateSchema,
+  installationConceptCreateSchema,
+  installationConceptUpdateSchema,
   ITEM_TYPES,
   SUPPLIER_TYPES,
 } from "./schemas";
@@ -68,4 +74,35 @@ export const suppliersResource = createResource({
     if (type && SUPPLIER_TYPES.includes(type)) extra.supplierType = type;
     return extra;
   },
+});
+
+export const issuingCompaniesResource = createResource({
+  model: "issuingCompany",
+  moduleKey: "issuing_companies",
+  entity: "IssuingCompany",
+  search: ["commercialName", "legalName", "rfc", "email"],
+  sortable: ["commercialName", "status", "createdAt"],
+  createSchema: issuingCompanyCreateSchema,
+  updateSchema: issuingCompanyUpdateSchema,
+  permissions: { delete: "issuing_companies.manage" },
+});
+
+export const manufacturingProcessesResource = createResource({
+  model: "manufacturingProcess",
+  moduleKey: "manufacturing_processes",
+  entity: "ManufacturingProcess",
+  search: ["code", "name", "description"],
+  sortable: ["code", "name", "status", "createdAt"],
+  createSchema: manufacturingProcessCreateSchema,
+  updateSchema: manufacturingProcessUpdateSchema,
+});
+
+export const installationConceptsResource = createResource({
+  model: "installationConcept",
+  moduleKey: "installation_concepts",
+  entity: "InstallationConcept",
+  search: ["code", "name", "description"],
+  sortable: ["code", "name", "status", "createdAt"],
+  createSchema: installationConceptCreateSchema,
+  updateSchema: installationConceptUpdateSchema,
 });

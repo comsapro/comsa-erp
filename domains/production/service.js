@@ -1,0 +1,466 @@
+import "server-only";
+import { prisma } from "@/lib/db";
+import { parseListParams, paginated } from "@/lib/api/list-params";
+import { requirePermission } from "@/lib/permissions/require-permission";
+import { getActor } from "@/lib/api/actor";
+import { recordAudit, AUDIT_ACTIONS } from "@/lib/audit/logger";
+import {
+  ValidationError,
+  NotFoundError,
+  ConflictError,
+} from "@/lib/permissions/errors";
+import { jsonOk } from "@/lib/api/http";
+import {
+  PRODUCTION_STATUSES,
+  PRODUCTION_SOURCE_TYPES,
+} from "./constants";
+import { updateItemProgressSchema } from "./schemas";
+
+const SORTABLE = [
+  "folio",
+  "status",
+  "approvalDate",
+  "progressPercentage",
+  "createdAt",
+];
+
+const LIST_INCLUDE = {
+  client: { select: { id: true, commercialName: true } },
+  quote: { select: { id: true, folio: true, status: true } },
+  directOrder: { select: { id: true, folio: true, status: true } },
+};
+
+const DETAIL_INCLUDE = {
+  client: true,
+  quote: { select: { id: true, folio: true, status: true } },
+  directOrder: { select: { id: true, folio: true, status: true } },
+  items: {
+    orderBy: { position: "asc" },
+    include: {
+      completedByUser: { select: { id: true, name: true } },
+    },
+  },
+};
+
+async function findProductionOrThrow(id, include = undefined) {
+  const record = await prisma.productionOrder.findFirst({
+    where: { id },
+    include,
+  });
+  if (!record) throw new NotFoundError("Orden de produccion no encontrada");
+  return record;
+}
+
+function computeProgress(items) {
+  const hasCancelled = items.some((i) => i.status === "CANCELLED");
+  const countable = hasCancelled
+    ? items.filter((i) => i.status !== "CANCELLED")
+    : items;
+  const totalItems = countable.length;
+  const completedItems = countable.filter((i) => i.status === "COMPLETED").length;
+  const progressPercentage =
+    totalItems === 0
+      ? 0
+      : Math.round((completedItems / totalItems) * 10000) / 100;
+  return { totalItems, completedItems, progressPercentage };
+}
+
+async function recalculateProgress(tx, productionOrderId) {
+  const items = await tx.productionItem.findMany({
+    where: { productionOrderId },
+  });
+  const progress = computeProgress(items);
+  return tx.productionOrder.update({
+    where: { id: productionOrderId },
+    data: progress,
+    include: DETAIL_INCLUDE,
+  });
+}
+
+function assertOrderNotTerminal(order) {
+  if (order.status === "COMPLETED") {
+    throw new ConflictError("La orden de produccion ya esta completada");
+  }
+  if (order.status === "CANCELLED") {
+    throw new ConflictError("La orden de produccion esta cancelada");
+  }
+}
+
+export async function listProduction(request) {
+  await requirePermission("production.view");
+  const params = parseListParams(request, {
+    allowedSort: SORTABLE,
+    defaultSort: "createdAt",
+    defaultOrder: "desc",
+  });
+
+  const where = {};
+
+  const tab = params.searchParams.get("tab");
+  if (tab === "in_progress") {
+    where.status = { in: ["PENDING", "IN_PROGRESS"] };
+  } else if (tab === "completed") {
+    where.status = "COMPLETED";
+  } else if (tab === "all") {
+    // sin filtro de estatus
+  } else if (PRODUCTION_STATUSES.includes(params.status)) {
+    where.status = params.status;
+  } else {
+    // Por defecto: en progreso
+    where.status = { in: ["PENDING", "IN_PROGRESS"] };
+  }
+
+  const sourceType = params.searchParams.get("sourceType");
+  if (PRODUCTION_SOURCE_TYPES.includes(sourceType)) {
+    where.sourceType = sourceType;
+  }
+
+  if (params.q) {
+    where.OR = [
+      { folio: { contains: params.q, mode: "insensitive" } },
+      {
+        client: {
+          commercialName: { contains: params.q, mode: "insensitive" },
+        },
+      },
+      {
+        quote: {
+          folio: { contains: params.q, mode: "insensitive" },
+        },
+      },
+      {
+        directOrder: {
+          folio: { contains: params.q, mode: "insensitive" },
+        },
+      },
+    ];
+  }
+
+  const [rows, total] = await Promise.all([
+    prisma.productionOrder.findMany({
+      where,
+      orderBy: { [params.sort]: params.order },
+      skip: params.skip,
+      take: params.take,
+      include: LIST_INCLUDE,
+    }),
+    prisma.productionOrder.count({ where }),
+  ]);
+
+  return jsonOk(paginated(rows, total, params));
+}
+
+export async function getProduction(request, id) {
+  await requirePermission("production.view");
+  const record = await findProductionOrThrow(id, DETAIL_INCLUDE);
+  return jsonOk(record);
+}
+
+export async function startProduction(request, id) {
+  await requirePermission("production.start");
+  const actor = await getActor(request);
+  const existing = await findProductionOrThrow(id, DETAIL_INCLUDE);
+
+  if (existing.status !== "PENDING") {
+    throw new ConflictError(
+      "Solo se pueden iniciar ordenes de produccion pendientes"
+    );
+  }
+
+  const record = await prisma.productionOrder.update({
+    where: { id },
+    data: {
+      status: "IN_PROGRESS",
+      startedAt: new Date(),
+      updatedBy: actor.id,
+    },
+    include: DETAIL_INCLUDE,
+  });
+
+  await recordAudit({
+    actor,
+    module: "production",
+    entity: "ProductionOrder",
+    entityId: id,
+    action: AUDIT_ACTIONS.UPDATE,
+    previousData: existing,
+    newData: record,
+  });
+
+  return jsonOk(record);
+}
+
+export async function completeOrder(request, id) {
+  await requirePermission("production.complete_order");
+  const actor = await getActor(request);
+  const existing = await findProductionOrThrow(id, DETAIL_INCLUDE);
+
+  assertOrderNotTerminal(existing);
+
+  const activeItems = existing.items.filter((i) => i.status !== "CANCELLED");
+  if (!activeItems.length) {
+    throw new ValidationError("La orden no tiene items activos");
+  }
+  const incomplete = activeItems.filter((i) => i.status !== "COMPLETED");
+  if (incomplete.length) {
+    throw new ConflictError(
+      "Todos los items activos deben estar completados para cerrar la orden"
+    );
+  }
+
+  const progress = computeProgress(existing.items);
+  const record = await prisma.productionOrder.update({
+    where: { id },
+    data: {
+      status: "COMPLETED",
+      completedAt: new Date(),
+      updatedBy: actor.id,
+      ...progress,
+    },
+    include: DETAIL_INCLUDE,
+  });
+
+  await recordAudit({
+    actor,
+    module: "production",
+    entity: "ProductionOrder",
+    entityId: id,
+    action: AUDIT_ACTIONS.COMPLETE,
+    previousData: existing,
+    newData: record,
+  });
+
+  return jsonOk(record);
+}
+
+export async function cancelProduction(request, id) {
+  await requirePermission("production.cancel");
+  const actor = await getActor(request);
+  const existing = await findProductionOrThrow(id, DETAIL_INCLUDE);
+
+  assertOrderNotTerminal(existing);
+
+  const record = await prisma.$transaction(async (tx) => {
+    await tx.productionItem.updateMany({
+      where: {
+        productionOrderId: id,
+        status: { in: ["PENDING", "IN_PROGRESS"] },
+      },
+      data: { status: "CANCELLED" },
+    });
+
+    return tx.productionOrder.update({
+      where: { id },
+      data: {
+        status: "CANCELLED",
+        updatedBy: actor.id,
+      },
+      include: DETAIL_INCLUDE,
+    });
+  });
+
+  await recordAudit({
+    actor,
+    module: "production",
+    entity: "ProductionOrder",
+    entityId: id,
+    action: AUDIT_ACTIONS.CANCEL,
+    previousData: existing,
+    newData: record,
+  });
+
+  return jsonOk(record);
+}
+
+export async function startItem(request, orderId, itemId) {
+  await requirePermission("production.update_progress");
+  const actor = await getActor(request);
+  const order = await findProductionOrThrow(orderId, DETAIL_INCLUDE);
+  assertOrderNotTerminal(order);
+
+  const item = order.items.find((i) => i.id === itemId);
+  if (!item) throw new NotFoundError("Item de produccion no encontrado");
+  if (item.status !== "PENDING") {
+    throw new ConflictError("Solo se pueden iniciar items pendientes");
+  }
+
+  const record = await prisma.$transaction(async (tx) => {
+    await tx.productionItem.update({
+      where: { id: itemId },
+      data: {
+        status: "IN_PROGRESS",
+        startedAt: new Date(),
+      },
+    });
+
+    if (order.status === "PENDING") {
+      await tx.productionOrder.update({
+        where: { id: orderId },
+        data: {
+          status: "IN_PROGRESS",
+          startedAt: order.startedAt || new Date(),
+          updatedBy: actor.id,
+        },
+      });
+    } else {
+      await tx.productionOrder.update({
+        where: { id: orderId },
+        data: { updatedBy: actor.id },
+      });
+    }
+
+    return recalculateProgress(tx, orderId);
+  });
+
+  await recordAudit({
+    actor,
+    module: "production",
+    entity: "ProductionOrder",
+    entityId: orderId,
+    action: AUDIT_ACTIONS.PROGRESS_UPDATE,
+    previousData: order,
+    newData: record,
+  });
+
+  return jsonOk(record);
+}
+
+export async function updateItemProgress(request, orderId, itemId) {
+  await requirePermission("production.update_progress");
+  const actor = await getActor(request);
+  const order = await findProductionOrThrow(orderId, DETAIL_INCLUDE);
+  assertOrderNotTerminal(order);
+
+  const item = order.items.find((i) => i.id === itemId);
+  if (!item) throw new NotFoundError("Item de produccion no encontrado");
+  if (item.status === "COMPLETED" || item.status === "CANCELLED") {
+    throw new ConflictError(
+      "No se puede actualizar el avance de un item cerrado"
+    );
+  }
+
+  const body = await request.json();
+  const data = updateItemProgressSchema.parse(body);
+  const qty = Number(item.quantity);
+  if (data.completedQuantity > qty) {
+    throw new ValidationError(
+      "La cantidad completada no puede exceder la cantidad del item"
+    );
+  }
+
+  const record = await prisma.$transaction(async (tx) => {
+    const nextStatus =
+      item.status === "PENDING" ? "IN_PROGRESS" : item.status;
+
+    await tx.productionItem.update({
+      where: { id: itemId },
+      data: {
+        completedQuantity: data.completedQuantity,
+        observations:
+          data.observations !== undefined
+            ? data.observations
+            : item.observations,
+        status: nextStatus,
+        startedAt: item.startedAt || new Date(),
+      },
+    });
+
+    if (order.status === "PENDING") {
+      await tx.productionOrder.update({
+        where: { id: orderId },
+        data: {
+          status: "IN_PROGRESS",
+          startedAt: order.startedAt || new Date(),
+          updatedBy: actor.id,
+        },
+      });
+    } else {
+      await tx.productionOrder.update({
+        where: { id: orderId },
+        data: { updatedBy: actor.id },
+      });
+    }
+
+    return recalculateProgress(tx, orderId);
+  });
+
+  await recordAudit({
+    actor,
+    module: "production",
+    entity: "ProductionOrder",
+    entityId: orderId,
+    action: AUDIT_ACTIONS.PROGRESS_UPDATE,
+    previousData: order,
+    newData: record,
+  });
+
+  return jsonOk(record);
+}
+
+export async function completeItem(request, orderId, itemId) {
+  await requirePermission("production.complete_item");
+  const actor = await getActor(request);
+  const order = await findProductionOrThrow(orderId, DETAIL_INCLUDE);
+  assertOrderNotTerminal(order);
+
+  const item = order.items.find((i) => i.id === itemId);
+  if (!item) throw new NotFoundError("Item de produccion no encontrado");
+  if (item.status === "COMPLETED") {
+    throw new ConflictError("El item ya esta completado");
+  }
+  if (item.status === "CANCELLED") {
+    throw new ConflictError("El item esta cancelado");
+  }
+
+  const record = await prisma.$transaction(async (tx) => {
+    await tx.productionItem.update({
+      where: { id: itemId },
+      data: {
+        status: "COMPLETED",
+        completedQuantity: item.quantity,
+        completedBy: actor.id,
+        completedAt: new Date(),
+        startedAt: item.startedAt || new Date(),
+      },
+    });
+
+    const items = await tx.productionItem.findMany({
+      where: { productionOrderId: orderId },
+    });
+    const progress = computeProgress(items);
+    const activeItems = items.filter((i) => i.status !== "CANCELLED");
+    const allDone =
+      activeItems.length > 0 &&
+      activeItems.every((i) => i.status === "COMPLETED");
+
+    return tx.productionOrder.update({
+      where: { id: orderId },
+      data: {
+        ...progress,
+        updatedBy: actor.id,
+        ...(order.status === "PENDING"
+          ? { status: "IN_PROGRESS", startedAt: order.startedAt || new Date() }
+          : {}),
+        ...(allDone
+          ? {
+              status: "COMPLETED",
+              completedAt: new Date(),
+            }
+          : {}),
+      },
+      include: DETAIL_INCLUDE,
+    });
+  });
+
+  await recordAudit({
+    actor,
+    module: "production",
+    entity: "ProductionOrder",
+    entityId: orderId,
+    action: AUDIT_ACTIONS.COMPLETE,
+    previousData: order,
+    newData: record,
+  });
+
+  return jsonOk(record);
+}

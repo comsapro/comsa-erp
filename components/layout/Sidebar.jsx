@@ -19,7 +19,7 @@ export function Sidebar({ sections, collapsed, mobileOpen, onCloseMobile }) {
       {/* Overlay movil */}
       {mobileOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+          className="fixed inset-0 z-30 bg-black/40 lg:hidden print:hidden"
           onClick={onCloseMobile}
           aria-hidden
         />
@@ -27,7 +27,7 @@ export function Sidebar({ sections, collapsed, mobileOpen, onCloseMobile }) {
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-border bg-white transition-all duration-200",
+          "fixed inset-y-0 left-0 z-40 flex flex-col border-r border-border bg-white transition-all duration-200 print:hidden",
           "lg:static lg:translate-x-0",
           collapsed ? "lg:w-[68px]" : "lg:w-64",
           "w-64",

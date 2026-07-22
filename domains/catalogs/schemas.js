@@ -86,4 +86,63 @@ export const supplierCreateSchema = z.object({
 });
 export const supplierUpdateSchema = supplierCreateSchema.partial();
 
+export const PROCESS_UNITS = [
+  "HOUR",
+  "PIECE",
+  "LOT",
+  "METER",
+  "KILOGRAM",
+  "SERVICE",
+];
+
+export const PROCESS_UNIT_LABELS = {
+  HOUR: "Hora",
+  PIECE: "Pieza",
+  LOT: "Lote",
+  METER: "Metro",
+  KILOGRAM: "Kilogramo",
+  SERVICE: "Servicio",
+};
+
+// -------------------- Empresas emisoras --------------------
+export const issuingCompanyCreateSchema = z.object({
+  commercialName: requiredString("El nombre comercial es requerido"),
+  legalName: optionalString,
+  rfc: optionalString,
+  fiscalAddress: optionalString,
+  phone: optionalString,
+  email: optionalEmail,
+  website: optionalString,
+  logoUrl: optionalString,
+  bankDetails: optionalString,
+  legalText: optionalString,
+  quotationFooter: optionalString,
+  status: statusWithDefault,
+});
+export const issuingCompanyUpdateSchema = issuingCompanyCreateSchema.partial();
+
+// -------------------- Procesos de manufactura --------------------
+export const manufacturingProcessCreateSchema = z.object({
+  code: requiredString("El codigo es requerido", 50),
+  name: requiredString("El nombre es requerido"),
+  description: optionalString,
+  unit: z.enum(PROCESS_UNITS, { message: "Unidad invalida" }),
+  defaultRate: z.coerce.number().min(0, "No puede ser negativo").default(0),
+  status: statusWithDefault,
+});
+export const manufacturingProcessUpdateSchema =
+  manufacturingProcessCreateSchema.partial();
+
+// -------------------- Conceptos de instalacion --------------------
+export const installationConceptCreateSchema = z.object({
+  code: requiredString("El codigo es requerido", 50),
+  name: requiredString("El nombre es requerido"),
+  description: optionalString,
+  unit: z.enum(PROCESS_UNITS, { message: "Unidad invalida" }),
+  defaultPrice: z.coerce.number().min(0, "No puede ser negativo").default(0),
+  status: statusWithDefault,
+});
+export const installationConceptUpdateSchema =
+  installationConceptCreateSchema.partial();
+
 export { statusEnum };
