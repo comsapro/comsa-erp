@@ -10,9 +10,11 @@ export function useResourceList(endpoint, options = {}) {
   const {
     initialSort = "createdAt",
     initialOrder = "desc",
-    pageSize = 10,
+    pageSize: pageSizeOption = 10,
     initialFilters = {},
   } = options;
+
+  const pageSize = pageSizeOption;
 
   const [rows, setRows] = useState([]);
   const [pagination, setPagination] = useState({
@@ -31,6 +33,10 @@ export function useResourceList(endpoint, options = {}) {
 
   const debounceRef = useRef(null);
   const [debouncedQ, setDebouncedQ] = useState("");
+
+  useEffect(() => {
+    setPage(1);
+  }, [pageSize]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);

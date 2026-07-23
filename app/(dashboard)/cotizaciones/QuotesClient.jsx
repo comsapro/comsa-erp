@@ -9,7 +9,6 @@ import {
   FileText,
   Pencil,
   Plus,
-  Printer,
   RotateCcw,
   Send,
   ThumbsDown,
@@ -31,6 +30,10 @@ import { Can } from "@/components/permissions/Can";
 import { usePermissions } from "@/components/permissions/PermissionsProvider";
 import { formatDate, formatMoney } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
+import { ViewModeToggle } from "@/components/views/ViewModeToggle";
+import { StatusKanban } from "@/components/views/StatusKanban";
+import { MonthCalendar } from "@/components/views/MonthCalendar";
+import { useViewMode } from "@/components/views/useViewMode";
 
 const ENDPOINT = "/api/cotizaciones";
 
@@ -42,13 +45,28 @@ const STATUS_TABS = [
   })),
 ];
 
+const KANBAN_COLUMNS = QUOTE_STATUSES.map((id) => ({
+  id,
+  label: QUOTE_STATUS_LABELS[id],
+  tone:
+    id === "APPROVED" || id === "IN_PRODUCTION"
+      ? "success"
+      : id === "PENDING_APPROVAL"
+        ? "warning"
+        : id === "REJECTED"
+          ? "danger"
+          : "neutral",
+}));
+
 export default function QuotesClient() {
   const router = useRouter();
   const { has } = usePermissions();
+  const { mode, setMode } = useViewMode("quotes:viewMode");
   const list = useResourceList(ENDPOINT, {
     initialSort: "createdAt",
     initialOrder: "desc",
     initialFilters: { status: "" },
+    pageSize: mode === "table" ? 10 : 200,
   });
 
   const activeStatus = list.filters.status ?? "";
@@ -149,7 +167,8 @@ export default function QuotesClient() {
                 {
                   label: "Enviar",
                   icon: Send,
-                  onClick: () => router.push(`/cotizaciones/${r.id}?action=submit`),
+                  onClick: () =>
+                    router.push(`/cotizaciones/${r.id}?action=submit`),
                   hidden: !(isDraft && has("quotes.submit")),
                 },
                 {
@@ -185,17 +204,12 @@ export default function QuotesClient() {
                   hidden: !(isDraft && has("quotes.cancel")),
                 },
                 {
-                  label: "Imprimir",
-                  icon: Printer,
-                  onClick: () =>
-                    router.push(`/cotizaciones/${r.id}/imprimir`),
-                  hidden: !has("quotes.print"),
-                },
-                {
                   label: "Enviar a produccion",
                   icon: FileText,
                   onClick: () =>
-                    router.push(`/cotizaciones/${r.id}?action=send-production`),
+                    router.push(
+                      `/cotizaciones/${r.id}?action=send-production`
+                    ),
                   hidden: !(isApproved && has("quotes.send_to_production")),
                 },
               ]}
@@ -207,17 +221,27 @@ export default function QuotesClient() {
     [has, router]
   );
 
+  const kanbanColumns = useMemo(() => {
+    if (activeStatus) {
+      return KANBAN_COLUMNS.filter((c) => c.id === activeStatus);
+    }
+    return KANBAN_COLUMNS;
+  }, [activeStatus]);
+
   return (
     <div>
       <PageHeader
         title="Cotizaciones"
         description="Gestiona cotizaciones, aprobaciones y envio a produccion."
         actions={
-          <Can permission="quotes.create">
-            <Button as={Link} href="/cotizaciones/nuevo">
-              <Plus className="h-4 w-4" /> Nueva cotizacion
-            </Button>
-          </Can>
+          <div className="flex flex-wrap items-center gap-2">
+            <ViewModeToggle value={mode} onChange={setMode} />
+            <Can permission="quotes.create">
+              <Button as={Link} href="/cotizaciones/nuevo">
+                <Plus className="h-4 w-4" /> Nueva cotizacion
+              </Button>
+            </Can>
+          </div>
         }
       />
 
@@ -250,22 +274,63 @@ export default function QuotesClient() {
         loading={list.loading}
       />
 
-      <DataTable
-        columns={columns}
-        rows={list.rows}
-        loading={list.loading}
-        error={list.error}
-        sort={list.sort}
-        onSort={list.toggleSort}
-        emptyTitle="Sin cotizaciones"
-        emptyDescription="Aun no hay cotizaciones con estos criterios."
-      />
+      {mode === "table" && (
+        <>
+          <DataTable
+            columns={columns}
+            rows={list.rows}
+            loading={list.loading}
+            error={list.error}
+            sort={list.sort}
+            onSort={list.toggleSort}
+            emptyTitle="Sin cotizaciones"
+            emptyDescription="Aun no hay cotizaciones con estos criterios."
+          />
+          <Pagination
+            pagination={list.pagination}
+            onPageChange={list.setPage}
+            loading={list.loading}
+          />
+        </>
+      )}
 
-      <Pagination
-        pagination={list.pagination}
-        onPageChange={list.setPage}
-        loading={list.loading}
-      />
+      {mode === "kanban" && (
+        <StatusKanban
+          columns={kanbanColumns}
+          rows={list.rows}
+          loading={list.loading}
+          error={list.error}
+          getStatus={(r) => r.status}
+          getHref={(r) => `/cotizaciones/${r.id}`}
+          getTitle={(r) => r.folio}
+          getSubtitle={(r) => r.client?.commercialName || "Sin cliente"}
+          getDate={(r) => r.elaborationDate}
+          getTotal={(r) => ({
+            amount: r.total,
+            currency: r.currency || "MXN",
+          })}
+          emptyTitle="Sin cotizaciones"
+          emptyDescription="Aun no hay cotizaciones con estos criterios."
+        />
+      )}
+
+      {mode === "calendar" && (
+        <MonthCalendar
+          rows={list.rows}
+          loading={list.loading}
+          error={list.error}
+          getDate={(r) => r.elaborationDate}
+          getHref={(r) => `/cotizaciones/${r.id}`}
+          getTitle={(r) => r.folio}
+          getSubtitle={(r) =>
+            `${r.client?.commercialName || "Sin cliente"} · ${
+              QUOTE_STATUS_LABELS[r.status] || r.status
+            }`
+          }
+          emptyTitle="Sin cotizaciones"
+          emptyDescription="No hay cotizaciones en este dia."
+        />
+      )}
     </div>
   );
 }

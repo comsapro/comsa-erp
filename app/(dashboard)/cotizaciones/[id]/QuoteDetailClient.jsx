@@ -10,7 +10,6 @@ import {
   Library,
   Pencil,
   Plus,
-  Printer,
   RotateCcw,
   Send,
   ThumbsDown,
@@ -345,15 +344,6 @@ export default function QuoteDetailClient({ quoteId }) {
                   <Send className="h-4 w-4" /> Enviar a produccion
                 </Button>
               )}
-            {has("quotes.print") && (
-              <Button
-                as={Link}
-                href={`/cotizaciones/${quote.id}/imprimir`}
-                variant="secondary"
-              >
-                <Printer className="h-4 w-4" /> Imprimir
-              </Button>
-            )}
           </div>
         }
       />

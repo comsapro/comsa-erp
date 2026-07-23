@@ -16,6 +16,11 @@ import {
   Building2,
   Cog,
   Wrench,
+  ArrowLeftRight,
+  AlertTriangle,
+  ShoppingCart,
+  PackageCheck,
+  FileDown,
 } from "lucide-react";
 
 export const ICONS = {
@@ -36,6 +41,11 @@ export const ICONS = {
   Building2,
   Cog,
   Wrench,
+  ArrowLeftRight,
+  AlertTriangle,
+  ShoppingCart,
+  PackageCheck,
+  FileDown,
 };
 
 export function getIcon(name) {

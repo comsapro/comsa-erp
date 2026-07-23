@@ -15,10 +15,15 @@ import { Select } from "@/components/ui/Select";
 import { formatDate } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
 import {
+  PRODUCTION_STATUSES,
   PRODUCTION_STATUS_LABELS,
   PRODUCTION_STATUS_TONES,
   PRODUCTION_SOURCE_LABELS,
 } from "@/domains/production/constants";
+import { ViewModeToggle } from "@/components/views/ViewModeToggle";
+import { StatusKanban } from "@/components/views/StatusKanban";
+import { MonthCalendar } from "@/components/views/MonthCalendar";
+import { useViewMode } from "@/components/views/useViewMode";
 
 const ENDPOINT = "/api/produccion";
 
@@ -28,6 +33,12 @@ const TABS = [
   { value: "all", label: "Todas" },
 ];
 
+const KANBAN_COLUMNS = PRODUCTION_STATUSES.map((id) => ({
+  id,
+  label: PRODUCTION_STATUS_LABELS[id],
+  tone: PRODUCTION_STATUS_TONES[id] || "neutral",
+}));
+
 function sourceFolio(row) {
   if (row.sourceType === "QUOTE") return row.quote?.folio || "-";
   if (row.sourceType === "DIRECT_ORDER") return row.directOrder?.folio || "-";
@@ -36,10 +47,12 @@ function sourceFolio(row) {
 
 export default function ProductionClient() {
   const router = useRouter();
+  const { mode, setMode } = useViewMode("production:viewMode");
   const list = useResourceList(ENDPOINT, {
     initialSort: "createdAt",
     initialOrder: "desc",
     initialFilters: { tab: "in_progress", sourceType: "" },
+    pageSize: mode === "table" ? 10 : 200,
   });
 
   const activeTab = list.filters.tab ?? "in_progress";
@@ -131,11 +144,24 @@ export default function ProductionClient() {
     [router]
   );
 
+  const kanbanColumns = useMemo(() => {
+    if (activeTab === "completed") {
+      return KANBAN_COLUMNS.filter((c) => c.id === "COMPLETED");
+    }
+    if (activeTab === "in_progress") {
+      return KANBAN_COLUMNS.filter((c) =>
+        ["PENDING", "IN_PROGRESS"].includes(c.id)
+      );
+    }
+    return KANBAN_COLUMNS;
+  }, [activeTab]);
+
   return (
     <div>
       <PageHeader
         title="Ordenes de produccion"
         description="Seguimiento de avance de produccion desde cotizaciones u ordenes directas."
+        actions={<ViewModeToggle value={mode} onChange={setMode} />}
       />
 
       <div className="mb-4 flex flex-wrap gap-1 border-b border-border">
@@ -178,22 +204,61 @@ export default function ProductionClient() {
         </Select>
       </TableToolbar>
 
-      <DataTable
-        columns={columns}
-        rows={list.rows}
-        loading={list.loading}
-        error={list.error}
-        sort={list.sort}
-        onSort={list.toggleSort}
-        emptyTitle="Sin ordenes de produccion"
-        emptyDescription="Aun no hay ordenes con estos criterios."
-      />
+      {mode === "table" && (
+        <>
+          <DataTable
+            columns={columns}
+            rows={list.rows}
+            loading={list.loading}
+            error={list.error}
+            sort={list.sort}
+            onSort={list.toggleSort}
+            emptyTitle="Sin ordenes de produccion"
+            emptyDescription="Aun no hay ordenes con estos criterios."
+          />
+          <Pagination
+            pagination={list.pagination}
+            onPageChange={list.setPage}
+            loading={list.loading}
+          />
+        </>
+      )}
 
-      <Pagination
-        pagination={list.pagination}
-        onPageChange={list.setPage}
-        loading={list.loading}
-      />
+      {mode === "kanban" && (
+        <StatusKanban
+          columns={kanbanColumns}
+          rows={list.rows}
+          loading={list.loading}
+          error={list.error}
+          getStatus={(r) => r.status}
+          getHref={(r) => `/produccion/${r.id}`}
+          getTitle={(r) => r.folio}
+          getSubtitle={(r) =>
+            `${r.client?.commercialName || "Sin cliente"} · ${sourceFolio(r)}`
+          }
+          getDate={(r) => r.approvalDate}
+          emptyTitle="Sin ordenes de produccion"
+          emptyDescription="Aun no hay ordenes con estos criterios."
+        />
+      )}
+
+      {mode === "calendar" && (
+        <MonthCalendar
+          rows={list.rows}
+          loading={list.loading}
+          error={list.error}
+          getDate={(r) => r.approvalDate}
+          getHref={(r) => `/produccion/${r.id}`}
+          getTitle={(r) => r.folio}
+          getSubtitle={(r) =>
+            `${r.client?.commercialName || "Sin cliente"} · ${
+              PRODUCTION_STATUS_LABELS[r.status] || r.status
+            }`
+          }
+          emptyTitle="Sin ordenes"
+          emptyDescription="No hay ordenes de produccion en este dia."
+        />
+      )}
     </div>
   );
 }

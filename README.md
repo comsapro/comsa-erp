@@ -5,6 +5,8 @@ ERP para COMSA PRO (manufactura CNC / industrial).
 - **Etapa 1**: autenticacion, roles/permisos, layout, catalogos base, bitacora.
 - **Etapa 2**: empresas emisoras, procesos, instalaciones, biblioteca de items,
   cotizaciones, ordenes directas, produccion y KPIs del dashboard.
+- **Etapa 3**: inventario (existencias/movimientos/transferencias), ordenes de
+  compra y recepciones, alertas de stock bajo, dashboard final y reportes PDF.
 
 ## Stack
 
@@ -14,6 +16,7 @@ ERP para COMSA PRO (manufactura CNC / industrial).
 - PostgreSQL + Prisma 6
 - NextAuth v5 (Auth.js) - Credenciales + sesiones JWT
 - Zod, React Hook Form, Lucide React
+- PDFKit (PDFs binarios servidor)
 
 ## Instalacion
 
@@ -31,7 +34,7 @@ npm run dev
 App en `http://localhost:3000`. Credenciales del admin: `SEED_ADMIN_EMAIL` /
 `SEED_ADMIN_PASSWORD`.
 
-Tras actualizar Etapa 2, vuelve a ejecutar `npm run db:seed` para sincronizar
+Tras actualizar Etapa 3, vuelve a ejecutar `npm run db:seed` para sincronizar
 permisos y roles del sistema.
 
 ## Scripts
@@ -40,81 +43,136 @@ permisos y roles del sistema.
 | --- | --- |
 | `npm run dev` | Desarrollo |
 | `npm run build` / `npm start` | Produccion |
-| `npm test` | Pruebas (permisos, calculos, transiciones) |
+| `npm test` | Pruebas (permisos, calculos, inventario, OC) |
 | `npm run db:deploy` | Aplica migraciones |
 | `npm run db:seed` | Permisos, roles, admin |
+| `npm run db:seed:legacy` | Importa catálogos, existencias, cotizaciones y producción del dump MySQL |
 
 ## Migraciones
 
 1. `20260715000000_init` — Etapa 1
 2. `20260722000000_etapa2` — Folios, empresas, procesos, instalaciones,
    templates, quotes, direct orders, production
+3. `20260722120000_etapa3` — Inventario, transferencias, ordenes de compra,
+   recepciones
 
-## Modulos Etapa 2 (rutas UI)
+## Modulos Etapa 3 (rutas UI)
 
 | Ruta | Modulo |
 | --- | --- |
-| `/empresas-emisoras` | Perfiles / empresas que emiten cotizaciones |
-| `/procesos` | Catalogo de procesos de manufactura |
-| `/instalaciones` | Catalogo de conceptos de instalacion |
-| `/biblioteca-items` | Templates reutilizables de items |
-| `/cotizaciones` | Cotizaciones (listado, nuevo, detalle, imprimir) |
-| `/ordenes-directas` | Ordenes sin cotizacion previa |
-| `/produccion` | Seguimiento de produccion |
+| `/inventario` | Existencias por almacen/item |
+| `/inventario/movimientos` | Libro de movimientos |
+| `/inventario/bajo-stock` | Alertas de stock bajo |
+| `/transferencias` | Transferencias entre almacenes |
+| `/ordenes-compra` | Ordenes de compra |
+| `/recepciones` | Recepciones de compra |
+| `/reportes` | Reportes PDF operativos |
 
-## APIs principales
+## APIs principales Etapa 3
 
-- `/api/empresas-emisoras`, `/api/procesos`, `/api/instalaciones`
-- `/api/biblioteca-items` (+ `[id]/duplicar`)
-- `/api/cotizaciones` (+ items, acciones: submit/approve/reject/return/cancel/send-production/insert-template/reorder)
-- `/api/ordenes-directas` (+ items, acciones)
-- `/api/produccion` (+ acciones de orden e item)
+- `/api/inventario`, `/api/inventario/bajo-stock`
+- `/api/inventario/movimientos`, `/api/inventario/entradas|salidas|ajustes`
+- `/api/transferencias` (+ acciones submit/approve/complete/cancel)
+- `/api/ordenes-compra` (+ acciones submit/approve/reject/cancel)
+- `/api/recepciones`
+- `/api/cotizaciones/[id]/pdf`, `/api/ordenes-compra/[id]/pdf`
+- `/api/reportes/cotizaciones|produccion|inventario|compras`
+- `/api/produccion/[id]/inventario`
 
-## Permisos nuevos (resumen)
+## Permisos nuevos
 
-- `issuing_companies.*` (view/create/edit/manage)
-- `manufacturing_processes.*`, `installation_concepts.*`
-- `quote_templates.*`
-- `quotes.*` (incluye approve, edit_benefit, apply_discount, send_to_production, print, …)
-- `direct_orders.*` (incluye convert_to_quote, send_to_production)
-- `production.*` (start, update_progress, complete_item, complete_order, cancel)
+- `inventory.view|view_cost|create_entry|create_exit|adjust|transfer`
+- `purchase_orders.view|create|edit|submit|approve|reject|cancel|receive|print`
+- `reports.quotations_pdf|production_pdf|inventory_pdf|purchases_pdf`
 
-Ventas puede crear/enviar cotizaciones pero **no** aprobar ni bajar el beneficio
-bajo 30% ni aplicar descuentos. Direccion/Administrador si.
+## Reglas de inventario
 
-## Folios
+- El stock **no se edita** desde formularios: solo via movimientos.
+- Cantidad nunca negativa; disponible = cantidad - reservado.
+- Movimientos inmutables; correcciones con movimientos compensatorios.
+- Actualizaciones con bloqueo de fila (`FOR UPDATE`) en transaccion.
+- Completar transferencia genera TRANSFER_OUT + TRANSFER_IN atomicos.
+- Recibir OC genera ENTRY, actualiza recibidos y estatus
+  (PARTIALLY_RECEIVED / COMPLETED) en una sola transaccion.
 
-Formato `YYMM-CONSECUTIVO-A` (ej. `2607-38-A`), generados en transaccion via
-`folio_sequences` + unique en BD.
+## PDFs
 
-## Calculos (servidor)
+- Cotizacion y OC: documentos por folio.
+- Reportes: usan filtros de query string; incluyen titulo, fecha, usuario,
+  filtros, filas, totales y numero de pagina.
 
-Por item: costos (manufactura + materiales + extras + instalacion) → beneficio %
-→ subtotal → descuento % → IVA 16% → total. Cabecera = suma de items.
-Los precios de catalogo se copian como **snapshots** historicos.
+## Variables de entorno
 
-## Impresion
+| Variable | Uso |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL |
+| `AUTH_SECRET` | NextAuth |
+| `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | Admin inicial |
+| `LEGACY_DUMP_PATH` | Ruta al `.sql` legado (default: dump en Downloads) |
 
-`/cotizaciones/[id]/imprimir` — HTML imprimible (CSS `@media print`), sin PDF
-binario.
+## Importación del sistema legado
 
-## QA manual sugerido
+El dump MySQL anterior (`comsa_YYYY-MM-DD.sql`) no es 1:1 con el esquema
+actual. `npm run db:seed:legacy` importa de forma idempotente:
 
-1. Seed + login como Administrador.
-2. Crear empresa emisora, proceso, concepto de instalacion.
-3. Crear template en biblioteca e insertarlo en una cotizacion borrador.
-4. Completar item, enviar a aprobacion (sin items debe fallar).
-5. Con usuario Ventas: no puede aprobar ni beneficio &lt; 30%.
-6. Aprobar como Direccion/Admin → enviar a produccion (segunda vez debe fallar).
-7. Avanzar items de produccion hasta completar la orden.
-8. Crear orden directa → aprobar → convertir a cotizacion o enviar a produccion.
-9. Verificar KPIs en el dashboard e impresion de cotizacion.
-10. Confirmar bitacora de aprobaciones/rechazos.
+| Legado | Destino |
+| --- | --- |
+| `almacenes` | `warehouses` (`ALM-{id}`) |
+| `itemsCategorias` | `product_categories` |
+| `items` | `items` (`LEGACY-{id}` si no hay SKU; `hye`→TOOL, `pc`→PRODUCT) |
+| `clientes` | `clients` |
+| `proveedores` | `suppliers` |
+| `comsaProcesos` | `manufacturing_processes` (`PROC-{id}`) |
+| `comsaInstalaciones` | `installation_concepts` (`INST-{id}`) |
+| `almacenesExistencias` | stock vía movimiento `ENTRY` / `INITIAL_BALANCE` |
+| `cotizaciones` + partidas/items | `quotes` + lineas (folios legacy preservados) |
+| `produccion` | `production_orders` ligadas a cotización |
 
-## Supuestos
+**No se importan** órdenes de compra del legado ni tareas de piso (`produccionTasks`).
 
-- Revision de folio fija en `A` (sin versionado avanzado).
-- `CANCELLED` es terminal; `REJECTED` puede volver a `DRAFT`.
-- IVA fijo 16%; sin tipo de cambio MXN/USD.
-- Contacto de cliente debe pertenecer al cliente seleccionado.
-- Catalogos inactivos no se pueden seleccionar en documentos nuevos.
+Requisito: haber corrido `npm run db:seed` (usuario admin para `created_by` / vendedor).
+
+Para reanudar solo cotizaciones/producción (catálogos ya cargados):
+
+```bash
+# PowerShell
+$env:LEGACY_PHASE="quotes"; npm run db:seed:legacy
+```
+
+## Vistas de listado (cotizaciones / órdenes directas / producción)
+
+Cada listado incluye interruptor **Tabla / Tablero / Calendario** (persistido en
+`sessionStorage`). El tablero agrupa por estatus; el calendario usa fecha de
+elaboración / solicitud / aprobación según el módulo.
+
+## UI temporalmente oculta
+
+- Sección **Reportes** del menú lateral
+- Acciones **Imprimir / PDF** en cotizaciones
+
+Las rutas/APIs pueden seguir existiendo para un alcance posterior.
+
+## QA manual sugerido (Etapa 3)
+
+1. Seed + login Administrador.
+2. Entrada de inventario → verificar stock.
+3. Salida mayor al disponible → debe fallar.
+4. Ajuste sin motivo → debe fallar.
+5. Transferencia: enviar → aprobar → completar; segunda completa → conflicto.
+6. OC sin items → no se puede enviar; con items → aprobar.
+7. Rechazo/cancelacion requieren motivo.
+8. Recepcion parcial → PARTIALLY_RECEIVED; total → COMPLETED; exceso → error.
+9. Salida ligada a produccion visible en detalle de produccion.
+10. Dashboard: KPIs de compras/inventario con datos reales.
+11. Descargar PDFs de cotizacion, OC y reportes filtrados.
+12. Confirmar bitacora de movimientos, OC y reportes.
+13. `npm test` y `npm run build` OK.
+
+## Limitaciones conocidas
+
+- Reportes PDF / Imprimir cotización ocultos en UI (fuera de alcance actual).
+- Sin MRP / calculo automatico de materiales / reservas automaticas.
+- Sin versionado avanzado de cotizaciones (sufijo `A` solo de folio).
+- Sin Excel, BI avanzado, contabilidad, facturacion SAT ni portales externos.
+- Reportes PDF limitados a 500 filas por generacion.
+- Reservacion/liberacion de stock manual (tipos en ledger), no ligada a produccion.

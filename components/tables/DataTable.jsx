@@ -21,7 +21,7 @@ export function DataTable({
   rowKey = (row) => row.id,
 }) {
   return (
-    <div className="overflow-hidden rounded-[var(--radius-lg)] border border-border bg-white shadow-[var(--shadow-card)]">
+    <div className="rounded-[var(--radius-lg)] border border-border bg-white shadow-[var(--shadow-card)]">
       {error && (
         <div className="p-4">
           <Alert variant="danger" title="Error al cargar">
@@ -30,7 +30,8 @@ export function DataTable({
         </div>
       )}
 
-      <div className="overflow-x-auto">
+      {/* overflow-x only — avoid overflow-hidden so RowActions menus are not clipped */}
+      <div className="overflow-x-auto overflow-y-visible rounded-[var(--radius-lg)]">
         <table className="w-full min-w-[640px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-border bg-surface-muted/60 text-left">

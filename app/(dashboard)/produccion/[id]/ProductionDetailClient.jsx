@@ -351,6 +351,35 @@ export default function ProductionDetailClient({ id }) {
         </div>
       </Card>
 
+      <Card className="overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3">
+          <h2 className="text-base font-semibold">Compras e inventario</h2>
+          <div className="flex flex-wrap gap-2">
+            <Can permission="purchase_orders.create">
+              <Button
+                as={Link}
+                href={`/ordenes-compra/nuevo?productionOrderId=${id}`}
+                size="sm"
+                variant="secondary"
+              >
+                Crear OC
+              </Button>
+            </Can>
+            <Can permission="inventory.create_exit">
+              <Button
+                as={Link}
+                href={`/inventario/movimientos/salida`}
+                size="sm"
+                variant="secondary"
+              >
+                Salida a produccion
+              </Button>
+            </Can>
+          </div>
+        </div>
+        <ProductionInventoryPanel productionId={id} />
+      </Card>
+
       <ConfirmDialog
         open={cancelOpen}
         onClose={() => setCancelOpen(false)}
@@ -359,6 +388,80 @@ export default function ProductionDetailClient({ id }) {
         description={`Se cancelara la orden ${record.folio} y sus items pendientes.`}
         confirmLabel="Cancelar orden"
       />
+    </div>
+  );
+}
+
+function ProductionInventoryPanel({ productionId }) {
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    api
+      .get(`/api/produccion/${productionId}/inventario`)
+      .then(setData)
+      .catch(() => setData({ purchaseOrders: [], movements: [], consumedMaterials: [] }));
+  }, [productionId]);
+
+  if (!data) {
+    return <p className="px-5 py-4 text-sm text-content-muted">Cargando...</p>;
+  }
+
+  return (
+    <div className="grid gap-4 p-5 lg:grid-cols-3">
+      <div>
+        <h3 className="mb-2 text-sm font-medium">Ordenes de compra</h3>
+        {!data.purchaseOrders?.length ? (
+          <p className="text-sm text-content-muted">Sin OC relacionadas</p>
+        ) : (
+          <ul className="space-y-1 text-sm">
+            {data.purchaseOrders.map((po) => (
+              <li key={po.id}>
+                <Link
+                  href={`/ordenes-compra/${po.id}`}
+                  className="text-brand-700 hover:underline"
+                >
+                  {po.folio}
+                </Link>{" "}
+                · {po.supplier?.name} · {po.status}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div>
+        <h3 className="mb-2 text-sm font-medium">Movimientos</h3>
+        {!data.movements?.length ? (
+          <p className="text-sm text-content-muted">Sin movimientos</p>
+        ) : (
+          <ul className="space-y-1 text-sm">
+            {data.movements.slice(0, 8).map((m) => (
+              <li key={m.id}>
+                <Link
+                  href={`/inventario/movimientos/${m.id}`}
+                  className="text-brand-700 hover:underline"
+                >
+                  {m.folio}
+                </Link>{" "}
+                · {m.movementType} · {m.item?.sku}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      <div>
+        <h3 className="mb-2 text-sm font-medium">Materiales consumidos</h3>
+        {!data.consumedMaterials?.length ? (
+          <p className="text-sm text-content-muted">Sin salidas registradas</p>
+        ) : (
+          <ul className="space-y-1 text-sm">
+            {data.consumedMaterials.map((c) => (
+              <li key={c.itemId}>
+                {c.sku} — {c.name}: <strong>{c.quantity}</strong>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

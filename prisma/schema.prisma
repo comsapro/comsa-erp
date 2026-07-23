@@ -1,4 +1,4 @@
-// COMSA ERP - Esquema de datos (Etapas 1 y 2)
+// COMSA ERP - Esquema de datos (Etapas 1, 2 y 3)
 // Convencion: modelos en camelCase; columnas/tablas en snake_case via @map/@@map.
 
 generator client {
@@ -109,6 +109,10 @@ enum FolioScope {
   QUOTE
   DIRECT_ORDER
   PRODUCTION
+  INVENTORY_MOVEMENT
+  WAREHOUSE_TRANSFER
+  PURCHASE_ORDER
+  PURCHASE_RECEIPT
 
   @@map("folio_scope")
 }
@@ -118,6 +122,62 @@ enum DeliveryDaysType {
   CALENDAR
 
   @@map("delivery_days_type")
+}
+
+enum MovementType {
+  ENTRY
+  EXIT
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  TRANSFER_OUT
+  TRANSFER_IN
+  RESERVATION
+  RELEASE
+
+  @@map("movement_type")
+}
+
+enum MovementReferenceType {
+  PURCHASE_ORDER
+  PRODUCTION_ORDER
+  PRODUCTION_ITEM
+  DIRECT_ORDER
+  MANUAL_ADJUSTMENT
+  TRANSFER
+  INITIAL_BALANCE
+
+  @@map("movement_reference_type")
+}
+
+enum TransferStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  COMPLETED
+  CANCELLED
+
+  @@map("transfer_status")
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  PARTIALLY_RECEIVED
+  COMPLETED
+  CANCELLED
+
+  @@map("purchase_order_status")
+}
+
+enum PurchaseOrderItemStatus {
+  PENDING
+  PARTIAL
+  RECEIVED
+  CANCELLED
+
+  @@map("purchase_order_item_status")
 }
 
 // -----------------------------------------------------------------------------
@@ -150,6 +210,13 @@ model User {
   directOrdersRejected DirectOrder[]       @relation("DirectOrderRejectedBy")
   directOrdersCancelled DirectOrder[]      @relation("DirectOrderCancelledBy")
   productionItemsCompleted ProductionItem[] @relation("ProductionItemCompletedBy")
+  inventoryMovementsCreated InventoryMovement[] @relation("InventoryMovementCreatedBy")
+  transfersRequested WarehouseTransfer[] @relation("TransferRequestedBy")
+  transfersApproved WarehouseTransfer[] @relation("TransferApprovedBy")
+  transfersCompleted WarehouseTransfer[] @relation("TransferCompletedBy")
+  purchaseOrdersRequested PurchaseOrder[] @relation("PurchaseOrderRequestedBy")
+  purchaseOrdersAuthorized PurchaseOrder[] @relation("PurchaseOrderAuthorizedBy")
+  purchaseReceiptsReceived PurchaseReceipt[] @relation("PurchaseReceiptReceivedBy")
 
   @@index([status])
   @@index([deletedAt])
@@ -299,6 +366,8 @@ model Supplier {
   quoteItemExtras    QuoteItemExtra[]
   templateMaterials  QuoteItemTemplateMaterial[]
   templateExtras     QuoteItemTemplateExtra[]
+  purchaseOrders     PurchaseOrder[]
+  purchaseReceipts   PurchaseReceipt[]
 
   @@index([status])
   @@index([deletedAt])
@@ -320,6 +389,13 @@ model Warehouse {
   deletedAt DateTime? @map("deleted_at")
 
   quoteItems QuoteItem[]
+  inventoryStock InventoryStock[]
+  inventoryMovements InventoryMovement[] @relation("MovementWarehouse")
+  inventoryMovementsDestination InventoryMovement[] @relation("MovementDestinationWarehouse")
+  transfersAsSource WarehouseTransfer[] @relation("TransferSource")
+  transfersAsDestination WarehouseTransfer[] @relation("TransferDestination")
+  purchaseOrderItems PurchaseOrderItem[]
+  purchaseReceipts PurchaseReceipt[]
 
   @@index([status])
   @@index([deletedAt])
@@ -372,6 +448,11 @@ model Item {
   templateItems QuoteItemTemplate[] @relation("TemplateCatalogItem")
   templateMaterials QuoteItemTemplateMaterial[]
   directOrderItems DirectOrderItem[]
+  inventoryStock InventoryStock[]
+  inventoryMovements InventoryMovement[]
+  transferItems WarehouseTransferItem[]
+  purchaseOrderItems PurchaseOrderItem[]
+  purchaseReceiptItems PurchaseReceiptItem[]
 
   @@index([itemType])
   @@index([categoryId])
@@ -685,6 +766,7 @@ model Quote {
   productionOrder ProductionOrder? @relation("QuoteProduction", fields: [productionOrderId], references: [id], onDelete: SetNull)
   directOrder    DirectOrder?    @relation("DirectOrderQuote", fields: [directOrderId], references: [id], onDelete: SetNull)
   items          QuoteItem[]
+  purchaseOrders PurchaseOrder[]
 
   @@index([status, elaborationDate])
   @@index([clientId])
@@ -927,6 +1009,7 @@ model ProductionOrder {
   quote       Quote?            @relation("QuoteProduction")
   directOrder DirectOrder?      @relation("DirectOrderProduction")
   items       ProductionItem[]
+  purchaseOrders PurchaseOrder[]
 
   @@index([status, approvalDate])
   @@index([clientId])
@@ -956,5 +1039,219 @@ model ProductionItem {
 
   @@index([productionOrderId, position])
   @@map("production_items")
+}
+
+// -----------------------------------------------------------------------------
+// Etapa 3 — Inventario
+// -----------------------------------------------------------------------------
+model InventoryStock {
+  id                String  @id @default(cuid())
+  warehouseId       String  @map("warehouse_id")
+  itemId            String  @map("item_id")
+  quantity          Decimal @default(0) @db.Decimal(14, 3)
+  reservedQuantity  Decimal @default(0) @map("reserved_quantity") @db.Decimal(14, 3)
+  availableQuantity Decimal @default(0) @map("available_quantity") @db.Decimal(14, 3)
+
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  item      Item      @relation(fields: [itemId], references: [id])
+
+  @@unique([warehouseId, itemId])
+  @@index([itemId])
+  @@index([warehouseId])
+  @@map("inventory_stock")
+}
+
+model InventoryMovement {
+  id                      String                 @id @default(cuid())
+  folio                   String                 @unique
+  warehouseId             String                 @map("warehouse_id")
+  destinationWarehouseId  String?                @map("destination_warehouse_id")
+  itemId                  String                 @map("item_id")
+  movementType            MovementType           @map("movement_type")
+  quantity                Decimal                @db.Decimal(14, 3)
+  unitCost                Decimal?               @map("unit_cost") @db.Decimal(14, 2)
+  referenceType           MovementReferenceType? @map("reference_type")
+  referenceId             String?                @map("reference_id")
+  reason                  String?
+  notes                   String?
+  movementDate            DateTime               @map("movement_date")
+  createdBy               String                 @map("created_by")
+  createdAt               DateTime               @default(now()) @map("created_at")
+
+  warehouse            Warehouse  @relation("MovementWarehouse", fields: [warehouseId], references: [id])
+  destinationWarehouse Warehouse? @relation("MovementDestinationWarehouse", fields: [destinationWarehouseId], references: [id])
+  item                 Item       @relation(fields: [itemId], references: [id])
+  createdByUser        User       @relation("InventoryMovementCreatedBy", fields: [createdBy], references: [id])
+
+  @@index([movementDate])
+  @@index([warehouseId, itemId])
+  @@index([referenceType, referenceId])
+  @@index([movementType])
+  @@map("inventory_movements")
+}
+
+model WarehouseTransfer {
+  id                     String         @id @default(cuid())
+  folio                  String         @unique
+  sourceWarehouseId      String         @map("source_warehouse_id")
+  destinationWarehouseId String         @map("destination_warehouse_id")
+  status                 TransferStatus @default(DRAFT)
+  notes                  String?
+  requestedBy            String?        @map("requested_by")
+  approvedBy             String?        @map("approved_by")
+  completedBy            String?        @map("completed_by")
+  requestedAt            DateTime?      @map("requested_at")
+  approvedAt             DateTime?      @map("approved_at")
+  completedAt            DateTime?      @map("completed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  sourceWarehouse      Warehouse @relation("TransferSource", fields: [sourceWarehouseId], references: [id])
+  destinationWarehouse Warehouse @relation("TransferDestination", fields: [destinationWarehouseId], references: [id])
+  requestedByUser      User?     @relation("TransferRequestedBy", fields: [requestedBy], references: [id], onDelete: SetNull)
+  approvedByUser       User?     @relation("TransferApprovedBy", fields: [approvedBy], references: [id], onDelete: SetNull)
+  completedByUser      User?     @relation("TransferCompletedBy", fields: [completedBy], references: [id], onDelete: SetNull)
+  items                WarehouseTransferItem[]
+
+  @@index([status, requestedAt])
+  @@index([sourceWarehouseId])
+  @@index([destinationWarehouseId])
+  @@map("warehouse_transfers")
+}
+
+model WarehouseTransferItem {
+  id         String  @id @default(cuid())
+  transferId String  @map("transfer_id")
+  itemId     String  @map("item_id")
+  quantity   Decimal @db.Decimal(14, 3)
+  notes      String?
+
+  transfer WarehouseTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  item     Item              @relation(fields: [itemId], references: [id])
+
+  @@index([transferId])
+  @@index([itemId])
+  @@map("warehouse_transfer_items")
+}
+
+// -----------------------------------------------------------------------------
+// Etapa 3 — Ordenes de compra y recepciones
+// -----------------------------------------------------------------------------
+model PurchaseOrder {
+  id                String              @id @default(cuid())
+  folio             String              @unique
+  productionOrderId String?             @map("production_order_id")
+  quoteId           String?             @map("quote_id")
+  supplierId        String              @map("supplier_id")
+  requestedBy       String              @map("requested_by")
+  authorizedBy      String?             @map("authorized_by")
+  requestDate       DateTime            @map("request_date") @db.Date
+  authorizationDate DateTime?           @map("authorization_date")
+  expectedDate      DateTime?           @map("expected_date") @db.Date
+  status            PurchaseOrderStatus @default(DRAFT)
+  comments          String?
+  subtotal          Decimal             @default(0) @db.Decimal(14, 2)
+  tax               Decimal             @default(0) @db.Decimal(14, 2)
+  total             Decimal             @default(0) @db.Decimal(14, 2)
+  rejectionReason   String?             @map("rejection_reason")
+  cancellationReason String?            @map("cancellation_reason")
+  completedAt       DateTime?           @map("completed_at")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+  deletedAt DateTime? @map("deleted_at")
+
+  productionOrder ProductionOrder? @relation(fields: [productionOrderId], references: [id], onDelete: SetNull)
+  quote           Quote?           @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  supplier        Supplier         @relation(fields: [supplierId], references: [id])
+  requestedByUser User             @relation("PurchaseOrderRequestedBy", fields: [requestedBy], references: [id])
+  authorizedByUser User?           @relation("PurchaseOrderAuthorizedBy", fields: [authorizedBy], references: [id], onDelete: SetNull)
+  items           PurchaseOrderItem[]
+  receipts        PurchaseReceipt[]
+
+  @@index([status, requestDate])
+  @@index([supplierId])
+  @@index([productionOrderId])
+  @@index([quoteId])
+  @@index([deletedAt])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id                   String                  @id @default(cuid())
+  purchaseOrderId      String                  @map("purchase_order_id")
+  itemId               String                  @map("item_id")
+  descriptionSnapshot  String                  @map("description_snapshot")
+  quantity             Decimal                 @db.Decimal(14, 3)
+  receivedQuantity     Decimal                 @default(0) @map("received_quantity") @db.Decimal(14, 3)
+  unit                 String?
+  unitPrice            Decimal                 @default(0) @map("unit_price") @db.Decimal(14, 2)
+  subtotal             Decimal                 @default(0) @db.Decimal(14, 2)
+  taxAmount            Decimal                 @default(0) @map("tax_amount") @db.Decimal(14, 2)
+  total                Decimal                 @default(0) @db.Decimal(14, 2)
+  warehouseId          String?                 @map("warehouse_id")
+  status               PurchaseOrderItemStatus @default(PENDING)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  item          Item          @relation(fields: [itemId], references: [id])
+  warehouse     Warehouse?    @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  receiptItems  PurchaseReceiptItem[]
+
+  @@index([purchaseOrderId])
+  @@index([itemId])
+  @@map("purchase_order_items")
+}
+
+model PurchaseReceipt {
+  id              String   @id @default(cuid())
+  folio           String   @unique
+  purchaseOrderId String   @map("purchase_order_id")
+  supplierId      String   @map("supplier_id")
+  warehouseId     String   @map("warehouse_id")
+  receiptDate     DateTime @map("receipt_date") @db.Date
+  notes           String?
+  receivedBy      String   @map("received_by")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  supplier      Supplier      @relation(fields: [supplierId], references: [id])
+  warehouse     Warehouse     @relation(fields: [warehouseId], references: [id])
+  receivedByUser User         @relation("PurchaseReceiptReceivedBy", fields: [receivedBy], references: [id])
+  items         PurchaseReceiptItem[]
+
+  @@index([purchaseOrderId])
+  @@index([supplierId])
+  @@index([warehouseId])
+  @@map("purchase_receipts")
+}
+
+model PurchaseReceiptItem {
+  id                         String  @id @default(cuid())
+  purchaseReceiptId          String  @map("purchase_receipt_id")
+  purchaseOrderItemId        String  @map("purchase_order_item_id")
+  itemId                     String  @map("item_id")
+  orderedQuantity            Decimal @map("ordered_quantity") @db.Decimal(14, 3)
+  previouslyReceivedQuantity Decimal @map("previously_received_quantity") @db.Decimal(14, 3)
+  receivedQuantity           Decimal @map("received_quantity") @db.Decimal(14, 3)
+  unitCost                   Decimal @default(0) @map("unit_cost") @db.Decimal(14, 2)
+  createdAt                  DateTime @default(now()) @map("created_at")
+
+  purchaseReceipt   PurchaseReceipt   @relation(fields: [purchaseReceiptId], references: [id], onDelete: Cascade)
+  purchaseOrderItem PurchaseOrderItem @relation(fields: [purchaseOrderItemId], references: [id])
+  item              Item              @relation(fields: [itemId], references: [id])
+
+  @@index([purchaseReceiptId])
+  @@index([purchaseOrderItemId])
+  @@map("purchase_receipt_items")
 }
 
