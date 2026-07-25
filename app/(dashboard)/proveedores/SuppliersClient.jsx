@@ -1,9 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, Eye } from "lucide-react";
 import {
   supplierCreateSchema,
   SUPPLIER_TYPES,
@@ -90,6 +91,7 @@ function SupplierForm({ initial, onSubmit, saving }) {
 }
 
 export default function SuppliersClient() {
+  const router = useRouter();
   const listRef = useRef(null);
   const { has } = usePermissions();
   const [modal, setModal] = useState({ open: false, record: null });
@@ -101,6 +103,7 @@ export default function SuppliersClient() {
 
   const canEdit = has("suppliers.edit");
   const canDelete = has("suppliers.delete");
+  const canView = has("suppliers.view");
 
   const columns = [
     { key: "name", header: "Nombre", sortable: true, sortKey: "name", render: (r) => <span className="font-medium">{r.name}</span> },
@@ -115,6 +118,7 @@ export default function SuppliersClient() {
       render: (r) => (
         <RowActions
           actions={[
+            { label: "Ver perfil", icon: Eye, onClick: () => router.push(`/proveedores/${r.id}`), hidden: !canView },
             { label: "Editar", icon: Pencil, onClick: () => setModal({ open: true, record: r }), hidden: !canEdit },
             { label: "Eliminar", icon: Trash2, danger: true, onClick: () => setToDelete(r), hidden: !canDelete },
           ]}

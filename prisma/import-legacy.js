@@ -7,7 +7,7 @@
  *   LEGACY_DUMP_PATH="C:/ruta/dump.sql" npm run db:seed:legacy
  *
  * Idempotente: reutiliza codes/sku/marcadores [legacy:TOKEN] en re-ejecuciones.
- * Importa catálogos, existencias, cotizaciones y producción.
+ * Importa catálogos, existencias, cotizaciones, producción y OC.
  */
 
 import { randomUUID } from "crypto";
@@ -15,6 +15,7 @@ import { PrismaClient, Prisma } from "@prisma/client";
 import { extractTablesFromDump } from "../scripts/mysql-dump-parser.js";
 import { applyStockChange } from "../domains/inventory/stock-math.js";
 import { importQuotesAndProduction } from "./import-legacy-quotes.js";
+import { importPurchaseOrders } from "./import-legacy-purchase-orders.js";
 
 /** Folio local (evita importar lib/folios que usa `server-only`). */
 async function generateFolio(tx, scope, date = new Date()) {
@@ -70,6 +71,8 @@ const TABLES = [
   "cotizacionesPartidas",
   "cotizacionesItems",
   "produccion",
+  "comsaOC",
+  "comsaOCItems",
 ];
 
 const LEGACY_RE = /^\[legacy:([^\]]+)\]/;
@@ -699,7 +702,7 @@ async function importStock(rows, warehouseMap, itemMap, actorId) {
 
 async function main() {
   const dumpPath = DEFAULT_DUMP;
-  const phase = (process.env.LEGACY_PHASE || "all").toLowerCase(); // all | catalogs | quotes
+  const phase = (process.env.LEGACY_PHASE || "all").toLowerCase(); // all | catalogs | quotes | purchases
   console.log(`Importación legado desde:\n  ${dumpPath}\n  fase: ${phase}\n`);
 
   const actorId = await resolveActorUserId();
@@ -708,7 +711,9 @@ async function main() {
   const tablesNeeded =
     phase === "quotes"
       ? ["cotizaciones", "cotizacionesPartidas", "cotizacionesItems", "produccion"]
-      : TABLES;
+      : phase === "purchases"
+        ? ["comsaOC", "comsaOCItems"]
+        : TABLES;
 
   console.log("Extrayendo tablas del dump...");
   const data = await extractTablesFromDump(dumpPath, tablesNeeded);
@@ -741,7 +746,16 @@ async function main() {
     });
   }
 
-  console.log("\nListo. Órdenes de compra del legado no se importan (fuera de alcance).");
+  if (phase === "all" || phase === "purchases") {
+    console.log("\nImportando órdenes de compra (documental, sin stock)...");
+    await importPurchaseOrders(prisma, {
+      orders: data.comsaOC || [],
+      items: data.comsaOCItems || [],
+      actorId,
+    });
+  }
+
+  console.log("\nListo.");
 }
 
 main()

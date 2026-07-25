@@ -14,9 +14,9 @@ import {
   CheckboxField,
 } from "@/components/forms/fields";
 import { CostLineSections } from "@/components/quotes/CostLineSections";
+import { PartidaDetailView } from "@/components/quotes/PartidaDetailView";
 import { usePermissions } from "@/components/permissions/PermissionsProvider";
 import { useToast } from "@/components/feedback/ToastProvider";
-import { formatMoney } from "@/lib/utils/format";
 
 function num(value, fallback = 0) {
   if (value == null || value === "") return fallback;
@@ -130,6 +130,66 @@ export default function QuoteItemForm({ initial, onSubmit, saving, currency = "M
       discountPercentage: watched?.discountPercentage,
     });
   }, [watched]);
+
+  const previewItem = useMemo(() => {
+    const totals = preview;
+    return {
+      description: watched?.description || "Nueva partida",
+      quantity: watched?.quantity,
+      unit: watched?.unit,
+      isUrgent: watched?.isUrgent,
+      deliveryTimeMin: watched?.deliveryTimeMin,
+      deliveryTimeMax: watched?.deliveryTimeMax,
+      deliveryTimeUnit: watched?.deliveryTimeUnit,
+      deliveryDaysType: watched?.deliveryDaysType,
+      clientObservations: watched?.clientObservations,
+      internalObservations: watched?.internalObservations,
+      benefitPercentage: watched?.benefitPercentage,
+      discountPercentage: watched?.discountPercentage,
+      discountAmount: totals.discountAmount,
+      manufacturingTotal: totals.manufacturingTotal,
+      materialsTotal: totals.materialsTotal,
+      extrasTotal: totals.extrasTotal,
+      installationsTotal: totals.installationTotal,
+      costTotal: totals.costTotal,
+      taxAmount: totals.taxAmount,
+      total: totals.total,
+      manufacturing: (watched?.manufacturing || []).map((r, i) => ({
+        id: `mfg-${i}`,
+        processNameSnapshot: r.processNameSnapshot,
+        unitSnapshot: r.unitSnapshot,
+        quantity: r.quantity,
+        unitRate: r.unitRate,
+        amount: lineAmount(r.quantity, r.unitRate),
+      })),
+      materials: (watched?.materials || []).map((r, i) => ({
+        id: `mat-${i}`,
+        descriptionSnapshot: r.descriptionSnapshot,
+        dimensions: r.dimensions,
+        presentation: r.presentation,
+        unit: r.unit,
+        quantity: r.quantity,
+        unitPrice: r.unitPrice,
+        amount: lineAmount(r.quantity, r.unitPrice),
+      })),
+      extras: (watched?.extras || []).map((r, i) => ({
+        id: `ext-${i}`,
+        description: r.description,
+        unit: r.unit,
+        quantity: r.quantity,
+        unitPrice: r.unitPrice,
+        amount: lineAmount(r.quantity, r.unitPrice),
+      })),
+      installations: (watched?.installations || []).map((r, i) => ({
+        id: `inst-${i}`,
+        conceptNameSnapshot: r.conceptNameSnapshot,
+        unitSnapshot: r.unitSnapshot,
+        quantity: r.quantity,
+        unitPrice: r.unitPrice,
+        amount: lineAmount(r.quantity, r.unitPrice),
+      })),
+    };
+  }, [watched, preview]);
 
   useEffect(() => {
     let cancelled = false;
@@ -314,7 +374,7 @@ export default function QuoteItemForm({ initial, onSubmit, saving, currency = "M
 
       <section className="space-y-3">
         <h3 className="text-sm font-semibold text-content">
-          Manufactura, materiales, extras e instalacion
+          Líneas de costo de la partida
         </h3>
         {loadingCatalogs ? (
           <p className="text-sm text-content-muted">Cargando catalogos...</p>
@@ -334,53 +394,20 @@ export default function QuoteItemForm({ initial, onSubmit, saving, currency = "M
 
       <section className="rounded-[var(--radius-md)] border border-border bg-surface-muted/40 p-4">
         <h3 className="mb-3 text-sm font-semibold text-content">
-          Resumen economico (vista previa)
+          Vista de la partida
         </h3>
-        <dl className="grid gap-2 text-sm sm:grid-cols-2">
-          {canViewCost && (
-            <>
-              <div className="flex justify-between gap-4">
-                <dt className="text-content-muted">Manufactura</dt>
-                <dd>{formatMoney(preview.manufacturingTotal, currency)}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-content-muted">Materiales</dt>
-                <dd>{formatMoney(preview.materialsTotal, currency)}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-content-muted">Extras</dt>
-                <dd>{formatMoney(preview.extrasTotal, currency)}</dd>
-              </div>
-              <div className="flex justify-between gap-4">
-                <dt className="text-content-muted">Instalacion</dt>
-                <dd>{formatMoney(preview.installationTotal, currency)}</dd>
-              </div>
-              <div className="flex justify-between gap-4 font-medium">
-                <dt>Costo total</dt>
-                <dd>{formatMoney(preview.costTotal, currency)}</dd>
-              </div>
-            </>
-          )}
-          {canViewBenefit && (
-            <div className="flex justify-between gap-4">
-              <dt className="text-content-muted">Subtotal venta</dt>
-              <dd>{formatMoney(preview.saleSubtotal, currency)}</dd>
-            </div>
-          )}
-          <div className="flex justify-between gap-4">
-            <dt className="text-content-muted">IVA</dt>
-            <dd>{formatMoney(preview.taxAmount, currency)}</dd>
-          </div>
-          <div className="flex justify-between gap-4 text-base font-semibold">
-            <dt>Total</dt>
-            <dd>{formatMoney(preview.total, currency)}</dd>
-          </div>
-        </dl>
+        <PartidaDetailView
+          item={previewItem}
+          currency={currency}
+          canViewCost={canViewCost}
+          canViewBenefit={canViewBenefit}
+          compact
+        />
       </section>
 
       <div className="flex justify-end gap-2">
         <Button type="submit" loading={saving}>
-          Guardar item
+          Guardar partida
         </Button>
       </div>
     </form>

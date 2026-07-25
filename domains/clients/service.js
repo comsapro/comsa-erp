@@ -65,6 +65,89 @@ export async function getClient(request, id) {
   return jsonOk(record);
 }
 
+/** Perfil enriquecido: maestro + historial operativo (sin pagos). */
+export async function getClientProfile(request, id) {
+  await requirePermission("clients.view");
+  const client = await prisma.client.findFirst({
+    where: { id, deletedAt: null },
+    include: { contacts: { orderBy: { isPrimary: "desc" } } },
+  });
+  if (!client) throw new NotFoundError();
+
+  const [quotes, directOrders, productionOrders, activity] = await Promise.all([
+    prisma.quote.findMany({
+      where: { clientId: id, deletedAt: null },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        folio: true,
+        status: true,
+        total: true,
+        currency: true,
+        elaborationDate: true,
+        createdAt: true,
+      },
+    }),
+    prisma.directOrder.findMany({
+      where: { clientId: id, deletedAt: null },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        folio: true,
+        status: true,
+        orderType: true,
+        requestDate: true,
+        createdAt: true,
+      },
+    }),
+    prisma.productionOrder.findMany({
+      where: { clientId: id },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        folio: true,
+        status: true,
+        sourceType: true,
+        approvalDate: true,
+        progressPercentage: true,
+        createdAt: true,
+        quote: { select: { id: true, folio: true } },
+      },
+    }),
+    prisma.auditLog.findMany({
+      where: {
+        OR: [
+          { entity: "Client", entityId: id },
+          {
+            AND: [
+              { entityId: id },
+              { module: { in: ["clients", "quotes", "direct_orders", "production"] } },
+            ],
+          },
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+      take: 15,
+      select: {
+        id: true,
+        module: true,
+        entity: true,
+        action: true,
+        createdAt: true,
+        user: { select: { id: true, name: true, email: true } },
+      },
+    }),
+  ]);
+
+  return jsonOk({
+    ...client,
+    history: { quotes, directOrders, productionOrders, activity },
+  });
+}
+
 export async function createClient(request) {
   await requirePermission("clients.create");
   const actor = await getActor(request);

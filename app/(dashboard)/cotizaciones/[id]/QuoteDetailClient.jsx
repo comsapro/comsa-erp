@@ -1,12 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   CheckCircle2,
+  ChevronDown,
+  ChevronRight,
   Copy,
+  Eye,
   Library,
   Pencil,
   Plus,
@@ -32,6 +35,10 @@ import { QuoteStatusBadge } from "@/components/ui/Badge";
 import { usePermissions } from "@/components/permissions/PermissionsProvider";
 import { useToast } from "@/components/feedback/ToastProvider";
 import { formatDate, formatMoney } from "@/lib/utils/format";
+import {
+  PartidaDetailView,
+  partidaLineCounts,
+} from "@/components/quotes/PartidaDetailView";
 import QuoteItemForm from "./QuoteItemForm";
 
 export default function QuoteDetailClient({ quoteId }) {
@@ -45,6 +52,8 @@ export default function QuoteDetailClient({ quoteId }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [itemModal, setItemModal] = useState({ open: false, record: null });
+  const [viewItem, setViewItem] = useState(null);
+  const [expandedItems, setExpandedItems] = useState({});
   const [savingItem, setSavingItem] = useState(false);
   const [toDeleteItem, setToDeleteItem] = useState(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -467,7 +476,7 @@ export default function QuoteDetailClient({ quoteId }) {
 
       <Card>
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-sm font-semibold text-content">Items</h2>
+          <h2 className="text-sm font-semibold text-content">Partidas</h2>
           {isDraft && has("quotes.edit") && (
             <div className="flex flex-wrap gap-2">
               <Button size="sm" variant="secondary" onClick={openLibrary}>
@@ -477,7 +486,7 @@ export default function QuoteDetailClient({ quoteId }) {
                 size="sm"
                 onClick={() => setItemModal({ open: true, record: null })}
               >
-                <Plus className="h-4 w-4" /> Agregar item
+                <Plus className="h-4 w-4" /> Agregar partida
               </Button>
             </div>
           )}
@@ -486,6 +495,7 @@ export default function QuoteDetailClient({ quoteId }) {
           <table className="min-w-full text-left text-sm">
             <thead className="border-b border-border bg-surface-muted/50 text-xs uppercase tracking-wide text-content-muted">
               <tr>
+                <th className="w-10 px-2 py-3 font-medium" />
                 <th className="px-4 py-3 font-medium">#</th>
                 <th className="px-4 py-3 font-medium">Descripcion</th>
                 <th className="px-4 py-3 font-medium">Cant.</th>
@@ -494,82 +504,134 @@ export default function QuoteDetailClient({ quoteId }) {
                   <th className="px-4 py-3 font-medium">Costo</th>
                 )}
                 <th className="px-4 py-3 font-medium">Total</th>
-                {isDraft && has("quotes.edit") && (
-                  <th className="px-4 py-3 font-medium" />
-                )}
+                <th className="px-4 py-3 font-medium" />
               </tr>
             </thead>
             <tbody>
               {(quote.items || []).length === 0 ? (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     className="px-4 py-8 text-center text-content-muted"
                   >
-                    Sin items. Agrega uno o inserta desde la biblioteca.
+                    Sin partidas. Agrega una o inserta desde la biblioteca.
                   </td>
                 </tr>
               ) : (
-                quote.items.map((item) => (
-                  <tr
-                    key={item.id}
-                    className="border-b border-border last:border-0"
-                  >
-                    <td className="px-4 py-3 text-content-muted">
-                      {item.position}
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-content">
-                        {item.description}
-                      </p>
-                      {item.isUrgent && (
-                        <span className="text-xs text-warning-700">Urgente</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">{Number(item.quantity)}</td>
-                    <td className="px-4 py-3">{item.unit || "-"}</td>
-                    {canViewCost && (
-                      <td className="px-4 py-3">
-                        {formatMoney(item.costTotal, currency)}
-                      </td>
-                    )}
-                    <td className="px-4 py-3 font-medium">
-                      {formatMoney(item.total, currency)}
-                    </td>
-                    {isDraft && has("quotes.edit") && (
-                      <td className="px-4 py-3">
-                        <div className="flex justify-end gap-1">
+                quote.items.map((item) => {
+                  const expanded = Boolean(expandedItems[item.id]);
+                  const counts = partidaLineCounts(item);
+                  const lineTotal =
+                    counts.manufacturing +
+                    counts.materials +
+                    counts.extras +
+                    counts.installations;
+                  return (
+                    <Fragment key={item.id}>
+                      <tr className="border-b border-border last:border-0">
+                        <td className="px-2 py-3">
                           <Button
                             size="icon"
                             variant="ghost"
-                            aria-label="Editar item"
+                            aria-label={expanded ? "Ocultar detalle" : "Ver detalle"}
+                            aria-expanded={expanded}
                             onClick={() =>
-                              setItemModal({ open: true, record: item })
+                              setExpandedItems((prev) => ({
+                                ...prev,
+                                [item.id]: !prev[item.id],
+                              }))
                             }
                           >
-                            <Pencil className="h-4 w-4" />
+                            {expanded ? (
+                              <ChevronDown className="h-4 w-4" />
+                            ) : (
+                              <ChevronRight className="h-4 w-4" />
+                            )}
                           </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            aria-label="Duplicar item"
-                            onClick={() => duplicateItem(item)}
-                          >
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            aria-label="Eliminar item"
-                            onClick={() => setToDeleteItem(item)}
-                          >
-                            <Trash2 className="h-4 w-4 text-danger-700" />
-                          </Button>
-                        </div>
-                      </td>
-                    )}
-                  </tr>
-                ))
+                        </td>
+                        <td className="px-4 py-3 text-content-muted">
+                          {item.position}
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="font-medium text-content">
+                            {item.description}
+                          </p>
+                          <p className="mt-0.5 text-xs text-content-muted">
+                            {lineTotal > 0
+                              ? `${counts.manufacturing} manuf. · ${counts.materials} mat. · ${counts.extras} ext. · ${counts.installations} inst.`
+                              : "Sin líneas de costo"}
+                            {item.isUrgent ? " · Urgente" : ""}
+                          </p>
+                        </td>
+                        <td className="px-4 py-3">{Number(item.quantity)}</td>
+                        <td className="px-4 py-3">{item.unit || "-"}</td>
+                        {canViewCost && (
+                          <td className="px-4 py-3">
+                            {formatMoney(item.costTotal, currency)}
+                          </td>
+                        )}
+                        <td className="px-4 py-3 font-medium">
+                          {formatMoney(item.total, currency)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              aria-label="Ver partida"
+                              onClick={() => setViewItem(item)}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            {isDraft && has("quotes.edit") && (
+                              <>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  aria-label="Editar partida"
+                                  onClick={() =>
+                                    setItemModal({ open: true, record: item })
+                                  }
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  aria-label="Duplicar partida"
+                                  onClick={() => duplicateItem(item)}
+                                >
+                                  <Copy className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  aria-label="Eliminar partida"
+                                  onClick={() => setToDeleteItem(item)}
+                                >
+                                  <Trash2 className="h-4 w-4 text-danger-700" />
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                      {expanded && (
+                        <tr className="border-b border-border bg-surface-muted/30">
+                          <td colSpan={8} className="px-4 py-4">
+                            <PartidaDetailView
+                              item={item}
+                              currency={currency}
+                              canViewCost={canViewCost}
+                              canViewBenefit={canViewBenefit}
+                              compact
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -579,7 +641,7 @@ export default function QuoteDetailClient({ quoteId }) {
       <Modal
         open={itemModal.open}
         onClose={() => setItemModal({ open: false, record: null })}
-        title={itemModal.record ? "Editar item" : "Nuevo item"}
+        title={itemModal.record ? "Editar partida" : "Nueva partida"}
         size="xl"
       >
         <QuoteItemForm
@@ -589,6 +651,22 @@ export default function QuoteDetailClient({ quoteId }) {
           currency={currency}
           onSubmit={saveItem}
         />
+      </Modal>
+
+      <Modal
+        open={!!viewItem}
+        onClose={() => setViewItem(null)}
+        title="Detalle de partida"
+        size="xl"
+      >
+        {viewItem && (
+          <PartidaDetailView
+            item={viewItem}
+            currency={currency}
+            canViewCost={canViewCost}
+            canViewBenefit={canViewBenefit}
+          />
+        )}
       </Modal>
 
       <Modal
@@ -680,7 +758,7 @@ export default function QuoteDetailClient({ quoteId }) {
         open={!!toDeleteItem}
         onClose={() => setToDeleteItem(null)}
         onConfirm={deleteItem}
-        title="Eliminar item"
+        title="Eliminar partida"
         description={`Se eliminara "${toDeleteItem?.description}".`}
         confirmLabel="Eliminar"
       />

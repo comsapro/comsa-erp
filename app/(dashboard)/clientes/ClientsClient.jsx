@@ -1,7 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Plus, Pencil, Trash2, Eye } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { ResourceList } from "@/components/tables/ResourceList";
@@ -20,6 +21,7 @@ import ClientForm from "./ClientForm";
 const ENDPOINT = "/api/clientes";
 
 export default function ClientsClient() {
+  const router = useRouter();
   const listRef = useRef(null);
   const { has } = usePermissions();
   const { toast } = useToast();
@@ -33,6 +35,7 @@ export default function ClientsClient() {
 
   const canEdit = has("clients.edit");
   const canDelete = has("clients.delete");
+  const canView = has("clients.view");
 
   const openCreate = () => setModal({ open: true, record: null });
 
@@ -61,6 +64,7 @@ export default function ClientsClient() {
       render: (r) => (
         <RowActions
           actions={[
+            { label: "Ver perfil", icon: Eye, onClick: () => router.push(`/clientes/${r.id}`), hidden: !canView },
             { label: "Editar", icon: Pencil, onClick: () => openEdit(r), hidden: !canEdit },
             { label: "Eliminar", icon: Trash2, danger: true, onClick: () => setToDelete(r), hidden: !canDelete },
           ]}

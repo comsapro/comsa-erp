@@ -46,7 +46,7 @@ permisos y roles del sistema.
 | `npm test` | Pruebas (permisos, calculos, inventario, OC) |
 | `npm run db:deploy` | Aplica migraciones |
 | `npm run db:seed` | Permisos, roles, admin |
-| `npm run db:seed:legacy` | Importa catálogos, existencias, cotizaciones y producción del dump MySQL |
+| `npm run db:seed:legacy` | Importa catálogos, existencias, cotizaciones, producción y OC del dump MySQL |
 
 ## Migraciones
 
@@ -127,16 +127,34 @@ actual. `npm run db:seed:legacy` importa de forma idempotente:
 | `almacenesExistencias` | stock vía movimiento `ENTRY` / `INITIAL_BALANCE` |
 | `cotizaciones` + partidas/items | `quotes` + lineas (folios legacy preservados) |
 | `produccion` | `production_orders` ligadas a cotización |
+| `comsaOC` + `comsaOCItems` | `purchase_orders` + items + `purchase_receipts` documentales |
 
-**No se importan** órdenes de compra del legado ni tareas de piso (`produccionTasks`).
+### Órdenes de compra históricas y stock
+
+Las OC/recepciones del legado se importan como **documento** (estatus,
+`receivedQuantity`, `PurchaseReceipt` de auditoría). **No** llaman al motor de
+stock: el saldo actual ya viene de `almacenesExistencias` (`INITIAL_BALANCE`).
+Las recepciones nuevas creadas en la app sí suman inventario.
+
+Idempotencia: folio OC o marcador `[legacy:{token}]` en `comments` / notes.
+
+### Perfiles
+
+- Cliente: `/clientes/[id]` — datos, contactos, cotizaciones, órdenes directas y producción (sin pagos).
+- Proveedor: `/proveedores/[id]` — datos, OC, recepciones y cotizaciones vinculadas.
+
+**No se importan** tareas de piso (`produccionTasks`) ni pagos / `comsaRecepcionMateriales`.
 
 Requisito: haber corrido `npm run db:seed` (usuario admin para `created_by` / vendedor).
 
-Para reanudar solo cotizaciones/producción (catálogos ya cargados):
+Fases (`LEGACY_PHASE`):
 
 ```bash
 # PowerShell
+$env:LEGACY_PHASE="catalogs"; npm run db:seed:legacy
 $env:LEGACY_PHASE="quotes"; npm run db:seed:legacy
+$env:LEGACY_PHASE="purchases"; npm run db:seed:legacy
+# o todo: all (default)
 ```
 
 ## Vistas de listado (cotizaciones / órdenes directas / producción)
