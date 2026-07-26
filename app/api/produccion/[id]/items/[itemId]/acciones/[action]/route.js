@@ -4,12 +4,14 @@ import {
   startItem,
   updateItemProgress,
   completeItem,
+  addItemNote,
 } from "@/domains/production/service";
 
 const ACTIONS = {
   start: startItem,
   "update-progress": updateItemProgress,
   complete: completeItem,
+  "add-note": addItemNote,
 };
 
 export const POST = withErrorHandling(async (req, ctx) => {

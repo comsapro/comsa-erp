@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
+import { CatalogCombobox } from "@/components/forms/CatalogCombobox";
 import { api, toQuery } from "@/lib/api/client";
 
 export default function PurchaseOrderFormClient({
@@ -14,8 +16,8 @@ export default function PurchaseOrderFormClient({
   const router = useRouter();
   const [suppliers, setSuppliers] = useState([]);
   const [items, setItems] = useState([]);
-  const [productions, setProductions] = useState([]);
   const [quotes, setQuotes] = useState([]);
+  const [linkedProductions, setLinkedProductions] = useState([]);
   const [supplierId, setSupplierId] = useState("");
   const [prodId, setProdId] = useState(productionOrderId);
   const [qId, setQId] = useState(quoteId);
@@ -34,25 +36,84 @@ export default function PurchaseOrderFormClient({
     Promise.all([
       api.get(`/api/proveedores${toQuery({ status: "ACTIVE", pageSize: 100 })}`),
       api.get(`/api/items${toQuery({ status: "ACTIVE", pageSize: 100 })}`),
-      api.get(`/api/produccion${toQuery({ pageSize: 50 })}`),
-      api.get(`/api/cotizaciones${toQuery({ pageSize: 50 })}`),
-    ]).then(([sup, it, prod, qt]) => {
+      api.get(`/api/cotizaciones${toQuery({ pageSize: 100 })}`),
+    ]).then(([sup, it, qt]) => {
       setSuppliers(sup?.data || []);
       setItems(it?.data || []);
-      setProductions(prod?.data || []);
       setQuotes(qt?.data || []);
     });
   }, []);
+
+  useEffect(() => {
+    if (!qId) {
+      setLinkedProductions([]);
+      return;
+    }
+    let cancelled = false;
+    api
+      .get(`/api/cotizaciones/${qId}`)
+      .then((quote) => {
+        if (cancelled) return;
+        const ops = quote?.productionOrders || [];
+        if (quote?.productionOrder && !ops.find((o) => o.id === quote.productionOrder.id)) {
+          ops.unshift(quote.productionOrder);
+        }
+        setLinkedProductions(ops);
+        if (productionOrderId) setProdId(productionOrderId);
+        else if (ops.length === 1) setProdId(ops[0].id);
+      })
+      .catch(() => {
+        if (!cancelled) setLinkedProductions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [qId, productionOrderId]);
+
+  const supplierOptions = useMemo(
+    () => suppliers.map((s) => ({ value: s.id, label: s.name, description: s.rfc || "" })),
+    [suppliers]
+  );
+  const quoteOptions = useMemo(
+    () =>
+      quotes.map((q) => ({
+        value: q.id,
+        label: q.folio,
+        description: q.client?.commercialName || q.status,
+      })),
+    [quotes]
+  );
+  const productionOptions = useMemo(
+    () =>
+      linkedProductions.map((p) => ({
+        value: p.id,
+        label: p.folio,
+        description: p.materialsReadyAt
+          ? `${p.status || ""} · material listo`
+          : p.status || "",
+      })),
+    [linkedProductions]
+  );
+  const itemOptions = useMemo(
+    () =>
+      items.map((it) => ({
+        value: it.id,
+        label: `${it.sku || ""} ${it.name}`.trim(),
+        description: it.itemType || "",
+      })),
+    [items]
+  );
 
   async function onSubmit(e) {
     e.preventDefault();
     setSaving(true);
     setError(null);
     try {
+      if (!qId) throw new Error("La cotizacion es obligatoria");
       const created = await api.post("/api/ordenes-compra", {
         supplierId,
         productionOrderId: prodId || null,
-        quoteId: qId || null,
+        quoteId: qId,
         requestDate,
         expectedDate: expectedDate || null,
         comments,
@@ -81,22 +142,67 @@ export default function PurchaseOrderFormClient({
         className="mt-4 space-y-4 rounded-lg border border-border bg-white p-5"
       >
         {error && <p className="text-sm text-danger-700">{error}</p>}
-        <label className="block text-sm">
-          <span className="mb-1 block text-content-muted">Proveedor</span>
-          <select
-            className="w-full rounded-md border border-border px-3 py-2"
-            value={supplierId}
-            onChange={(e) => setSupplierId(e.target.value)}
-            required
-          >
-            <option value="">Selecciona...</option>
-            {suppliers.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-        </label>
+
+        <CatalogCombobox
+          label="Proveedor"
+          value={supplierId}
+          onChange={setSupplierId}
+          options={supplierOptions}
+          required
+          placeholder="Buscar proveedor..."
+        />
+
+        <CatalogCombobox
+          label="Cotizacion"
+          value={qId}
+          onChange={(v) => {
+            setQId(v);
+            setProdId("");
+          }}
+          options={quoteOptions}
+          required
+          placeholder="Buscar cotizacion..."
+        />
+
+        {qId && (
+          <div className="rounded-md border border-border bg-surface-muted/40 p-3">
+            <p className="mb-2 text-sm font-medium text-content">
+              Ordenes de produccion de la cotizacion
+            </p>
+            {linkedProductions.length === 0 ? (
+              <p className="text-sm text-content-muted">
+                Sin OP vinculadas. Puedes crear la OC y asociar despues.
+              </p>
+            ) : (
+              <ul className="mb-3 space-y-1 text-sm">
+                {linkedProductions.map((op) => (
+                  <li key={op.id} className="flex flex-wrap gap-2">
+                    <Link
+                      href={`/produccion/${op.id}`}
+                      className="text-brand-700 hover:underline"
+                    >
+                      {op.folio}
+                    </Link>
+                    <span className="text-content-muted">
+                      {op.status || ""}
+                      {op.materialsReadyAt ? " · material listo" : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <CatalogCombobox
+              label="OP vinculada (opcional)"
+              value={prodId}
+              onChange={setProdId}
+              options={productionOptions}
+              allowClear
+              clearLabel="Sin OP"
+              placeholder="Filtrar OP..."
+            />
+          </div>
+        )}
+
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block text-sm">
             <span className="mb-1 block text-content-muted">Fecha solicitud</span>
@@ -118,121 +224,88 @@ export default function PurchaseOrderFormClient({
             />
           </label>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block text-sm">
-            <span className="mb-1 block text-content-muted">
-              Orden de produccion (opcional)
-            </span>
-            <select
-              className="w-full rounded-md border border-border px-3 py-2"
-              value={prodId}
-              onChange={(e) => setProdId(e.target.value)}
-            >
-              <option value="">Sin relacion</option>
-              {productions.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.folio}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-content-muted">
-              Cotizacion (opcional)
-            </span>
-            <select
-              className="w-full rounded-md border border-border px-3 py-2"
-              value={qId}
-              onChange={(e) => setQId(e.target.value)}
-            >
-              <option value="">Sin relacion</option>
-              {quotes.map((q) => (
-                <option key={q.id} value={q.id}>
-                  {q.folio}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+
         <label className="block text-sm">
           <span className="mb-1 block text-content-muted">Comentarios</span>
           <textarea
             className="w-full rounded-md border border-border px-3 py-2"
-            rows={2}
+            rows={3}
             value={comments}
             onChange={(e) => setComments(e.target.value)}
           />
         </label>
-        <div className="space-y-2">
+
+        <div className="space-y-3">
           <p className="text-sm font-medium">Partidas</p>
           {lines.map((line, idx) => (
-            <div key={idx} className="flex flex-wrap gap-2">
-              <select
-                className="min-w-[200px] flex-1 rounded-md border border-border px-3 py-2 text-sm"
-                value={line.itemId}
-                onChange={(e) => {
-                  const next = [...lines];
-                  const selected = items.find((i) => i.id === e.target.value);
-                  next[idx] = {
-                    ...line,
-                    itemId: e.target.value,
-                    unit: selected?.unitOfMeasure || "",
-                  };
-                  setLines(next);
-                }}
-              >
-                <option value="">Item...</option>
-                {items.map((it) => (
-                  <option key={it.id} value={it.id}>
-                    {it.sku} — {it.name}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="number"
-                min="0.001"
-                step="0.001"
-                className="w-24 rounded-md border border-border px-2 py-2 text-sm"
-                value={line.quantity}
-                onChange={(e) => {
-                  const next = [...lines];
-                  next[idx] = { ...line, quantity: e.target.value };
-                  setLines(next);
-                }}
-                placeholder="Cant"
-              />
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                className="w-28 rounded-md border border-border px-2 py-2 text-sm"
-                value={line.unitPrice}
-                onChange={(e) => {
-                  const next = [...lines];
-                  next[idx] = { ...line, unitPrice: e.target.value };
-                  setLines(next);
-                }}
-                placeholder="Precio"
-              />
+            <div key={idx} className="grid gap-2 sm:grid-cols-4">
+              <div className="sm:col-span-2">
+                <CatalogCombobox
+                  label={idx === 0 ? "Item" : undefined}
+                  value={line.itemId}
+                  onChange={(v) => {
+                    const next = [...lines];
+                    next[idx] = { ...next[idx], itemId: v };
+                    setLines(next);
+                  }}
+                  options={itemOptions}
+                  placeholder="Buscar item..."
+                />
+              </div>
+              <label className="block text-sm">
+                {idx === 0 && (
+                  <span className="mb-1 block text-content-muted">Cant.</span>
+                )}
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  className="w-full rounded-md border border-border px-3 py-2"
+                  value={line.quantity}
+                  onChange={(e) => {
+                    const next = [...lines];
+                    next[idx] = { ...next[idx], quantity: e.target.value };
+                    setLines(next);
+                  }}
+                />
+              </label>
+              <label className="block text-sm">
+                {idx === 0 && (
+                  <span className="mb-1 block text-content-muted">P. unit.</span>
+                )}
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  className="w-full rounded-md border border-border px-3 py-2"
+                  value={line.unitPrice}
+                  onChange={(e) => {
+                    const next = [...lines];
+                    next[idx] = { ...next[idx], unitPrice: e.target.value };
+                    setLines(next);
+                  }}
+                />
+              </label>
             </div>
           ))}
           <Button
             type="button"
-            variant="ghost"
             size="sm"
+            variant="secondary"
             onClick={() =>
-              setLines([...lines, { itemId: "", quantity: 1, unitPrice: 0 }])
+              setLines((prev) => [
+                ...prev,
+                { itemId: "", quantity: 1, unitPrice: 0, unit: "" },
+              ])
             }
           >
             Agregar partida
           </Button>
         </div>
-        <div className="flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={() => router.back()}>
-            Cancelar
-          </Button>
+
+        <div className="flex justify-end gap-2 pt-2">
           <Button type="submit" loading={saving}>
-            Guardar borrador
+            Crear OC
           </Button>
         </div>
       </form>

@@ -22,7 +22,22 @@ import {
 const DETAIL_INCLUDE = {
   supplier: { select: { id: true, name: true, legalName: true, rfc: true, status: true } },
   productionOrder: { select: { id: true, folio: true, status: true } },
-  quote: { select: { id: true, folio: true, status: true } },
+  quote: {
+    select: {
+      id: true,
+      folio: true,
+      status: true,
+      productionOrders: {
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          folio: true,
+          status: true,
+          materialsReadyAt: true,
+        },
+      },
+    },
+  },
   requestedByUser: { select: { id: true, name: true } },
   authorizedByUser: { select: { id: true, name: true } },
   items: {

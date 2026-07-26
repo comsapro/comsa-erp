@@ -4,12 +4,18 @@ import {
   startProduction,
   completeOrder,
   cancelProduction,
+  markMaterialsReady,
+  reprintSheet,
+  reprintNewOrder,
 } from "@/domains/production/service";
 
 const ACTIONS = {
   start: startProduction,
   complete: completeOrder,
   cancel: cancelProduction,
+  "materials-ready": markMaterialsReady,
+  "reprint-sheet": reprintSheet,
+  "reprint-new-order": reprintNewOrder,
 };
 
 export const POST = withErrorHandling(async (req, ctx) => {

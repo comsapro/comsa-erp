@@ -9,6 +9,7 @@ import {
   sendToProduction,
   insertFromTemplate,
   reorderItems,
+  createQuoteRevision,
 } from "@/domains/quotes/service";
 
 const ACTIONS = {
@@ -20,6 +21,7 @@ const ACTIONS = {
   "send-production": sendToProduction,
   "insert-template": insertFromTemplate,
   reorder: reorderItems,
+  revise: createQuoteRevision,
 };
 
 export const POST = withErrorHandling(async (req, ctx) => {

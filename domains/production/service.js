@@ -10,11 +10,12 @@ import {
   ConflictError,
 } from "@/lib/permissions/errors";
 import { jsonOk } from "@/lib/api/http";
+import { generateFolio } from "@/lib/folios";
 import {
   PRODUCTION_STATUSES,
   PRODUCTION_SOURCE_TYPES,
 } from "./constants";
-import { updateItemProgressSchema } from "./schemas";
+import { updateItemProgressSchema, productionNoteSchema, reprintSchema } from "./schemas";
 
 const SORTABLE = [
   "folio",
@@ -34,10 +35,31 @@ const DETAIL_INCLUDE = {
   client: true,
   quote: { select: { id: true, folio: true, status: true } },
   directOrder: { select: { id: true, folio: true, status: true } },
+  materialsReadyByUser: { select: { id: true, name: true } },
+  purchaseOrders: {
+    where: { deletedAt: null },
+    orderBy: { createdAt: "desc" },
+    take: 20,
+    select: {
+      id: true,
+      folio: true,
+      status: true,
+      receipts: {
+        select: { id: true, folio: true, receiptDate: true },
+        take: 5,
+        orderBy: { receiptDate: "desc" },
+      },
+    },
+  },
   items: {
     orderBy: { position: "asc" },
     include: {
       completedByUser: { select: { id: true, name: true } },
+      notes: {
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        include: { createdByUser: { select: { id: true, name: true } } },
+      },
     },
   },
 };
@@ -352,18 +374,30 @@ export async function updateItemProgress(request, orderId, itemId) {
     const nextStatus =
       item.status === "PENDING" ? "IN_PROGRESS" : item.status;
 
+    const noteBody =
+      data.observations != null && String(data.observations).trim()
+        ? String(data.observations).trim()
+        : null;
+
     await tx.productionItem.update({
       where: { id: itemId },
       data: {
         completedQuantity: data.completedQuantity,
-        observations:
-          data.observations !== undefined
-            ? data.observations
-            : item.observations,
         status: nextStatus,
         startedAt: item.startedAt || new Date(),
+        ...(noteBody ? { observations: noteBody } : {}),
       },
     });
+
+    if (noteBody) {
+      await tx.productionItemNote.create({
+        data: {
+          productionItemId: itemId,
+          body: noteBody,
+          createdBy: actor.id,
+        },
+      });
+    }
 
     if (order.status === "PENDING") {
       await tx.productionOrder.update({
@@ -413,14 +447,22 @@ export async function completeItem(request, orderId, itemId) {
   }
 
   const record = await prisma.$transaction(async (tx) => {
+    const completedAt = new Date();
+    const startedAt = item.startedAt || completedAt;
+    const durationMinutes = Math.max(
+      0,
+      Math.round((completedAt.getTime() - new Date(startedAt).getTime()) / 60000)
+    );
+
     await tx.productionItem.update({
       where: { id: itemId },
       data: {
         status: "COMPLETED",
         completedQuantity: item.quantity,
         completedBy: actor.id,
-        completedAt: new Date(),
-        startedAt: item.startedAt || new Date(),
+        completedAt,
+        startedAt,
+        durationMinutes,
       },
     });
 
@@ -460,6 +502,161 @@ export async function completeItem(request, orderId, itemId) {
     action: AUDIT_ACTIONS.COMPLETE,
     previousData: order,
     newData: record,
+  });
+
+  return jsonOk(record);
+}
+
+export async function addItemNote(request, orderId, itemId) {
+  await requirePermission("production.update_progress");
+  const actor = await getActor(request);
+  const order = await findProductionOrThrow(orderId, DETAIL_INCLUDE);
+  const item = order.items.find((i) => i.id === itemId);
+  if (!item) throw new NotFoundError("Item de produccion no encontrado");
+
+  const body = await request.json();
+  const data = productionNoteSchema.parse(body);
+
+  await prisma.productionItemNote.create({
+    data: {
+      productionItemId: itemId,
+      body: data.body,
+      createdBy: actor.id,
+    },
+  });
+
+  const record = await findProductionOrThrow(orderId, DETAIL_INCLUDE);
+  return jsonOk(record);
+}
+
+export async function markMaterialsReady(request, id) {
+  await requirePermission("production.update_progress");
+  const actor = await getActor(request);
+  const existing = await findProductionOrThrow(id, DETAIL_INCLUDE);
+
+  const record = await prisma.productionOrder.update({
+    where: { id },
+    data: {
+      materialsReadyAt: new Date(),
+      materialsReadyBy: actor.id,
+      updatedBy: actor.id,
+    },
+    include: DETAIL_INCLUDE,
+  });
+
+  await recordAudit({
+    actor,
+    module: "production",
+    entity: "ProductionOrder",
+    entityId: id,
+    action: AUDIT_ACTIONS.UPDATE,
+    previousData: { materialsReadyAt: existing.materialsReadyAt },
+    newData: { materialsReadyAt: record.materialsReadyAt },
+  });
+
+  return jsonOk(record);
+}
+
+export async function reprintSheet(request, id) {
+  await requirePermission("production.print");
+  const actor = await getActor(request);
+  const order = await findProductionOrThrow(id, DETAIL_INCLUDE);
+  let reason = null;
+  try {
+    const body = await request.json();
+    reason = reprintSchema.parse(body || {}).reason || null;
+  } catch {
+    reason = null;
+  }
+
+  await recordAudit({
+    actor,
+    module: "production",
+    entity: "ProductionOrder",
+    entityId: id,
+    action: AUDIT_ACTIONS.PRINT,
+    newData: { folio: order.folio, type: "SHEET", reason },
+  });
+
+  return jsonOk({ ok: true, folio: order.folio, type: "SHEET" });
+}
+
+export async function reprintNewOrder(request, id) {
+  await requirePermission("production.print");
+  const actor = await getActor(request);
+  const existing = await findProductionOrThrow(id, DETAIL_INCLUDE);
+  const body = await request.json();
+  const data = reprintSchema.parse(body);
+  if (!data.reason || !String(data.reason).trim()) {
+    throw new ValidationError(
+      "El motivo es obligatorio para reimpresion con nuevo folio"
+    );
+  }
+
+  const sourceItems = (existing.items || []).filter(
+    (i) => i.status !== "CANCELLED"
+  );
+  const selected = data.itemIds?.length
+    ? sourceItems.filter((i) => data.itemIds.includes(i.id))
+    : sourceItems.filter((i) => i.status !== "COMPLETED");
+
+  if (!selected.length) {
+    throw new ValidationError("No hay items para la nueva orden de produccion");
+  }
+
+  const record = await prisma.$transaction(async (tx) => {
+    const folio = await generateFolio(tx, "PRODUCTION");
+    const created = await tx.productionOrder.create({
+      data: {
+        folio,
+        sourceType: existing.sourceType,
+        clientId: existing.clientId,
+        quoteId: existing.quoteId,
+        approvalDate: existing.approvalDate,
+        status: "PENDING",
+        totalItems: selected.length,
+        completedItems: 0,
+        progressPercentage: 0,
+        reprintOfId: existing.id,
+        reprintReason: data.reason,
+        createdBy: actor.id,
+        updatedBy: actor.id,
+        items: {
+          create: selected.map((item, idx) => ({
+            sourceItemId: item.sourceItemId,
+            sourceItemType: item.sourceItemType,
+            position: idx + 1,
+            description: item.description,
+            quantity: item.quantity,
+            status: "PENDING",
+          })),
+        },
+      },
+      include: DETAIL_INCLUDE,
+    });
+
+    if (existing.quoteId) {
+      await tx.quote.update({
+        where: { id: existing.quoteId },
+        data: { productionOrderId: created.id, updatedBy: actor.id },
+      });
+    }
+
+    return created;
+  });
+
+  await recordAudit({
+    actor,
+    module: "production",
+    entity: "ProductionOrder",
+    entityId: record.id,
+    action: AUDIT_ACTIONS.CREATE,
+    newData: {
+      folio: record.folio,
+      type: "NEW_ORDER_REPRINT",
+      reprintOfId: existing.id,
+      reason: data.reason,
+    },
   });
 
   return jsonOk(record);

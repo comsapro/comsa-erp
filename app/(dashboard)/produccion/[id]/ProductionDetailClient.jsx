@@ -63,11 +63,14 @@ export default function ProductionDetailClient({ id }) {
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [load]);
 
-  const runOrderAction = async (action) => {
+  const runOrderAction = async (action, body) => {
     setActing(true);
     try {
-      const updated = await api.post(`/api/produccion/${id}/acciones/${action}`);
-      setRecord(updated);
+      const updated = await api.post(
+        `/api/produccion/${id}/acciones/${action}`,
+        body
+      );
+      if (updated?.id) setRecord(updated);
       toast({ variant: "success", title: "Accion aplicada" });
     } catch (err) {
       toast({
@@ -185,8 +188,64 @@ export default function ProductionDetailClient({ id }) {
                 <XCircle className="h-4 w-4" /> Cancelar
               </Button>
             </Can>
+            {!record.materialsReadyAt && (
+              <Can permission="production.update_progress">
+                <Button
+                  size="sm"
+                  variant="subtle"
+                  loading={acting}
+                  onClick={() => runOrderAction("materials-ready")}
+                >
+                  Marcar material listo
+                </Button>
+              </Can>
+            )}
           </>
         )}
+        <Can permission="production.print">
+          <Button
+            as="a"
+            href={`/api/produccion/${id}/pdf`}
+            size="sm"
+            variant="secondary"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Reimpresion hoja / PDF
+          </Button>
+          <Button
+            size="sm"
+            variant="secondary"
+            loading={acting}
+            onClick={async () => {
+              const reason = window.prompt(
+                "Motivo obligatorio para nueva orden de produccion:"
+              );
+              if (!reason?.trim()) return;
+              setActing(true);
+              try {
+                const created = await api.post(
+                  `/api/produccion/${id}/acciones/reprint-new-order`,
+                  { reason }
+                );
+                toast({ variant: "success", title: "Nueva OP creada" });
+                if (created?.id) {
+                  window.location.href = `/produccion/${created.id}`;
+                }
+              } catch (err) {
+                toast({
+                  variant: "error",
+                  title: "No se pudo reimprimir",
+                  description: err.message,
+                });
+              } finally {
+                setActing(false);
+              }
+            }}
+          >
+            Reimpresion nuevo folio
+          </Button>
+        </Can>
         {sourceHref && (
           <Button as={Link} href={sourceHref} size="sm" variant="subtle">
             Origen {sourceLabel}
@@ -194,7 +253,7 @@ export default function ProductionDetailClient({ id }) {
         )}
       </Card>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-4">
         <Card className="p-4">
           <p className="text-sm text-content-muted">Avance</p>
           <p className="mt-1 text-2xl font-semibold">
@@ -220,6 +279,20 @@ export default function ProductionDetailClient({ id }) {
           <p className="mt-1 text-base font-medium">
             {record.client?.commercialName || "-"}
           </p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-sm text-content-muted">Material</p>
+          <p className="mt-1 text-base font-medium">
+            {record.materialsReadyAt ? "Listo para fabricar" : "Pendiente"}
+          </p>
+          {record.materialsReadyAt && (
+            <p className="text-xs text-content-muted">
+              {formatDateTime(record.materialsReadyAt)}
+              {record.materialsReadyByUser?.name
+                ? ` · ${record.materialsReadyByUser.name}`
+                : ""}
+            </p>
+          )}
         </Card>
       </div>
 
@@ -248,7 +321,22 @@ export default function ProductionDetailClient({ id }) {
                     <p className="text-sm text-content-muted">
                       Cantidad: {Number(item.quantity)} · Completado:{" "}
                       {Number(item.completedQuantity)}
+                      {item.durationMinutes != null
+                        ? ` · ${item.durationMinutes} min`
+                        : ""}
                     </p>
+                    {(item.notes || []).length > 0 && (
+                      <ul className="mt-2 space-y-1 text-xs text-content-muted">
+                        {item.notes.slice(0, 5).map((n) => (
+                          <li key={n.id}>
+                            <span className="font-medium text-content">
+                              {n.createdByUser?.name || "Usuario"}
+                            </span>{" "}
+                            · {formatDateTime(n.createdAt)}: {n.body}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                   <Badge tone={PRODUCTION_STATUS_TONES[item.status] || "neutral"}>
                     {PRODUCTION_STATUS_LABELS[item.status] || item.status}
@@ -280,7 +368,7 @@ export default function ProductionDetailClient({ id }) {
                     </div>
                     <div className="sm:col-span-2">
                       <label className="mb-1 block text-xs font-medium text-content-muted">
-                        Observaciones
+                        Nota de bitacora
                       </label>
                       <Textarea
                         rows={2}

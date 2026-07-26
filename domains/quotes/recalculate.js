@@ -73,10 +73,13 @@ export async function recalculateQuote(tx, quoteId) {
       where: { id: item.id },
       data: totals,
     });
-    itemTotals.push({ ...updated, ...totals });
+    itemTotals.push({ ...updated, ...totals, status: item.status });
   }
 
-  const headerTotals = calculateQuoteHeaderTotals(itemTotals);
+  // Totales de cabecera solo con partidas activas (inactivas no cotizan / no PDF)
+  const headerTotals = calculateQuoteHeaderTotals(
+    itemTotals.filter((it) => it.status === "ACTIVE")
+  );
 
   return tx.quote.update({
     where: { id: quoteId },

@@ -48,6 +48,21 @@ const DETAIL_INCLUDE = {
   rejectedByUser: { select: { id: true, name: true } },
   cancelledByUser: { select: { id: true, name: true } },
   productionOrder: { select: { id: true, folio: true, status: true } },
+  productionOrders: {
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      folio: true,
+      status: true,
+      materialsReadyAt: true,
+      createdAt: true,
+    },
+  },
+  parentQuote: { select: { id: true, folio: true, version: true } },
+  childRevisions: {
+    orderBy: { createdAt: "desc" },
+    select: { id: true, folio: true, version: true, status: true },
+  },
   items: {
     orderBy: { position: "asc" },
     include: {
@@ -707,6 +722,153 @@ export async function deleteQuoteItem(request, quoteId, itemId) {
   return jsonOk(record);
 }
 
+export async function toggleQuoteItemStatus(request, quoteId, itemId) {
+  await requirePermission("quotes.edit");
+  const actor = await getActor(request);
+  const quote = await findQuoteOrThrow(quoteId);
+  // Permitir activar/desactivar en borrador; en otros estatus solo lectura de totales
+  // Admin puede desactivar incluso en APPROVED antes de producción vía revisión (fase 2).
+  // Fase 1: solo DRAFT para toggle (consistente con edición).
+  assertDraft(quote);
+
+  const item = await prisma.quoteItem.findFirst({
+    where: { id: itemId, quoteId },
+  });
+  if (!item) throw new NotFoundError("Item de cotizacion no encontrado");
+
+  const nextStatus = item.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+
+  const record = await prisma.$transaction(async (tx) => {
+    await tx.quoteItem.update({
+      where: { id: itemId },
+      data: { status: nextStatus },
+    });
+    return recalculateQuote(tx, quoteId);
+  });
+
+  await recordAudit({
+    actor,
+    module: "quotes",
+    entity: "QuoteItem",
+    entityId: itemId,
+    action: nextStatus === "ACTIVE" ? AUDIT_ACTIONS.ACTIVATE : AUDIT_ACTIONS.DEACTIVATE,
+    previousData: { status: item.status },
+    newData: { status: nextStatus },
+  });
+
+  return jsonOk(record);
+}
+
+export async function saveQuoteItemToLibrary(request, quoteId, itemId) {
+  await requirePermission("quote_templates.create");
+  const actor = await getActor(request);
+
+  const item = await prisma.quoteItem.findFirst({
+    where: { id: itemId, quoteId },
+    include: {
+      manufacturing: { orderBy: { sortOrder: "asc" } },
+      materials: true,
+      extras: true,
+      installations: true,
+    },
+  });
+  if (!item) throw new NotFoundError("Item de cotizacion no encontrado");
+
+  const observations = [item.internalObservations, item.clientObservations]
+    .filter(Boolean)
+    .join("\n")
+    .trim() || null;
+
+  const template = await prisma.quoteItemTemplate.create({
+    data: {
+      name: item.description.slice(0, 200),
+      description: item.description,
+      defaultQuantity: item.quantity,
+      unit: item.unit,
+      deliveryTimeMin: item.deliveryTimeMin,
+      deliveryTimeMax: item.deliveryTimeMax,
+      deliveryTimeUnit: item.deliveryTimeUnit,
+      deliveryDaysType: item.deliveryDaysType,
+      observations,
+      benefitPercentage: item.benefitPercentage,
+      itemId: item.itemId,
+      status: "ACTIVE",
+      createdBy: actor.id,
+      updatedBy: actor.id,
+      manufacturing: {
+        create: item.manufacturing.map((r, i) => ({
+          manufacturingProcessId: r.manufacturingProcessId,
+          processNameSnapshot: r.processNameSnapshot,
+          unitSnapshot: r.unitSnapshot,
+          quantity: r.quantity,
+          unitRate: r.unitRate,
+          amount: r.amount,
+          observations: r.observations,
+          sortOrder: r.sortOrder ?? i,
+        })),
+      },
+      materials: {
+        create: item.materials.map((r) => ({
+          itemId: r.itemId,
+          supplierId: r.supplierId,
+          descriptionSnapshot: r.descriptionSnapshot,
+          dimensions: r.dimensions,
+          presentation: r.presentation,
+          unit: r.unit,
+          quantity: r.quantity,
+          unitPrice: r.unitPrice,
+          amount: r.amount,
+          observations: r.observations,
+        })),
+      },
+      extras: {
+        create: item.extras.map((r) => ({
+          description: r.description,
+          quantity: r.quantity,
+          unit: r.unit,
+          unitPrice: r.unitPrice,
+          amount: r.amount,
+          supplierId: r.supplierId,
+          observations: r.observations,
+        })),
+      },
+      installations: {
+        create: item.installations.map((r) => ({
+          installationConceptId: r.installationConceptId,
+          conceptNameSnapshot: r.conceptNameSnapshot,
+          unitSnapshot: r.unitSnapshot,
+          quantity: r.quantity,
+          unitPrice: r.unitPrice,
+          amount: r.amount,
+          observations: r.observations,
+        })),
+      },
+    },
+    include: {
+      manufacturing: true,
+      materials: true,
+      extras: true,
+      installations: true,
+    },
+  });
+
+  await prisma.quoteItem.update({
+    where: { id: itemId },
+    data: { templateId: template.id },
+  });
+
+  await recordAudit({
+    actor,
+    module: "quote_templates",
+    entity: "QuoteItemTemplate",
+    entityId: template.id,
+    action: AUDIT_ACTIONS.CREATE,
+    newData: template,
+  });
+
+  return jsonCreated(template);
+}
+
 export async function duplicateQuoteItem(request, quoteId, itemId) {
   await requirePermission("quotes.edit");
   const actor = await getActor(request);
@@ -1078,6 +1240,156 @@ export async function cancelQuote(request, id) {
   });
 }
 
+export async function createQuoteRevision(request, id) {
+  await requirePermission("quotes.create");
+  const actor = await getActor(request);
+  const source = await findQuoteOrThrow(id, {
+    items: {
+      orderBy: { position: "asc" },
+      include: {
+        manufacturing: { orderBy: { sortOrder: "asc" } },
+        materials: true,
+        extras: true,
+        installations: true,
+      },
+    },
+  });
+
+  if (!["APPROVED", "IN_PRODUCTION"].includes(source.status)) {
+    throw new ConflictError(
+      "Solo se puede versionar una cotizacion aprobada o en produccion"
+    );
+  }
+
+  const match = String(source.folio).match(/^(.*)-([A-Z])$/i);
+  const base = match ? match[1] : source.folio;
+  const currentLetter = (match ? match[2] : source.version || "A").toUpperCase();
+  const nextLetter = String.fromCharCode(currentLetter.charCodeAt(0) + 1);
+  if (nextLetter > "Z") {
+    throw new ValidationError("Se alcanzo el limite de versiones (Z)");
+  }
+  const newFolio = `${base}-${nextLetter}`;
+
+  const existingFolio = await prisma.quote.findUnique({
+    where: { folio: newFolio },
+    select: { id: true },
+  });
+  if (existingFolio) {
+    throw new ConflictError(`Ya existe la version ${newFolio}`);
+  }
+
+  const record = await prisma.$transaction(async (tx) => {
+    const created = await tx.quote.create({
+      data: {
+        folio: newFolio,
+        version: nextLetter,
+        parentQuoteId: source.id,
+        clientId: source.clientId,
+        clientContactId: source.clientContactId,
+        sellerId: source.sellerId,
+        issuingCompanyId: source.issuingCompanyId,
+        orderType: source.orderType,
+        currency: source.currency,
+        elaborationDate: new Date(),
+        requestDate: source.requestDate,
+        validUntil: source.validUntil,
+        purchaseOrder: source.purchaseOrder,
+        requisition: source.requisition,
+        internalObservations: source.internalObservations,
+        clientDesignProvided: source.clientDesignProvided,
+        advancePercentage: source.advancePercentage,
+        settlementPercentage: source.settlementPercentage,
+        paymentNotes: source.paymentNotes,
+        status: "DRAFT",
+        createdBy: actor.id,
+        updatedBy: actor.id,
+        items: {
+          create: source.items.map((item) => ({
+            position: item.position,
+            templateId: item.templateId,
+            itemId: item.itemId,
+            description: item.description,
+            quantity: item.quantity,
+            unit: item.unit,
+            deliveryTimeMin: item.deliveryTimeMin,
+            deliveryTimeMax: item.deliveryTimeMax,
+            deliveryTimeUnit: item.deliveryTimeUnit,
+            deliveryDaysType: item.deliveryDaysType,
+            clientObservations: item.clientObservations,
+            internalObservations: item.internalObservations,
+            benefitPercentage: item.benefitPercentage,
+            discountPercentage: item.discountPercentage,
+            isUrgent: item.isUrgent,
+            warehouseId: item.warehouseId,
+            status: item.status,
+            originItemId: item.originItemId || item.id,
+            manufacturing: {
+              create: item.manufacturing.map((r) => ({
+                manufacturingProcessId: r.manufacturingProcessId,
+                processNameSnapshot: r.processNameSnapshot,
+                unitSnapshot: r.unitSnapshot,
+                quantity: r.quantity,
+                unitRate: r.unitRate,
+                amount: r.amount,
+                observations: r.observations,
+                sortOrder: r.sortOrder,
+              })),
+            },
+            materials: {
+              create: item.materials.map((r) => ({
+                itemId: r.itemId,
+                supplierId: r.supplierId,
+                descriptionSnapshot: r.descriptionSnapshot,
+                dimensions: r.dimensions,
+                presentation: r.presentation,
+                unit: r.unit,
+                quantity: r.quantity,
+                unitPrice: r.unitPrice,
+                amount: r.amount,
+                observations: r.observations,
+              })),
+            },
+            extras: {
+              create: item.extras.map((r) => ({
+                description: r.description,
+                quantity: r.quantity,
+                unit: r.unit,
+                unitPrice: r.unitPrice,
+                amount: r.amount,
+                supplierId: r.supplierId,
+                observations: r.observations,
+              })),
+            },
+            installations: {
+              create: item.installations.map((r) => ({
+                installationConceptId: r.installationConceptId,
+                conceptNameSnapshot: r.conceptNameSnapshot,
+                unitSnapshot: r.unitSnapshot,
+                quantity: r.quantity,
+                unitPrice: r.unitPrice,
+                amount: r.amount,
+                observations: r.observations,
+              })),
+            },
+          })),
+        },
+      },
+    });
+    return recalculateQuote(tx, created.id);
+  });
+
+  await recordAudit({
+    actor,
+    module: "quotes",
+    entity: "Quote",
+    entityId: record.id,
+    action: AUDIT_ACTIONS.CREATE,
+    newData: { folio: record.folio, parentQuoteId: source.id, revision: true },
+  });
+
+  return jsonCreated(record);
+}
+
 export async function sendToProduction(request, id) {
   await requirePermission("quotes.send_to_production");
   const actor = await getActor(request);
@@ -1086,22 +1398,60 @@ export async function sendToProduction(request, id) {
     items: { orderBy: { position: "asc" } },
   });
 
-  assertTransition(existing.status, "IN_PRODUCTION");
+  if (existing.status !== "APPROVED" && existing.status !== "IN_PRODUCTION") {
+    throw new ConflictError(
+      "Solo se pueden enviar a produccion cotizaciones aprobadas o en produccion (nuevas partidas)"
+    );
+  }
 
-  if (existing.status !== "APPROVED") {
-    throw new ConflictError(
-      "Solo se pueden enviar a produccion cotizaciones aprobadas"
-    );
-  }
-  if (existing.productionOrderId) {
-    throw new ConflictError(
-      "La cotizacion ya tiene una orden de produccion asociada"
-    );
-  }
-  if (!existing.items.length) {
+  const activeItems = (existing.items || []).filter((i) => i.status === "ACTIVE");
+  if (!activeItems.length) {
     throw new ValidationError(
-      "La cotizacion no tiene items para enviar a produccion"
+      "No hay partidas activas para enviar a produccion"
     );
+  }
+
+  // Cobertura: IDs de esta cotización + originItemId (línea de versiones previas)
+  const lineageIds = [
+    existing.id,
+    existing.parentQuoteId,
+  ].filter(Boolean);
+
+  const priorOps = await prisma.productionOrder.findMany({
+    where: {
+      OR: [
+        { quoteId: { in: lineageIds } },
+        { id: existing.productionOrderId || "__none__" },
+      ],
+      status: { not: "CANCELLED" },
+    },
+    select: {
+      id: true,
+      items: { select: { sourceItemId: true } },
+    },
+  });
+
+  const coveredSourceIds = new Set();
+  for (const op of priorOps) {
+    for (const it of op.items) {
+      coveredSourceIds.add(it.sourceItemId);
+    }
+  }
+
+  const itemsToSend = activeItems.filter((item) => {
+    if (coveredSourceIds.has(item.id)) return false;
+    if (item.originItemId && coveredSourceIds.has(item.originItemId)) return false;
+    return true;
+  });
+
+  if (!itemsToSend.length) {
+    throw new ConflictError(
+      "Todas las partidas activas ya estan cubiertas por ordenes de produccion"
+    );
+  }
+
+  if (existing.status === "APPROVED") {
+    assertTransition(existing.status, "IN_PRODUCTION");
   }
 
   const record = await prisma.$transaction(async (tx) => {
@@ -1111,15 +1461,16 @@ export async function sendToProduction(request, id) {
         folio,
         sourceType: "QUOTE",
         clientId: existing.clientId,
+        quoteId: existing.id,
         approvalDate: existing.approvedAt || new Date(),
         status: "PENDING",
-        totalItems: existing.items.length,
+        totalItems: itemsToSend.length,
         completedItems: 0,
         progressPercentage: 0,
         createdBy: actor.id,
         updatedBy: actor.id,
         items: {
-          create: existing.items.map((item) => ({
+          create: itemsToSend.map((item) => ({
             sourceItemId: item.id,
             sourceItemType: "QUOTE_ITEM",
             position: item.position,

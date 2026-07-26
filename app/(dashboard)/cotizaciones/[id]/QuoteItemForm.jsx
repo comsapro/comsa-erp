@@ -65,12 +65,20 @@ function mapLines(initial) {
   };
 }
 
-export default function QuoteItemForm({ initial, onSubmit, saving, currency = "MXN" }) {
+export default function QuoteItemForm({
+  initial,
+  onSubmit,
+  saving,
+  currency = "MXN",
+  quoteId,
+  onSavedToLibrary,
+}) {
   const { has } = usePermissions();
   const { toast } = useToast();
   const [processes, setProcesses] = useState([]);
   const [installations, setInstallations] = useState([]);
   const [loadingCatalogs, setLoadingCatalogs] = useState(true);
+  const [savingLibrary, setSavingLibrary] = useState(false);
 
   const canViewCost = has("quotes.view_cost");
   const canViewBenefit = has("quotes.view_benefit");
@@ -405,7 +413,37 @@ export default function QuoteItemForm({ initial, onSubmit, saving, currency = "M
         />
       </section>
 
-      <div className="flex justify-end gap-2">
+      <div className="flex flex-wrap justify-end gap-2">
+        {initial?.id && quoteId && has("quote_templates.create") && (
+          <Button
+            type="button"
+            variant="secondary"
+            loading={savingLibrary}
+            onClick={async () => {
+              setSavingLibrary(true);
+              try {
+                await api.post(
+                  `/api/cotizaciones/${quoteId}/items/${initial.id}/guardar-biblioteca`
+                );
+                toast({
+                  variant: "success",
+                  title: "Partida guardada en biblioteca",
+                });
+                onSavedToLibrary?.();
+              } catch (err) {
+                toast({
+                  variant: "error",
+                  title: "No se pudo guardar en biblioteca",
+                  description: err.message,
+                });
+              } finally {
+                setSavingLibrary(false);
+              }
+            }}
+          >
+            Guardar en biblioteca
+          </Button>
+        )}
         <Button type="submit" loading={saving}>
           Guardar partida
         </Button>

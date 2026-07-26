@@ -185,8 +185,36 @@ export default function PurchaseOrderDetailClient({ id }) {
           </div>
           <div>
             <p className="text-content-muted">Cotizacion</p>
-            <p>{row.quote?.folio || "—"}</p>
+            <p>
+              {row.quote ? (
+                <Link
+                  href={`/cotizaciones/${row.quote.id}`}
+                  className="text-brand-700 hover:underline"
+                >
+                  {row.quote.folio}
+                </Link>
+              ) : (
+                "—"
+              )}
+            </p>
           </div>
+          {(row.quote?.productionOrders || []).length > 0 && (
+            <div className="sm:col-span-3">
+              <p className="text-content-muted">OPs de la cotizacion</p>
+              <div className="mt-1 flex flex-wrap gap-2">
+                {row.quote.productionOrders.map((op) => (
+                  <Link
+                    key={op.id}
+                    href={`/produccion/${op.id}`}
+                    className="rounded-full bg-surface-muted px-2.5 py-1 text-xs hover:bg-brand-50"
+                  >
+                    {op.folio}
+                    {op.materialsReadyAt ? " · material listo" : ""}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
           <div>
             <p className="text-content-muted">Subtotal</p>
             <p>{formatMoney(row.subtotal)}</p>

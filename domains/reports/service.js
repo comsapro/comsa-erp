@@ -43,6 +43,7 @@ export async function quotationPdf(request, id) {
   });
   if (!quote) throw new NotFoundError("Cotizacion no encontrada");
 
+  const activeItems = (quote.items || []).filter((it) => it.status !== "INACTIVE");
   const buffer = await buildPdfBuffer((doc) => {
     doc.fontSize(14).text(quote.issuingCompany?.commercialName || "COMSA PRO");
     doc.fontSize(10).text(quote.issuingCompany?.legalName || "");
@@ -65,7 +66,7 @@ export async function quotationPdf(request, id) {
         { key: "subtotal", header: "Subtotal", width: 80 },
         { key: "total", header: "Total", width: 82 },
       ],
-      quote.items.map((it) => ({
+      activeItems.map((it) => ({
         desc: it.description,
         qty: String(toNumber(it.quantity)),
         delivery: [it.deliveryTimeMin, it.deliveryTimeMax]
@@ -160,6 +161,66 @@ export async function purchaseOrderPdf(request, id) {
   });
 
   return pdfResponse(buffer, `oc-${po.folio}.pdf`);
+}
+
+export async function productionOrderPdf(request, id) {
+  await requirePermission("production.print");
+  const actor = await getActor(request);
+  const order = await prisma.productionOrder.findFirst({
+    where: { id },
+    include: {
+      client: true,
+      quote: { select: { folio: true } },
+      items: { orderBy: { position: "asc" } },
+    },
+  });
+  if (!order) throw new NotFoundError("Orden de produccion no encontrada");
+
+  const buffer = await buildPdfBuffer((doc) => {
+    doc.fontSize(16).text(`Orden de produccion ${order.folio}`);
+    doc.fontSize(10);
+    doc.text(`Cliente: ${order.client?.commercialName || ""}`);
+    doc.text(`Cotizacion: ${order.quote?.folio || "—"}`);
+    doc.text(`Estatus: ${PRODUCTION_STATUS_LABELS[order.status] || order.status}`);
+    doc.text(
+      `Material listo: ${
+        order.materialsReadyAt
+          ? order.materialsReadyAt.toISOString?.().slice(0, 10) || order.materialsReadyAt
+          : "No"
+      }`
+    );
+    doc.moveDown();
+    drawTable(
+      doc,
+      [
+        { key: "pos", header: "#", width: 30 },
+        { key: "desc", header: "Descripcion", width: 260 },
+        { key: "qty", header: "Cant.", width: 50 },
+        { key: "done", header: "Avance", width: 50 },
+        { key: "mins", header: "Min", width: 50 },
+        { key: "status", header: "Estatus", width: 72 },
+      ],
+      order.items.map((it) => ({
+        pos: String(it.position),
+        desc: it.description,
+        qty: String(toNumber(it.quantity)),
+        done: String(toNumber(it.completedQuantity)),
+        mins: it.durationMinutes != null ? String(it.durationMinutes) : "—",
+        status: PRODUCTION_STATUS_LABELS[it.status] || it.status,
+      }))
+    );
+  });
+
+  await recordAudit({
+    actor,
+    module: "production",
+    entity: "ProductionOrder",
+    entityId: id,
+    action: AUDIT_ACTIONS.PDF_GENERATE,
+    newData: { folio: order.folio },
+  });
+
+  return pdfResponse(buffer, `produccion-${order.folio}.pdf`);
 }
 
 export async function quotationsReportPdf(request) {

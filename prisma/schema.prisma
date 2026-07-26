@@ -210,6 +210,8 @@ model User {
   directOrdersRejected DirectOrder[]       @relation("DirectOrderRejectedBy")
   directOrdersCancelled DirectOrder[]      @relation("DirectOrderCancelledBy")
   productionItemsCompleted ProductionItem[] @relation("ProductionItemCompletedBy")
+  productionItemNotesCreated ProductionItemNote[] @relation("ProductionItemNoteCreatedBy")
+  productionMaterialsReady ProductionOrder[] @relation("ProductionMaterialsReadyBy")
   inventoryMovementsCreated InventoryMovement[] @relation("InventoryMovementCreatedBy")
   transfersRequested WarehouseTransfer[] @relation("TransferRequestedBy")
   transfersApproved WarehouseTransfer[] @relation("TransferApprovedBy")
@@ -749,6 +751,7 @@ model Quote {
   cancellationReason String?   @map("cancellation_reason")
   productionOrderId  String?   @unique @map("production_order_id")
   directOrderId      String?   @unique @map("direct_order_id")
+  parentQuoteId      String?   @map("parent_quote_id")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -763,7 +766,10 @@ model Quote {
   approvedByUser User?           @relation("QuoteApprovedBy", fields: [approvedBy], references: [id], onDelete: SetNull)
   rejectedByUser User?           @relation("QuoteRejectedBy", fields: [rejectedBy], references: [id], onDelete: SetNull)
   cancelledByUser User?          @relation("QuoteCancelledBy", fields: [cancelledBy], references: [id], onDelete: SetNull)
-  productionOrder ProductionOrder? @relation("QuoteProduction", fields: [productionOrderId], references: [id], onDelete: SetNull)
+  productionOrder ProductionOrder? @relation("QuoteLatestProduction", fields: [productionOrderId], references: [id], onDelete: SetNull)
+  productionOrders ProductionOrder[] @relation("QuoteProductionOrders")
+  parentQuote    Quote?          @relation("QuoteRevisions", fields: [parentQuoteId], references: [id], onDelete: SetNull)
+  childRevisions Quote[]         @relation("QuoteRevisions")
   directOrder    DirectOrder?    @relation("DirectOrderQuote", fields: [directOrderId], references: [id], onDelete: SetNull)
   items          QuoteItem[]
   purchaseOrders PurchaseOrder[]
@@ -771,6 +777,7 @@ model Quote {
   @@index([status, elaborationDate])
   @@index([clientId])
   @@index([sellerId])
+  @@index([parentQuoteId])
   @@index([deletedAt])
   @@map("quotes")
 }
@@ -804,6 +811,7 @@ model QuoteItem {
   isUrgent             Boolean  @default(false) @map("is_urgent")
   warehouseId          String?  @map("warehouse_id")
   status               RecordStatus @default(ACTIVE)
+  originItemId         String?  @map("origin_item_id")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -992,6 +1000,7 @@ model ProductionOrder {
   folio              String               @unique
   sourceType         ProductionSourceType @map("source_type")
   clientId           String               @map("client_id")
+  quoteId            String?              @map("quote_id")
   approvalDate       DateTime             @map("approval_date") @db.Date
   status             ProductionStatus     @default(PENDING)
   totalItems         Int                  @default(0) @map("total_items")
@@ -999,20 +1008,29 @@ model ProductionOrder {
   progressPercentage Decimal              @default(0) @map("progress_percentage") @db.Decimal(8, 2)
   startedAt          DateTime?            @map("started_at")
   completedAt        DateTime?            @map("completed_at")
+  materialsReadyAt   DateTime?            @map("materials_ready_at")
+  materialsReadyBy   String?              @map("materials_ready_by")
+  reprintOfId        String?              @map("reprint_of_id")
+  reprintReason      String?              @map("reprint_reason")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   createdBy String?  @map("created_by")
   updatedBy String?  @map("updated_by")
 
-  client      Client            @relation(fields: [clientId], references: [id])
-  quote       Quote?            @relation("QuoteProduction")
-  directOrder DirectOrder?      @relation("DirectOrderProduction")
-  items       ProductionItem[]
-  purchaseOrders PurchaseOrder[]
+  client               Client            @relation(fields: [clientId], references: [id])
+  quote                Quote?            @relation("QuoteProductionOrders", fields: [quoteId], references: [id], onDelete: SetNull)
+  latestForQuote       Quote?            @relation("QuoteLatestProduction")
+  directOrder          DirectOrder?      @relation("DirectOrderProduction")
+  materialsReadyByUser User?             @relation("ProductionMaterialsReadyBy", fields: [materialsReadyBy], references: [id], onDelete: SetNull)
+  reprintOf            ProductionOrder?  @relation("ProductionReprints", fields: [reprintOfId], references: [id], onDelete: SetNull)
+  reprints             ProductionOrder[] @relation("ProductionReprints")
+  items                ProductionItem[]
+  purchaseOrders       PurchaseOrder[]
 
   @@index([status, approvalDate])
   @@index([clientId])
+  @@index([quoteId])
   @@map("production_orders")
 }
 
@@ -1030,15 +1048,32 @@ model ProductionItem {
   completedAt       DateTime?        @map("completed_at")
   completedBy       String?          @map("completed_by")
   observations      String?
+  durationMinutes   Int?             @map("duration_minutes")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
-  completedByUser User?           @relation("ProductionItemCompletedBy", fields: [completedBy], references: [id], onDelete: SetNull)
+  productionOrder ProductionOrder      @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  completedByUser User?                @relation("ProductionItemCompletedBy", fields: [completedBy], references: [id], onDelete: SetNull)
+  notes           ProductionItemNote[]
 
   @@index([productionOrderId, position])
+  @@index([sourceItemId])
   @@map("production_items")
+}
+
+model ProductionItemNote {
+  id                String   @id @default(cuid())
+  productionItemId  String   @map("production_item_id")
+  body              String
+  createdBy         String?  @map("created_by")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  productionItem ProductionItem @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
+  createdByUser  User?          @relation("ProductionItemNoteCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([productionItemId, createdAt])
+  @@map("production_item_notes")
 }
 
 // -----------------------------------------------------------------------------

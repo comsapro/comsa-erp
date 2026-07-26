@@ -18,6 +18,7 @@ async function getQuoteForPrint(id) {
       seller: { select: { id: true, name: true, email: true } },
       issuingCompany: true,
       items: {
+        where: { status: "ACTIVE" },
         orderBy: { position: "asc" },
       },
     },

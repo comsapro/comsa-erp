@@ -166,7 +166,6 @@ elaboración / solicitud / aprobación según el módulo.
 ## UI temporalmente oculta
 
 - Sección **Reportes** del menú lateral
-- Acciones **Imprimir / PDF** en cotizaciones
 
 Las rutas/APIs pueden seguir existiendo para un alcance posterior.
 
@@ -188,7 +187,8 @@ Las rutas/APIs pueden seguir existiendo para un alcance posterior.
 
 ## Limitaciones conocidas
 
-- Reportes PDF / Imprimir cotización ocultos en UI (fuera de alcance actual).
+- Reportes PDF / listados ocultos en menú (fuera de alcance actual de UI).
+- Partidas inactivas no aparecen en PDF/impresión; sí en admin.
 - Sin MRP / calculo automatico de materiales / reservas automaticas.
 - Sin versionado avanzado de cotizaciones (sufijo `A` solo de folio).
 - Sin Excel, BI avanzado, contabilidad, facturacion SAT ni portales externos.

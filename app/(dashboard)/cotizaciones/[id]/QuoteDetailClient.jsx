@@ -10,9 +10,11 @@ import {
   ChevronRight,
   Copy,
   Eye,
+  FileDown,
   Library,
   Pencil,
   Plus,
+  Printer,
   RotateCcw,
   Send,
   ThumbsDown,
@@ -232,7 +234,7 @@ export default function QuoteDetailClient({ quoteId }) {
   const duplicateItem = async (item) => {
     try {
       await api.post(`/api/cotizaciones/${quoteId}/items/${item.id}/duplicate`);
-      toast({ variant: "success", title: "Item duplicado" });
+      toast({ variant: "success", title: "Partida duplicada" });
       await loadQuote();
     } catch (err) {
       toast({
@@ -243,11 +245,47 @@ export default function QuoteDetailClient({ quoteId }) {
     }
   };
 
+  const toggleItemStatus = async (item) => {
+    try {
+      await api.patch(`/api/cotizaciones/${quoteId}/items/${item.id}`);
+      toast({
+        variant: "success",
+        title:
+          item.status === "ACTIVE"
+            ? "Partida desactivada"
+            : "Partida activada",
+      });
+      await loadQuote();
+    } catch (err) {
+      toast({
+        variant: "error",
+        title: "No se pudo cambiar el estatus",
+        description: err.message,
+      });
+    }
+  };
+
+  const saveItemToLibrary = async (item) => {
+    try {
+      await api.post(
+        `/api/cotizaciones/${quoteId}/items/${item.id}/guardar-biblioteca`
+      );
+      toast({ variant: "success", title: "Partida guardada en biblioteca" });
+      await loadQuote();
+    } catch (err) {
+      toast({
+        variant: "error",
+        title: "No se pudo guardar en biblioteca",
+        description: err.message,
+      });
+    }
+  };
+
   const deleteItem = async () => {
     if (!toDeleteItem) return;
     try {
       await api.del(`/api/cotizaciones/${quoteId}/items/${toDeleteItem.id}`);
-      toast({ variant: "success", title: "Item eliminado" });
+      toast({ variant: "success", title: "Partida eliminada" });
       await loadQuote();
     } catch (err) {
       toast({
@@ -288,6 +326,26 @@ export default function QuoteDetailClient({ quoteId }) {
             <Button as={Link} href="/cotizaciones" variant="secondary">
               <ArrowLeft className="h-4 w-4" /> Volver
             </Button>
+            {has("quotes.print") && (
+              <>
+                <Button
+                  as={Link}
+                  href={`/cotizaciones/${quoteId}/imprimir`}
+                  variant="secondary"
+                >
+                  <Printer className="h-4 w-4" /> Imprimir
+                </Button>
+                <Button
+                  as="a"
+                  href={`/api/cotizaciones/${quoteId}/pdf`}
+                  variant="secondary"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <FileDown className="h-4 w-4" /> PDF
+                </Button>
+              </>
+            )}
             {quote.status === "DRAFT" && has("quotes.submit") && (
               <Button
                 variant="subtle"
@@ -353,6 +411,47 @@ export default function QuoteDetailClient({ quoteId }) {
                   <Send className="h-4 w-4" /> Enviar a produccion
                 </Button>
               )}
+            {quote.status === "IN_PRODUCTION" &&
+              has("quotes.send_to_production") && (
+                <Button
+                  variant="subtle"
+                  loading={actionBusy}
+                  onClick={() => runAction("send-production")}
+                >
+                  <Send className="h-4 w-4" /> Enviar partidas nuevas
+                </Button>
+              )}
+            {["APPROVED", "IN_PRODUCTION"].includes(quote.status) &&
+              has("quotes.create") && (
+                <Button
+                  variant="secondary"
+                  loading={actionBusy}
+                  onClick={async () => {
+                    setActionBusy(true);
+                    try {
+                      const created = await api.post(
+                        `/api/cotizaciones/${quoteId}/acciones/revise`
+                      );
+                      toast({
+                        variant: "success",
+                        title: "Nueva version creada",
+                        description: created?.folio,
+                      });
+                      router.push(`/cotizaciones/${created.id}`);
+                    } catch (err) {
+                      toast({
+                        variant: "error",
+                        title: "No se pudo versionar",
+                        description: err.message,
+                      });
+                    } finally {
+                      setActionBusy(false);
+                    }
+                  }}
+                >
+                  <Copy className="h-4 w-4" /> Nueva version
+                </Button>
+              )}
           </div>
         }
       />
@@ -413,6 +512,40 @@ export default function QuoteDetailClient({ quoteId }) {
                 <dt className="text-content-muted">Moneda</dt>
                 <dd>{quote.currency}</dd>
               </div>
+              <div>
+                <dt className="text-content-muted">Version</dt>
+                <dd>{quote.version || "A"}</dd>
+              </div>
+              {quote.parentQuote && (
+                <div>
+                  <dt className="text-content-muted">Version anterior</dt>
+                  <dd>
+                    <Link
+                      className="text-brand-700 hover:underline"
+                      href={`/cotizaciones/${quote.parentQuote.id}`}
+                    >
+                      {quote.parentQuote.folio}
+                    </Link>
+                  </dd>
+                </div>
+              )}
+              {(quote.productionOrders || []).length > 0 && (
+                <div className="sm:col-span-2">
+                  <dt className="text-content-muted">Ordenes de produccion</dt>
+                  <dd className="mt-1 flex flex-wrap gap-2">
+                    {quote.productionOrders.map((op) => (
+                      <Link
+                        key={op.id}
+                        href={`/produccion/${op.id}`}
+                        className="rounded-full bg-surface-muted px-2.5 py-1 text-xs hover:bg-brand-50"
+                      >
+                        {op.folio}
+                        {op.materialsReadyAt ? " · material listo" : ""}
+                      </Link>
+                    ))}
+                  </dd>
+                </div>
+              )}
               <div>
                 <dt className="text-content-muted">OC / Requisicion</dt>
                 <dd>
@@ -526,9 +659,14 @@ export default function QuoteDetailClient({ quoteId }) {
                     counts.materials +
                     counts.extras +
                     counts.installations;
+                  const inactive = item.status === "INACTIVE";
                   return (
                     <Fragment key={item.id}>
-                      <tr className="border-b border-border last:border-0">
+                      <tr
+                        className={`border-b border-border last:border-0 ${
+                          inactive ? "bg-surface-muted/40 opacity-70" : ""
+                        }`}
+                      >
                         <td className="px-2 py-3">
                           <Button
                             size="icon"
@@ -557,6 +695,7 @@ export default function QuoteDetailClient({ quoteId }) {
                             {item.description}
                           </p>
                           <p className="mt-0.5 text-xs text-content-muted">
+                            {inactive ? "Inactiva · " : ""}
                             {lineTotal > 0
                               ? `${counts.manufacturing} manuf. · ${counts.materials} mat. · ${counts.extras} ext. · ${counts.installations} inst.`
                               : "Sin líneas de costo"}
@@ -583,8 +722,28 @@ export default function QuoteDetailClient({ quoteId }) {
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
+                            {has("quote_templates.create") && item.id && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                aria-label="Guardar en biblioteca"
+                                onClick={() => saveItemToLibrary(item)}
+                              >
+                                <Library className="h-4 w-4" />
+                              </Button>
+                            )}
                             {isDraft && has("quotes.edit") && (
                               <>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  aria-label={
+                                    inactive ? "Activar partida" : "Desactivar partida"
+                                  }
+                                  onClick={() => toggleItemStatus(item)}
+                                >
+                                  {inactive ? "Activar" : "Off"}
+                                </Button>
                                 <Button
                                   size="icon"
                                   variant="ghost"
@@ -647,9 +806,11 @@ export default function QuoteDetailClient({ quoteId }) {
         <QuoteItemForm
           key={itemModal.record?.id || "new-item"}
           initial={itemModal.record}
+          quoteId={quoteId}
           saving={savingItem}
           currency={currency}
           onSubmit={saveItem}
+          onSavedToLibrary={loadQuote}
         />
       </Modal>
 

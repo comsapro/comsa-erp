@@ -534,6 +534,7 @@ export async function importQuotesAndProduction(prisma, {
             folio,
             sourceType: "QUOTE",
             clientId: quote.clientId,
+            quoteId: quote.id,
             approvalDate,
             status,
             totalItems: quote.items.length,
