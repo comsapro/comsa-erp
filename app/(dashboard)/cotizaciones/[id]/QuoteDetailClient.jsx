@@ -14,6 +14,7 @@ import {
   Library,
   Pencil,
   Plus,
+  Power,
   Printer,
   RotateCcw,
   Send,
@@ -34,6 +35,7 @@ import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { Alert } from "@/components/feedback/Alert";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { QuoteStatusBadge } from "@/components/ui/Badge";
+import { RowActions } from "@/components/tables/RowActions";
 import { usePermissions } from "@/components/permissions/PermissionsProvider";
 import { useToast } from "@/components/feedback/ToastProvider";
 import { formatDate, formatMoney } from "@/lib/utils/format";
@@ -713,7 +715,7 @@ export default function QuoteDetailClient({ quoteId }) {
                           {formatMoney(item.total, currency)}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex justify-end gap-1">
+                          <div className="flex items-center justify-end gap-1">
                             <Button
                               size="icon"
                               variant="ghost"
@@ -722,56 +724,50 @@ export default function QuoteDetailClient({ quoteId }) {
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
-                            {has("quote_templates.create") && item.id && (
+                            {isDraft && has("quotes.edit") && (
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                aria-label="Guardar en biblioteca"
-                                onClick={() => saveItemToLibrary(item)}
+                                aria-label="Editar partida"
+                                onClick={() =>
+                                  setItemModal({ open: true, record: item })
+                                }
                               >
-                                <Library className="h-4 w-4" />
+                                <Pencil className="h-4 w-4" />
                               </Button>
                             )}
-                            {isDraft && has("quotes.edit") && (
-                              <>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  aria-label={
-                                    inactive ? "Activar partida" : "Desactivar partida"
-                                  }
-                                  onClick={() => toggleItemStatus(item)}
-                                >
-                                  {inactive ? "Activar" : "Off"}
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  aria-label="Editar partida"
-                                  onClick={() =>
-                                    setItemModal({ open: true, record: item })
-                                  }
-                                >
-                                  <Pencil className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  aria-label="Duplicar partida"
-                                  onClick={() => duplicateItem(item)}
-                                >
-                                  <Copy className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  aria-label="Eliminar partida"
-                                  onClick={() => setToDeleteItem(item)}
-                                >
-                                  <Trash2 className="h-4 w-4 text-danger-700" />
-                                </Button>
-                              </>
-                            )}
+                            <RowActions
+                              actions={[
+                                {
+                                  label: inactive
+                                    ? "Activar partida"
+                                    : "Desactivar partida",
+                                  icon: Power,
+                                  onClick: () => toggleItemStatus(item),
+                                  hidden: !isDraft || !has("quotes.edit"),
+                                },
+                                {
+                                  label: "Guardar en biblioteca",
+                                  icon: Library,
+                                  onClick: () => saveItemToLibrary(item),
+                                  hidden:
+                                    !has("quote_templates.create") || !item.id,
+                                },
+                                {
+                                  label: "Duplicar partida",
+                                  icon: Copy,
+                                  onClick: () => duplicateItem(item),
+                                  hidden: !isDraft || !has("quotes.edit"),
+                                },
+                                {
+                                  label: "Eliminar partida",
+                                  icon: Trash2,
+                                  onClick: () => setToDeleteItem(item),
+                                  danger: true,
+                                  hidden: !isDraft || !has("quotes.edit"),
+                                },
+                              ]}
+                            />
                           </div>
                         </td>
                       </tr>
