@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { requiredString, optionalString } from "@/lib/validations/common";
 import { PROCESS_UNITS } from "@/domains/catalogs/schemas";
-import { ORDER_TYPES, CURRENCIES } from "./constants";
+import { ORDER_TYPES, CURRENCIES, DELIVERY_TIME_UNITS, normalizeDeliveryTimeUnit } from "./constants";
 
 const DELIVERY_DAYS_TYPES = ["BUSINESS", "CALENDAR"];
 
@@ -15,7 +15,7 @@ const optionalInt = z.preprocess(
   z.coerce.number().int().nullable().optional()
 );
 
-export const quoteCreateSchema = z.object({
+const quoteHeaderFields = {
   clientId: requiredString("El cliente es requerido"),
   clientContactId: optionalId,
   sellerId: optionalId,
@@ -35,12 +35,34 @@ export const quoteCreateSchema = z.object({
   advancePercentage: z.coerce.number().min(0).max(100).default(0),
   settlementPercentage: z.coerce.number().min(0).max(100).default(100),
   paymentNotes: optionalString,
-});
+};
 
-export const quoteUpdateSchema = quoteCreateSchema.partial();
+function refineAdvanceSettlement(data, ctx) {
+  if (data.advancePercentage == null || data.settlementPercentage == null) {
+    return;
+  }
+  const advance = Number(data.advancePercentage) || 0;
+  const settlement = Number(data.settlementPercentage) || 0;
+  if (Math.abs(advance + settlement - 100) > 0.01) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["settlementPercentage"],
+      message: "Anticipo y liquidacion deben sumar 100%",
+    });
+  }
+}
+
+export const quoteCreateSchema = z
+  .object(quoteHeaderFields)
+  .superRefine(refineAdvanceSettlement);
+
+export const quoteUpdateSchema = z
+  .object(quoteHeaderFields)
+  .partial()
+  .superRefine(refineAdvanceSettlement);
 
 export const manufacturingLineSchema = z.object({
-  manufacturingProcessId: optionalId,
+  manufacturingProcessId: requiredString("Selecciona un proceso del catalogo"),
   processNameSnapshot: optionalString,
   unitSnapshot: z.enum(PROCESS_UNITS).optional(),
   quantity: z.coerce.number().min(0).default(1),
@@ -92,7 +114,13 @@ export const quoteItemUpsertSchema = z.object({
   unit: optionalString,
   deliveryTimeMin: optionalInt,
   deliveryTimeMax: optionalInt,
-  deliveryTimeUnit: optionalString,
+  deliveryTimeUnit: z.preprocess(
+    (v) => {
+      if (v === "" || v == null) return null;
+      return normalizeDeliveryTimeUnit(v);
+    },
+    z.enum(DELIVERY_TIME_UNITS).nullable().optional()
+  ),
   deliveryDaysType: z.preprocess(
     (v) => (v === "" || v == null ? null : v),
     z.enum(DELIVERY_DAYS_TYPES).nullable().optional()

@@ -106,13 +106,23 @@ test("Permisos etapa 2 existen en el catalogo", () => {
   }
 });
 
-test("Ventas no tiene quotes.approve ni edit_benefit", () => {
+test("Ventas no tiene quotes.approve ni print", () => {
   const ventas = SYSTEM_ROLES.find((r) => r.name === "Ventas");
   assert.ok(!ventas.permissions.includes("quotes.approve"));
   assert.ok(!ventas.permissions.includes("quotes.edit_benefit"));
   assert.ok(!ventas.permissions.includes("quotes.apply_discount"));
+  assert.ok(!ventas.permissions.includes("quotes.print"));
   assert.ok(ventas.permissions.includes("quotes.create"));
   assert.ok(ventas.permissions.includes("quotes.submit"));
+});
+
+test("Supervisor puede aprobar e imprimir cotizaciones", () => {
+  const supervisor = SYSTEM_ROLES.find((r) => r.name === "Supervisor");
+  assert.ok(supervisor);
+  assert.ok(supervisor.permissions.includes("quotes.approve"));
+  assert.ok(supervisor.permissions.includes("quotes.reject"));
+  assert.ok(supervisor.permissions.includes("quotes.print"));
+  assert.ok(supervisor.permissions.includes("manufacturing_processes.create"));
 });
 
 test("Produccion tiene production.complete_order", () => {

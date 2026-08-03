@@ -2,6 +2,7 @@
 
 import { formatMoney } from "@/lib/utils/format";
 import { PROCESS_UNIT_LABELS } from "@/domains/catalogs/schemas";
+import { PartidaAttachments } from "@/components/quotes/PartidaAttachments";
 
 function countLabel(n, singular, plural) {
   const count = Number(n) || 0;
@@ -60,6 +61,8 @@ export function PartidaDetailView({
   canViewCost = false,
   canViewBenefit = false,
   compact = false,
+  quoteId = null,
+  canEditAttachments = false,
 }) {
   if (!item) return null;
 
@@ -67,6 +70,7 @@ export function PartidaDetailView({
   const materials = item.materials || [];
   const extras = item.extras || [];
   const installations = item.installations || [];
+  const attachments = item.attachments || [];
 
   const deliveryParts = [
     item.deliveryTimeMin != null || item.deliveryTimeMax != null
@@ -161,6 +165,9 @@ export function PartidaDetailView({
                     <p className="text-content-muted">
                       {[r.dimensions, r.presentation].filter(Boolean).join(" · ")}
                     </p>
+                  )}
+                  {r.supplier?.name && (
+                    <p className="text-content-muted">Prov: {r.supplier.name}</p>
                   )}
                 </div>
               ),
@@ -276,6 +283,18 @@ export function PartidaDetailView({
               </div>
             )}
           </div>
+        </Section>
+      )}
+
+      {(attachments.length > 0 || (quoteId && item.id)) && (
+        <Section title="Documentos">
+          <PartidaAttachments
+            quoteId={quoteId}
+            itemId={item.id}
+            initialAttachments={attachments}
+            canEdit={canEditAttachments}
+            compact={compact}
+          />
         </Section>
       )}
 

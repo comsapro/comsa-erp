@@ -28,9 +28,9 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
-import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
 import { Field } from "@/components/forms/Field";
+import { CatalogCombobox } from "@/components/forms/CatalogCombobox";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { Alert } from "@/components/feedback/Alert";
 import { Skeleton } from "@/components/feedback/Skeleton";
@@ -43,6 +43,7 @@ import {
   PartidaDetailView,
   partidaLineCounts,
 } from "@/components/quotes/PartidaDetailView";
+import { QuoteHeaderEdit } from "@/components/quotes/QuoteHeaderEdit";
 import QuoteItemForm from "./QuoteItemForm";
 
 export default function QuoteDetailClient({ quoteId }) {
@@ -171,15 +172,42 @@ export default function QuoteDetailClient({ quoteId }) {
 
   const openLibrary = async () => {
     setLibraryOpen(true);
+    setSelectedTemplateId("");
     try {
       const res = await api.get(
-        `/api/biblioteca-items${toQuery({ status: "ACTIVE", pageSize: 100 })}`
+        `/api/biblioteca-items${toQuery({
+          status: "ACTIVE",
+          pageSize: 50,
+          sort: "name",
+          order: "asc",
+        })}`
       );
       setTemplates(res?.data || []);
     } catch (err) {
       toast({
         variant: "error",
         title: "No se pudo cargar la biblioteca",
+        description: err.message,
+      });
+    }
+  };
+
+  const searchLibrary = async (q) => {
+    try {
+      const res = await api.get(
+        `/api/biblioteca-items${toQuery({
+          status: "ACTIVE",
+          q: q || undefined,
+          pageSize: 50,
+          sort: "name",
+          order: "asc",
+        })}`
+      );
+      setTemplates(res?.data || []);
+    } catch (err) {
+      toast({
+        variant: "error",
+        title: "No se pudo buscar en biblioteca",
         description: err.message,
       });
     }
@@ -328,7 +356,8 @@ export default function QuoteDetailClient({ quoteId }) {
             <Button as={Link} href="/cotizaciones" variant="secondary">
               <ArrowLeft className="h-4 w-4" /> Volver
             </Button>
-            {has("quotes.print") && (
+            {has("quotes.print") &&
+              ["APPROVED", "IN_PRODUCTION"].includes(quote.status) && (
               <>
                 <Button
                   as={Link}
@@ -338,16 +367,49 @@ export default function QuoteDetailClient({ quoteId }) {
                   <Printer className="h-4 w-4" /> Imprimir
                 </Button>
                 <Button
-                  as="a"
-                  href={`/api/cotizaciones/${quoteId}/pdf`}
                   variant="secondary"
-                  target="_blank"
-                  rel="noreferrer"
+                  onClick={async () => {
+                    try {
+                      const res = await fetch(
+                        `/api/cotizaciones/${quoteId}/pdf`,
+                        { credentials: "include" }
+                      );
+                      if (!res.ok) {
+                        const body = await res.json().catch(() => ({}));
+                        throw new Error(
+                          body.error || "No se pudo generar el PDF"
+                        );
+                      }
+                      const blob = await res.blob();
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `${quote.folio || "cotizacion"}.pdf`;
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    } catch (err) {
+                      toast({
+                        variant: "error",
+                        title: "PDF no disponible",
+                        description: err.message,
+                      });
+                    }
+                  }}
                 >
                   <FileDown className="h-4 w-4" /> PDF
                 </Button>
               </>
             )}
+            {has("quotes.print") &&
+              !["APPROVED", "IN_PRODUCTION"].includes(quote.status) && (
+                <Button
+                  variant="secondary"
+                  disabled
+                  title="Solo disponible cuando la cotizacion esta aprobada"
+                >
+                  <Printer className="h-4 w-4" /> Imprimir / PDF
+                </Button>
+              )}
             {quote.status === "DRAFT" && has("quotes.submit") && (
               <Button
                 variant="subtle"
@@ -477,90 +539,42 @@ export default function QuoteDetailClient({ quoteId }) {
 
       <div className="mb-6 grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
-          <CardHeader>
-            <h2 className="text-sm font-semibold text-content">
-              Informacion general
-            </h2>
-          </CardHeader>
           <CardBody>
-            <dl className="grid gap-3 text-sm sm:grid-cols-2">
-              <div>
-                <dt className="text-content-muted">Cliente</dt>
-                <dd className="font-medium">
-                  {quote.client?.commercialName || "-"}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-content-muted">Contacto</dt>
-                <dd>{quote.clientContact?.name || "-"}</dd>
-              </div>
-              <div>
-                <dt className="text-content-muted">Empresa emisora</dt>
-                <dd>{quote.issuingCompany?.commercialName || "-"}</dd>
-              </div>
-              <div>
-                <dt className="text-content-muted">Vendedor</dt>
-                <dd>{quote.seller?.name || "-"}</dd>
-              </div>
-              <div>
-                <dt className="text-content-muted">Elaboracion</dt>
-                <dd>{formatDate(quote.elaborationDate)}</dd>
-              </div>
-              <div>
-                <dt className="text-content-muted">Vigencia</dt>
-                <dd>{formatDate(quote.validUntil)}</dd>
-              </div>
-              <div>
-                <dt className="text-content-muted">Moneda</dt>
-                <dd>{quote.currency}</dd>
-              </div>
-              <div>
-                <dt className="text-content-muted">Version</dt>
-                <dd>{quote.version || "A"}</dd>
-              </div>
-              {quote.parentQuote && (
-                <div>
-                  <dt className="text-content-muted">Version anterior</dt>
-                  <dd>
+            <QuoteHeaderEdit
+              quote={quote}
+              onSaved={(updated) => {
+                if (updated?.id) setQuote(updated);
+                else loadQuote();
+              }}
+            />
+            {(quote.productionOrders || []).length > 0 && (
+              <div className="mt-4 border-t border-border pt-4 text-sm">
+                <p className="text-content-muted">Ordenes de produccion</p>
+                <div className="mt-1 flex flex-wrap gap-2">
+                  {quote.productionOrders.map((op) => (
                     <Link
-                      className="text-brand-700 hover:underline"
-                      href={`/cotizaciones/${quote.parentQuote.id}`}
+                      key={op.id}
+                      href={`/produccion/${op.id}`}
+                      className="rounded-full bg-surface-muted px-2.5 py-1 text-xs hover:bg-brand-50"
                     >
-                      {quote.parentQuote.folio}
+                      {op.folio}
+                      {op.materialsReadyAt ? " · material listo" : ""}
                     </Link>
-                  </dd>
+                  ))}
                 </div>
-              )}
-              {(quote.productionOrders || []).length > 0 && (
-                <div className="sm:col-span-2">
-                  <dt className="text-content-muted">Ordenes de produccion</dt>
-                  <dd className="mt-1 flex flex-wrap gap-2">
-                    {quote.productionOrders.map((op) => (
-                      <Link
-                        key={op.id}
-                        href={`/produccion/${op.id}`}
-                        className="rounded-full bg-surface-muted px-2.5 py-1 text-xs hover:bg-brand-50"
-                      >
-                        {op.folio}
-                        {op.materialsReadyAt ? " · material listo" : ""}
-                      </Link>
-                    ))}
-                  </dd>
-                </div>
-              )}
-              <div>
-                <dt className="text-content-muted">OC / Requisicion</dt>
-                <dd>
-                  {quote.purchaseOrder || "-"} / {quote.requisition || "-"}
-                </dd>
               </div>
-              {quote.paymentNotes && (
-                <div className="sm:col-span-2">
-                  <dt className="text-content-muted">Notas de pago</dt>
-                  <dd className="whitespace-pre-wrap">{quote.paymentNotes}</dd>
-                </div>
-              )}
-            </dl>
+            )}
+            {quote.parentQuote && (
+              <div className="mt-3 text-sm">
+                <span className="text-content-muted">Version anterior: </span>
+                <Link
+                  className="text-brand-700 hover:underline"
+                  href={`/cotizaciones/${quote.parentQuote.id}`}
+                >
+                  {quote.parentQuote.folio}
+                </Link>
+              </div>
+            )}
           </CardBody>
         </Card>
 
@@ -779,6 +793,8 @@ export default function QuoteDetailClient({ quoteId }) {
                               currency={currency}
                               canViewCost={canViewCost}
                               canViewBenefit={canViewBenefit}
+                              quoteId={quoteId}
+                              canEditAttachments={isDraft && has("quotes.edit")}
                               compact
                             />
                           </td>
@@ -822,6 +838,8 @@ export default function QuoteDetailClient({ quoteId }) {
             currency={currency}
             canViewCost={canViewCost}
             canViewBenefit={canViewBenefit}
+            quoteId={quoteId}
+            canEditAttachments={isDraft && has("quotes.edit")}
           />
         )}
       </Modal>
@@ -833,21 +851,21 @@ export default function QuoteDetailClient({ quoteId }) {
         size="md"
       >
         <div className="space-y-4">
-          <Field label="Plantilla" htmlFor="templateId">
-            <Select
-              id="templateId"
-              value={selectedTemplateId}
-              onChange={(e) => setSelectedTemplateId(e.target.value)}
-            >
-              <option value="">Selecciona una plantilla</option>
-              {templates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                  {t.category ? ` (${t.category})` : ""}
-                </option>
-              ))}
-            </Select>
-          </Field>
+          <CatalogCombobox
+            label="Plantilla"
+            value={selectedTemplateId}
+            onChange={setSelectedTemplateId}
+            options={(templates || []).map((t) => ({
+              value: t.id,
+              label: t.name,
+              description: t.category || undefined,
+            }))}
+            placeholder="Buscar plantilla..."
+            allowClear
+            clearLabel="Sin seleccion"
+            canCreate={false}
+            onSearch={searchLibrary}
+          />
           <div className="flex justify-end gap-2">
             <Button variant="secondary" onClick={() => setLibraryOpen(false)}>
               Cerrar

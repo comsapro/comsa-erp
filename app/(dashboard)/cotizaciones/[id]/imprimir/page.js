@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { QUOTE_STATUS_LABELS } from "@/domains/quotes/constants";
 import { formatDate, formatMoney } from "@/lib/utils/format";
 import { Button } from "@/components/ui/Button";
+import { Alert } from "@/components/feedback/Alert";
 import PrintButton from "./PrintButton";
 
 export const metadata = { title: "Imprimir cotizacion" };
@@ -30,6 +31,21 @@ export default async function ImprimirCotizacionPage({ params }) {
   const { id } = await params;
   const quote = await getQuoteForPrint(id);
   if (!quote) notFound();
+
+  if (!["APPROVED", "IN_PRODUCTION"].includes(quote.status)) {
+    return (
+      <div className="mx-auto max-w-lg p-8">
+        <Alert variant="warning" title="No disponible para imprimir">
+          Solo las cotizaciones aprobadas pueden imprimirse o exportarse a PDF.
+        </Alert>
+        <div className="mt-4">
+          <Button as={Link} href={`/cotizaciones/${id}`} variant="secondary">
+            Volver a la cotizacion
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   const currency = quote.currency || "MXN";
   const company = quote.issuingCompany;

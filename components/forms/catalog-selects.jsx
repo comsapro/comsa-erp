@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { api } from "@/lib/api/client";
+import { api, toQuery } from "@/lib/api/client";
 import {
   categoryCreateSchema,
   issuingCompanyCreateSchema,
@@ -499,10 +499,90 @@ export function ClientCatalogSelect({
   error,
   required,
   label = "Cliente",
+  remoteSearch = false,
+  status = "ACTIVE",
 }) {
   const { has } = usePermissions();
+  const { toast } = useToast();
   const [createOpen, setCreateOpen] = useState(false);
   const [initialName, setInitialName] = useState("");
+  const [remoteOptions, setRemoteOptions] = useState(options || []);
+  const remoteOptionsRef = useRef(remoteOptions);
+  const hydratedValueRef = useRef(null);
+
+  useEffect(() => {
+    remoteOptionsRef.current = remoteOptions;
+  }, [remoteOptions]);
+
+  // Solo hidratar lista inicial una vez (no en cada busqueda del padre)
+  useEffect(() => {
+    if (!remoteSearch) return;
+    if (remoteOptionsRef.current.length > 0) return;
+    if ((options || []).length === 0) return;
+    setRemoteOptions(options);
+  }, [options, remoteSearch]);
+
+  // Mantener la opcion seleccionada visible aunque no venga en la pagina actual
+  useEffect(() => {
+    if (!remoteSearch || !value) return;
+    if (hydratedValueRef.current === value) return;
+    if (remoteOptionsRef.current.some((c) => c.id === value)) {
+      hydratedValueRef.current = value;
+      return;
+    }
+    let cancelled = false;
+    api
+      .get(`/api/clientes/${value}`)
+      .then((detail) => {
+        if (cancelled || !detail?.id) return;
+        hydratedValueRef.current = value;
+        setRemoteOptions((prev) => {
+          if (prev.some((c) => c.id === detail.id)) return prev;
+          return [detail, ...prev];
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [value, remoteSearch]);
+
+  const handleSearch = useCallback(
+    async (q) => {
+      try {
+        const res = await api.get(
+          `/api/clientes${toQuery({
+            status,
+            q: q || undefined,
+            pageSize: 50,
+            sort: "commercialName",
+            order: "asc",
+          })}`
+        );
+        const data = res?.data || [];
+        // Conservar cliente seleccionado si no viene en la pagina
+        setRemoteOptions((prev) => {
+          const selected = value
+            ? prev.find((c) => c.id === value) ||
+              (options || []).find((c) => c.id === value)
+            : null;
+          if (selected && !data.some((c) => c.id === selected.id)) {
+            return [selected, ...data];
+          }
+          return data;
+        });
+      } catch (err) {
+        toast({
+          variant: "error",
+          title: "No se pudo buscar clientes",
+          description: err.message,
+        });
+      }
+    },
+    [status, toast, value, options]
+  );
+
+  const list = remoteSearch ? remoteOptions : options || [];
 
   return (
     <>
@@ -510,7 +590,7 @@ export function ClientCatalogSelect({
         label={label}
         value={value}
         onChange={onChange}
-        options={(options || []).map((c) => ({
+        options={list.map((c) => ({
           value: c.id,
           label: c.commercialName,
           description: c.rfc || undefined,
@@ -524,13 +604,16 @@ export function ClientCatalogSelect({
           setInitialName(name);
           setCreateOpen(true);
         }}
+        onSearch={remoteSearch ? handleSearch : undefined}
       />
       <QuickCreateClientModal
         open={createOpen}
         initialName={initialName}
         onClose={() => setCreateOpen(false)}
         onCreated={(created) => {
-          onOptionsChange?.([...(options || []), created]);
+          const next = [created, ...(list || []).filter((c) => c.id !== created.id)];
+          if (remoteSearch) setRemoteOptions(next);
+          onOptionsChange?.(next);
           onChange?.(created.id);
         }}
       />
@@ -643,6 +726,7 @@ export function SellerCatalogSelect({
   options,
   error,
   label = "Vendedor",
+  required = false,
 }) {
   return (
     <CatalogCombobox
@@ -656,6 +740,7 @@ export function SellerCatalogSelect({
       }))}
       placeholder="Buscar vendedor..."
       error={error}
+      required={required}
       allowClear={false}
       canCreate={false}
     />
@@ -670,49 +755,30 @@ export function ProcessCatalogSelect({
   onSelected,
   error,
   label = "Proceso",
-  allowClear = true,
+  allowClear = false,
+  required = true,
 }) {
-  const { has } = usePermissions();
-  const [createOpen, setCreateOpen] = useState(false);
-  const [initialName, setInitialName] = useState("");
-
   return (
-    <>
-      <CatalogCombobox
-        label={label}
-        value={value}
-        onChange={(id) => {
-          onChange?.(id);
-          const found = (options || []).find((p) => p.id === id);
-          if (found) onSelected?.(found);
-        }}
-        options={(options || []).map((p) => ({
-          value: p.id,
-          label: `${p.code} — ${p.name}`,
-          description: PROCESS_UNIT_LABELS[p.unit] || p.unit,
-        }))}
-        placeholder="Buscar proceso..."
-        error={error}
-        allowClear={allowClear}
-        clearLabel="Manual / sin catalogo"
-        canCreate={has("manufacturing_processes.create")}
-        createLabel="Agregar nuevo proceso"
-        onCreateRequest={(name) => {
-          setInitialName(name);
-          setCreateOpen(true);
-        }}
-      />
-      <QuickCreateProcessModal
-        open={createOpen}
-        initialName={initialName}
-        onClose={() => setCreateOpen(false)}
-        onCreated={(created) => {
-          onOptionsChange?.([...(options || []), created]);
-          onChange?.(created.id);
-          onSelected?.(created);
-        }}
-      />
-    </>
+    <CatalogCombobox
+      label={label}
+      value={value}
+      onChange={(id) => {
+        onChange?.(id);
+        const found = (options || []).find((p) => p.id === id);
+        if (found) onSelected?.(found);
+      }}
+      options={(options || []).map((p) => ({
+        value: p.id,
+        label: `${p.code} — ${p.name}`,
+        description: PROCESS_UNIT_LABELS[p.unit] || p.unit,
+      }))}
+      placeholder="Buscar proceso del catalogo..."
+      error={error}
+      required={required}
+      allowClear={allowClear}
+      clearLabel="Sin proceso"
+      canCreate={false}
+    />
   );
 }
 

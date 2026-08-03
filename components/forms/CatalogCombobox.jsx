@@ -8,6 +8,9 @@ import { cn } from "@/lib/utils/cn";
 /**
  * Combobox buscable con opcion "Agregar nueva".
  * options: [{ value, label, description? }]
+ *
+ * Si se pasa onSearch, la busqueda es remota (debounce) y no filtra en cliente.
+ * onSearch se guarda en ref para no re-disparar el efecto en cada render.
  */
 export function CatalogCombobox({
   label,
@@ -25,13 +28,20 @@ export function CatalogCombobox({
   canCreate = false,
   createLabel = "Agregar nueva",
   onCreateRequest,
+  onSearch,
+  searchDebounceMs = 300,
   className,
 }) {
   const id = useId();
   const rootRef = useRef(null);
   const inputRef = useRef(null);
+  const onSearchRef = useRef(onSearch);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [searching, setSearching] = useState(false);
+  const remote = typeof onSearch === "function";
+
+  onSearchRef.current = onSearch;
 
   const selected = useMemo(
     () => options.find((o) => String(o.value) === String(value)) || null,
@@ -39,13 +49,14 @@ export function CatalogCombobox({
   );
 
   const filtered = useMemo(() => {
+    if (remote) return options;
     const q = query.trim().toLowerCase();
     if (!q) return options;
     return options.filter((o) => {
       const hay = `${o.label || ""} ${o.description || ""}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [options, query]);
+  }, [options, query, remote]);
 
   useEffect(() => {
     function onDocClick(e) {
@@ -57,6 +68,23 @@ export function CatalogCombobox({
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
+
+  useEffect(() => {
+    if (!remote || !open) return undefined;
+    let cancelled = false;
+    const handle = setTimeout(async () => {
+      setSearching(true);
+      try {
+        await onSearchRef.current?.(query.trim());
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    }, searchDebounceMs);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [query, open, remote, searchDebounceMs]);
 
   const openList = () => {
     if (disabled) return;
@@ -130,10 +158,7 @@ export function CatalogCombobox({
               />
             </div>
 
-            <ul
-              role="listbox"
-              className="max-h-56 overflow-y-auto py-1"
-            >
+            <ul role="listbox" className="max-h-56 overflow-y-auto py-1">
               {allowClear && (
                 <li>
                   <button
@@ -146,7 +171,11 @@ export function CatalogCombobox({
                 </li>
               )}
 
-              {filtered.length === 0 && (
+              {searching && filtered.length === 0 && (
+                <li className="px-3 py-2 text-sm text-content-muted">Buscando...</li>
+              )}
+
+              {!searching && filtered.length === 0 && (
                 <li className="px-3 py-2 text-sm text-content-muted">{emptyLabel}</li>
               )}
 

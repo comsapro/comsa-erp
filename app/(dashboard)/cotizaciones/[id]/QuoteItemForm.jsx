@@ -4,6 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { quoteItemUpsertSchema } from "@/domains/quotes/schemas";
+import {
+  DELIVERY_TIME_UNITS,
+  DELIVERY_TIME_UNIT_LABELS,
+  normalizeDeliveryTimeUnit,
+} from "@/domains/quotes/constants";
 import { calculateQuoteItemTotals, lineAmount } from "@/lib/quotes/calculations";
 import { api, toQuery } from "@/lib/api/client";
 import { Button } from "@/components/ui/Button";
@@ -15,6 +20,7 @@ import {
 } from "@/components/forms/fields";
 import { CostLineSections } from "@/components/quotes/CostLineSections";
 import { PartidaDetailView } from "@/components/quotes/PartidaDetailView";
+import { PartidaAttachments } from "@/components/quotes/PartidaAttachments";
 import { usePermissions } from "@/components/permissions/PermissionsProvider";
 import { useToast } from "@/components/feedback/ToastProvider";
 
@@ -27,7 +33,7 @@ function num(value, fallback = 0) {
 function mapLines(initial) {
   return {
     manufacturing: (initial?.manufacturing || []).map((r, i) => ({
-      manufacturingProcessId: r.manufacturingProcessId || null,
+      manufacturingProcessId: r.manufacturingProcessId || "",
       processNameSnapshot: r.processNameSnapshot || "",
       unitSnapshot: r.unitSnapshot || "HOUR",
       quantity: num(r.quantity, 1),
@@ -41,7 +47,7 @@ function mapLines(initial) {
       descriptionSnapshot: r.descriptionSnapshot || "",
       dimensions: r.dimensions || "",
       presentation: r.presentation || "",
-      unit: r.unit || "",
+      unit: r.unit || "PZA",
       quantity: num(r.quantity, 1),
       unitPrice: num(r.unitPrice, 0),
       observations: r.observations || "",
@@ -102,7 +108,8 @@ export default function QuoteItemForm({
       unit: initial?.unit || "",
       deliveryTimeMin: initial?.deliveryTimeMin ?? "",
       deliveryTimeMax: initial?.deliveryTimeMax ?? "",
-      deliveryTimeUnit: initial?.deliveryTimeUnit || "days",
+      deliveryTimeUnit:
+        normalizeDeliveryTimeUnit(initial?.deliveryTimeUnit) || "DAY",
       deliveryDaysType: initial?.deliveryDaysType || "",
       clientObservations: initial?.clientObservations || "",
       internalObservations: initial?.internalObservations || "",
@@ -317,7 +324,7 @@ export default function QuoteItemForm({
         </div>
         <div className="grid gap-4 sm:grid-cols-4">
           <TextField
-            label="Tiempo min"
+            label="Entrega min"
             name="deliveryTimeMin"
             type="number"
             min="0"
@@ -325,19 +332,25 @@ export default function QuoteItemForm({
             error={errors.deliveryTimeMin?.message}
           />
           <TextField
-            label="Tiempo max"
+            label="Entrega max"
             name="deliveryTimeMax"
             type="number"
             min="0"
             register={register}
             error={errors.deliveryTimeMax?.message}
           />
-          <TextField
-            label="Unidad de tiempo"
+          <SelectField
+            label="Unidad de entrega"
             name="deliveryTimeUnit"
             register={register}
             error={errors.deliveryTimeUnit?.message}
-          />
+          >
+            {DELIVERY_TIME_UNITS.map((u) => (
+              <option key={u} value={u}>
+                {DELIVERY_TIME_UNIT_LABELS[u]}
+              </option>
+            ))}
+          </SelectField>
           <SelectField
             label="Tipo de dias"
             name="deliveryDaysType"
@@ -398,6 +411,15 @@ export default function QuoteItemForm({
             onInstallationsChange={setInstallations}
           />
         )}
+      </section>
+
+      <section className="rounded-[var(--radius-md)] border border-border p-4">
+        <PartidaAttachments
+          quoteId={quoteId}
+          itemId={initial?.id}
+          initialAttachments={initial?.attachments || []}
+          canEdit={Boolean(initial?.id) && has("quotes.edit")}
+        />
       </section>
 
       <section className="rounded-[var(--radius-md)] border border-border bg-surface-muted/40 p-4">

@@ -76,6 +76,7 @@ body {
 
 @media print {
   @page {
+    size: letter;
     margin: 12mm;
   }
 
@@ -90,5 +91,15 @@ body {
 
   .print-only {
     display: block !important;
+  }
+
+  .print-quote table tr,
+  .print-quote .print-row {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .print-quote thead {
+    display: table-header-group;
   }
 }

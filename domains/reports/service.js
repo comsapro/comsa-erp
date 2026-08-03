@@ -12,7 +12,7 @@ import {
 } from "@/lib/pdf/helpers";
 import { formatMoney } from "@/lib/utils/format";
 import { toNumber } from "@/lib/quotes/calculations";
-import { NotFoundError } from "@/lib/permissions/errors";
+import { NotFoundError, ValidationError } from "@/lib/permissions/errors";
 import { PO_STATUS_LABELS } from "@/domains/purchase-orders/constants";
 import { QUOTE_STATUS_LABELS } from "@/domains/quotes/constants";
 import { PRODUCTION_STATUS_LABELS } from "@/domains/production/constants";
@@ -42,6 +42,11 @@ export async function quotationPdf(request, id) {
     },
   });
   if (!quote) throw new NotFoundError("Cotizacion no encontrada");
+  if (!["APPROVED", "IN_PRODUCTION"].includes(quote.status)) {
+    throw new ValidationError(
+      "Solo se puede generar PDF de cotizaciones aprobadas"
+    );
+  }
 
   const activeItems = (quote.items || []).filter((it) => it.status !== "INACTIVE");
   const buffer = await buildPdfBuffer((doc) => {

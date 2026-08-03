@@ -41,6 +41,12 @@ function addDays(date, days) {
   return d;
 }
 
+function clampPct(raw) {
+  const n = Number(raw);
+  if (Number.isNaN(n)) return 0;
+  return Math.min(100, Math.max(0, Math.round(n * 100) / 100));
+}
+
 export default function QuoteFormClient({ currentUser }) {
   const router = useRouter();
   const { has } = usePermissions();
@@ -98,7 +104,7 @@ export default function QuoteFormClient({ currentUser }) {
     const load = async () => {
       try {
         const [clientsRes, companiesRes] = await Promise.all([
-          api.get(`/api/clientes${toQuery({ status: "ACTIVE", pageSize: 100 })}`),
+          api.get(`/api/clientes${toQuery({ status: "ACTIVE", pageSize: 50, sort: "commercialName", order: "asc" })}`),
           api.get(
             `/api/empresas-emisoras${toQuery({ status: "ACTIVE", pageSize: 100 })}`
           ),
@@ -107,9 +113,9 @@ export default function QuoteFormClient({ currentUser }) {
         setClients(clientsRes?.data || []);
         setCompanies(companiesRes?.data || []);
 
-        if (has("users.view")) {
+        if (has("quotes.create") || has("quotes.edit") || has("users.view")) {
           const usersRes = await api.get(
-            `/api/usuarios${toQuery({ status: "ACTIVE", pageSize: 100 })}`
+            `/api/vendedores${toQuery({ pageSize: 100, sort: "name", order: "asc" })}`
           );
           if (cancelled) return;
           setSellers(usersRes?.data || []);
@@ -219,6 +225,7 @@ export default function QuoteFormClient({ currentUser }) {
                   onOptionsChange={setClients}
                   error={errors.clientId?.message}
                   required
+                  remoteSearch
                 />
                 <ContactCatalogSelect
                   value={clientContactId || ""}
@@ -332,6 +339,17 @@ export default function QuoteFormClient({ currentUser }) {
                   max="100"
                   register={register}
                   error={errors.advancePercentage?.message}
+                  onChange={(e) => {
+                    const advance = clampPct(e.target.value);
+                    setValue("advancePercentage", advance, {
+                      shouldValidate: true,
+                      shouldDirty: true,
+                    });
+                    setValue("settlementPercentage", clampPct(100 - advance), {
+                      shouldValidate: true,
+                      shouldDirty: true,
+                    });
+                  }}
                 />
                 <TextField
                   label="% Liquidacion"
@@ -342,6 +360,17 @@ export default function QuoteFormClient({ currentUser }) {
                   max="100"
                   register={register}
                   error={errors.settlementPercentage?.message}
+                  onChange={(e) => {
+                    const settlement = clampPct(e.target.value);
+                    setValue("settlementPercentage", settlement, {
+                      shouldValidate: true,
+                      shouldDirty: true,
+                    });
+                    setValue("advancePercentage", clampPct(100 - settlement), {
+                      shouldValidate: true,
+                      shouldDirty: true,
+                    });
+                  }}
                 />
               </div>
 

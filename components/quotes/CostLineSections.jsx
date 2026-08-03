@@ -1,8 +1,10 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { useFieldArray, useWatch } from "react-hook-form";
 import { Plus, Trash2 } from "lucide-react";
 import { PROCESS_UNITS, PROCESS_UNIT_LABELS } from "@/domains/catalogs/schemas";
+import { api, toQuery } from "@/lib/api/client";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -10,7 +12,22 @@ import {
   ProcessCatalogSelect,
   InstallationCatalogSelect,
 } from "@/components/forms/catalog-selects";
+import { CatalogCombobox } from "@/components/forms/CatalogCombobox";
 import { formatMoney } from "@/lib/utils/format";
+
+const MATERIAL_UNITS = [
+  "PZA",
+  "KG",
+  "M",
+  "M2",
+  "M3",
+  "LT",
+  "ROLLO",
+  "CAJA",
+  "PAR",
+  "JUEGO",
+  "SERV",
+];
 
 function lineAmount(qty, price) {
   return (Number(qty) || 0) * (Number(price) || 0);
@@ -43,6 +60,47 @@ function AmountPreview({ quantity, unitPrice }) {
   );
 }
 
+function SupplierLineSelect({ value, onChange, suppliers, onSuppliersChange }) {
+  const [options, setOptions] = useState(suppliers || []);
+
+  useEffect(() => {
+    setOptions(suppliers || []);
+  }, [suppliers]);
+
+  const handleSearch = async (q) => {
+    const res = await api.get(
+      `/api/proveedores${toQuery({
+        status: "ACTIVE",
+        q: q || undefined,
+        pageSize: 50,
+        sort: "name",
+        order: "asc",
+      })}`
+    );
+    const data = res?.data || [];
+    setOptions(data);
+    onSuppliersChange?.(data);
+  };
+
+  return (
+    <CatalogCombobox
+      label="Proveedor"
+      value={value || ""}
+      onChange={onChange}
+      options={options.map((s) => ({
+        value: s.id,
+        label: s.name || s.legalName,
+        description: s.rfc || undefined,
+      }))}
+      placeholder="Buscar proveedor..."
+      allowClear
+      clearLabel="Sin proveedor"
+      canCreate={false}
+      onSearch={handleSearch}
+    />
+  );
+}
+
 export function CostLineSections({
   control,
   register,
@@ -62,11 +120,12 @@ export function CostLineSections({
   const materialsValues = useWatch({ control, name: "materials" }) || [];
   const extrasValues = useWatch({ control, name: "extras" }) || [];
   const installationsValues = useWatch({ control, name: "installations" }) || [];
+  const [suppliers, setSuppliers] = useState([]);
 
   const onSelectProcess = (index, processId, processOverride = null) => {
     const process =
       processOverride || processes.find((p) => p.id === processId) || null;
-    setValue(`manufacturing.${index}.manufacturingProcessId`, processId || null);
+    setValue(`manufacturing.${index}.manufacturingProcessId`, processId || "");
     if (process) {
       setValue(`manufacturing.${index}.processNameSnapshot`, process.name || "");
       setValue(`manufacturing.${index}.unitSnapshot`, process.unit || "HOUR");
@@ -95,10 +154,10 @@ export function CostLineSections({
     <div className="flex flex-col gap-4">
       <SectionShell
         title="Manufactura"
-        description="Procesos con tarifa. Al elegir un proceso se copian nombre, unidad y tarifa."
+        description="Selecciona un proceso del catalogo. Nombre, unidad y tarifa quedan bloqueados."
         onAdd={() =>
           manufacturing.append({
-            manufacturingProcessId: null,
+            manufacturingProcessId: "",
             processNameSnapshot: "",
             unitSnapshot: "HOUR",
             quantity: 1,
@@ -111,88 +170,109 @@ export function CostLineSections({
         {manufacturing.fields.length === 0 && (
           <p className="text-sm text-content-muted">Sin lineas de manufactura.</p>
         )}
-        {manufacturing.fields.map((field, index) => (
-          <div
-            key={field.id}
-            className="grid gap-2 rounded-[var(--radius-sm)] border border-border/80 bg-surface-muted/40 p-3 sm:grid-cols-12"
-          >
-            <div className="sm:col-span-4">
-              <ProcessCatalogSelect
-                label="Proceso"
-                value={manufacturingValues[index]?.manufacturingProcessId || ""}
-                options={processes}
-                onOptionsChange={onProcessesChange}
-                onChange={(processId) => onSelectProcess(index, processId)}
-                onSelected={(process) => onSelectProcess(index, process.id, process)}
-              />
-            </div>
-            <div className="sm:col-span-3">
-              <label className="mb-1 block text-xs font-medium text-content-muted">
-                Nombre
-              </label>
-              <Input {...register(`manufacturing.${index}.processNameSnapshot`)} />
-              {errors?.manufacturing?.[index]?.processNameSnapshot && (
-                <p className="mt-1 text-xs text-danger-700">
-                  {errors.manufacturing[index].processNameSnapshot.message}
-                </p>
-              )}
-            </div>
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-medium text-content-muted">
-                Unidad
-              </label>
-              <Select {...register(`manufacturing.${index}.unitSnapshot`)}>
-                {PROCESS_UNITS.map((u) => (
-                  <option key={u} value={u}>
-                    {PROCESS_UNIT_LABELS[u]}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div className="sm:col-span-1">
-              <label className="mb-1 block text-xs font-medium text-content-muted">
-                Cant.
-              </label>
-              <Input
-                type="number"
-                step="0.001"
-                min="0"
-                {...register(`manufacturing.${index}.quantity`)}
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-medium text-content-muted">
-                Tarifa
-              </label>
-              <div className="flex gap-1">
+        {manufacturing.fields.map((field, index) => {
+          const locked = Boolean(manufacturingValues[index]?.manufacturingProcessId);
+          return (
+            <div
+              key={field.id}
+              className="grid gap-2 rounded-[var(--radius-sm)] border border-border/80 bg-surface-muted/40 p-3 sm:grid-cols-12"
+            >
+              <div className="sm:col-span-4">
+                <ProcessCatalogSelect
+                  label="Proceso"
+                  value={manufacturingValues[index]?.manufacturingProcessId || ""}
+                  options={processes}
+                  onOptionsChange={onProcessesChange}
+                  onChange={(processId) => onSelectProcess(index, processId)}
+                  onSelected={(process) =>
+                    onSelectProcess(index, process.id, process)
+                  }
+                  error={
+                    errors?.manufacturing?.[index]?.manufacturingProcessId
+                      ?.message
+                  }
+                />
+              </div>
+              <div className="sm:col-span-3">
+                <label className="mb-1 block text-xs font-medium text-content-muted">
+                  Nombre
+                </label>
+                <Input
+                  {...register(`manufacturing.${index}.processNameSnapshot`)}
+                  readOnly
+                  disabled
+                  className="bg-surface-muted"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-xs font-medium text-content-muted">
+                  Unidad
+                </label>
+                <Select
+                  {...register(`manufacturing.${index}.unitSnapshot`)}
+                  disabled
+                  className="bg-surface-muted"
+                >
+                  {PROCESS_UNITS.map((u) => (
+                    <option key={u} value={u}>
+                      {PROCESS_UNIT_LABELS[u]}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="sm:col-span-1">
+                <label className="mb-1 block text-xs font-medium text-content-muted">
+                  Cant.
+                </label>
                 <Input
                   type="number"
-                  step="0.01"
+                  step="0.001"
                   min="0"
-                  {...register(`manufacturing.${index}.unitRate`)}
+                  {...register(`manufacturing.${index}.quantity`)}
                 />
-                <Button
-                  type="button"
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => manufacturing.remove(index)}
-                  aria-label="Eliminar linea"
-                >
-                  <Trash2 className="h-4 w-4 text-danger-700" />
-                </Button>
               </div>
-              <AmountPreview
-                quantity={manufacturingValues[index]?.quantity}
-                unitPrice={manufacturingValues[index]?.unitRate}
-              />
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-xs font-medium text-content-muted">
+                  Tarifa
+                </label>
+                <div className="flex gap-1">
+                  <Input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    {...register(`manufacturing.${index}.unitRate`)}
+                    readOnly
+                    disabled
+                    className="bg-surface-muted"
+                  />
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => manufacturing.remove(index)}
+                    aria-label="Eliminar linea"
+                  >
+                    <Trash2 className="h-4 w-4 text-danger-700" />
+                  </Button>
+                </div>
+                <AmountPreview
+                  quantity={manufacturingValues[index]?.quantity}
+                  unitPrice={manufacturingValues[index]?.unitRate}
+                />
+                {!locked && (
+                  <p className="mt-1 text-xs text-danger-700">
+                    Selecciona un proceso
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </SectionShell>
 
       <SectionShell
         title="Materiales"
-        description="Descripcion, cantidad y precio unitario."
+        description="BOM: cantidad, descripcion, dimensiones, presentacion, proveedor, unidad y precio."
         onAdd={() =>
           materials.append({
             itemId: null,
@@ -200,7 +280,7 @@ export function CostLineSections({
             descriptionSnapshot: "",
             dimensions: "",
             presentation: "",
-            unit: "",
+            unit: "PZA",
             quantity: 1,
             unitPrice: 0,
             observations: "",
@@ -215,23 +295,6 @@ export function CostLineSections({
             key={field.id}
             className="grid gap-2 rounded-[var(--radius-sm)] border border-border/80 bg-surface-muted/40 p-3 sm:grid-cols-12"
           >
-            <div className="sm:col-span-5">
-              <label className="mb-1 block text-xs font-medium text-content-muted">
-                Descripcion
-              </label>
-              <Input {...register(`materials.${index}.descriptionSnapshot`)} />
-              {errors?.materials?.[index]?.descriptionSnapshot && (
-                <p className="mt-1 text-xs text-danger-700">
-                  {errors.materials[index].descriptionSnapshot.message}
-                </p>
-              )}
-            </div>
-            <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-medium text-content-muted">
-                Unidad
-              </label>
-              <Input {...register(`materials.${index}.unit`)} />
-            </div>
             <div className="sm:col-span-2">
               <label className="mb-1 block text-xs font-medium text-content-muted">
                 Cantidad
@@ -243,17 +306,81 @@ export function CostLineSections({
                 {...register(`materials.${index}.quantity`)}
               />
             </div>
+            <div className="sm:col-span-4">
+              <label className="mb-1 block text-xs font-medium text-content-muted">
+                Descripcion
+              </label>
+              <Input {...register(`materials.${index}.descriptionSnapshot`)} />
+              {errors?.materials?.[index]?.descriptionSnapshot && (
+                <p className="mt-1 text-xs text-danger-700">
+                  {errors.materials[index].descriptionSnapshot.message}
+                </p>
+              )}
+            </div>
             <div className="sm:col-span-3">
               <label className="mb-1 block text-xs font-medium text-content-muted">
-                Precio unitario
+                Dimensiones
               </label>
-              <div className="flex gap-1">
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  {...register(`materials.${index}.unitPrice`)}
-                />
+              <Input {...register(`materials.${index}.dimensions`)} />
+            </div>
+            <div className="sm:col-span-3">
+              <label className="mb-1 block text-xs font-medium text-content-muted">
+                Presentacion
+              </label>
+              <Input {...register(`materials.${index}.presentation`)} />
+            </div>
+            <div className="sm:col-span-4">
+              <SupplierLineSelect
+                value={materialsValues[index]?.supplierId}
+                onChange={(id) =>
+                  setValue(`materials.${index}.supplierId`, id || null)
+                }
+                suppliers={suppliers}
+                onSuppliersChange={setSuppliers}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs font-medium text-content-muted">
+                Unidad
+              </label>
+              <Select {...register(`materials.${index}.unit`)}>
+                {MATERIAL_UNITS.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+                {materialsValues[index]?.unit &&
+                  !MATERIAL_UNITS.includes(materialsValues[index].unit) && (
+                    <option value={materialsValues[index].unit}>
+                      {materialsValues[index].unit}
+                    </option>
+                  )}
+              </Select>
+            </div>
+            <div className="sm:col-span-3">
+              <label className="mb-1 block text-xs font-medium text-content-muted">
+                Precio
+              </label>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                {...register(`materials.${index}.unitPrice`)}
+              />
+            </div>
+            <div className="sm:col-span-3">
+              <label className="mb-1 block text-xs font-medium text-content-muted">
+                Importe / Accion
+              </label>
+              <div className="flex items-center gap-1">
+                <p className="flex-1 text-sm font-medium">
+                  {formatMoney(
+                    lineAmount(
+                      materialsValues[index]?.quantity,
+                      materialsValues[index]?.unitPrice
+                    )
+                  )}
+                </p>
                 <Button
                   type="button"
                   size="icon"
@@ -264,10 +391,6 @@ export function CostLineSections({
                   <Trash2 className="h-4 w-4 text-danger-700" />
                 </Button>
               </div>
-              <AmountPreview
-                quantity={materialsValues[index]?.quantity}
-                unitPrice={materialsValues[index]?.unitPrice}
-              />
             </div>
           </div>
         ))}
@@ -355,7 +478,7 @@ export function CostLineSections({
 
       <SectionShell
         title="Instalaciones"
-        description="Conceptos de instalacion. Al elegir del catalogo se copian nombre, unidad y tarifa."
+        description="Conceptos de instalacion del catalogo."
         onAdd={() =>
           installationsArr.append({
             installationConceptId: null,
@@ -378,10 +501,14 @@ export function CostLineSections({
             <div className="sm:col-span-4">
               <InstallationCatalogSelect
                 label="Concepto"
-                value={installationsValues[index]?.installationConceptId || ""}
+                value={
+                  installationsValues[index]?.installationConceptId || ""
+                }
                 options={installations}
                 onOptionsChange={onInstallationsChange}
-                onChange={(conceptId) => onSelectInstallation(index, conceptId)}
+                onChange={(conceptId) =>
+                  onSelectInstallation(index, conceptId)
+                }
                 onSelected={(concept) =>
                   onSelectInstallation(index, concept.id, concept)
                 }
@@ -391,12 +518,9 @@ export function CostLineSections({
               <label className="mb-1 block text-xs font-medium text-content-muted">
                 Nombre
               </label>
-              <Input {...register(`installations.${index}.conceptNameSnapshot`)} />
-              {errors?.installations?.[index]?.conceptNameSnapshot && (
-                <p className="mt-1 text-xs text-danger-700">
-                  {errors.installations[index].conceptNameSnapshot.message}
-                </p>
-              )}
+              <Input
+                {...register(`installations.${index}.conceptNameSnapshot`)}
+              />
             </div>
             <div className="sm:col-span-2">
               <label className="mb-1 block text-xs font-medium text-content-muted">

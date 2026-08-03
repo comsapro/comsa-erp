@@ -23,25 +23,22 @@ async function generateFolio(tx, scope, date = new Date()) {
   const mm = String(date.getMonth() + 1).padStart(2, "0");
   const yearMonth = `${yy}${mm}`;
 
-  const existing = await tx.folioSequence.findUnique({
-    where: { scope_yearMonth: { scope, yearMonth } },
-  });
-
-  let nextValue;
-  if (existing) {
-    const updated = await tx.folioSequence.update({
-      where: { id: existing.id },
-      data: { lastValue: { increment: 1 } },
-    });
-    nextValue = updated.lastValue;
-  } else {
-    const created = await tx.folioSequence.create({
-      data: { scope, yearMonth, lastValue: 1 },
-    });
-    nextValue = created.lastValue;
+  let lastErr;
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    try {
+      const row = await tx.folioSequence.upsert({
+        where: { scope_yearMonth: { scope, yearMonth } },
+        create: { scope, yearMonth, lastValue: 1 },
+        update: { lastValue: { increment: 1 } },
+      });
+      return `${yearMonth}-${row.lastValue}-A`;
+    } catch (err) {
+      lastErr = err;
+      if (err?.code === "P2002" && attempt < 5) continue;
+      throw err;
+    }
   }
-
-  return `${yearMonth}-${nextValue}-A`;
+  throw lastErr;
 }
 
 const prisma = new PrismaClient({

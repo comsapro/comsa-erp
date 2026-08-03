@@ -219,6 +219,7 @@ model User {
   purchaseOrdersRequested PurchaseOrder[] @relation("PurchaseOrderRequestedBy")
   purchaseOrdersAuthorized PurchaseOrder[] @relation("PurchaseOrderAuthorizedBy")
   purchaseReceiptsReceived PurchaseReceipt[] @relation("PurchaseReceiptReceivedBy")
+  quoteItemAttachmentsCreated QuoteItemAttachment[] @relation("QuoteItemAttachmentCreatedBy")
 
   @@index([status])
   @@index([deletedAt])
@@ -824,9 +825,33 @@ model QuoteItem {
   materials      QuoteItemMaterial[]
   extras         QuoteItemExtra[]
   installations  QuoteItemInstallation[]
+  attachments    QuoteItemAttachment[]
 
   @@index([quoteId, position])
   @@map("quote_items")
+}
+
+model QuoteItemAttachment {
+  id          String   @id @default(cuid())
+  quoteItemId String   @map("quote_item_id")
+  pathname    String
+  url         String?
+  fileName    String   @map("file_name")
+  contentType String   @map("content_type")
+  sizeBytes   Int      @map("size_bytes")
+  sortOrder   Int      @default(0) @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  quoteItem     QuoteItem @relation(fields: [quoteItemId], references: [id], onDelete: Cascade)
+  createdByUser User?     @relation("QuoteItemAttachmentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([quoteItemId])
+  @@unique([pathname])
+  @@map("quote_item_attachments")
 }
 
 model QuoteItemManufacturing {

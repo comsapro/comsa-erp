@@ -67,9 +67,16 @@ const DETAIL_INCLUDE = {
     orderBy: { position: "asc" },
     include: {
       manufacturing: { orderBy: { sortOrder: "asc" } },
-      materials: true,
+      materials: {
+        include: {
+          supplier: { select: { id: true, name: true } },
+        },
+      },
       extras: true,
       installations: true,
+      attachments: {
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      },
       template: { select: { id: true, name: true } },
       item: { select: { id: true, sku: true, name: true } },
       warehouse: { select: { id: true, code: true, name: true } },
@@ -105,42 +112,30 @@ async function resolveManufacturingRows(tx, rows = []) {
   const result = [];
   for (let i = 0; i < rows.length; i += 1) {
     const row = rows[i];
-    let processNameSnapshot = row.processNameSnapshot || null;
-    let unitSnapshot = row.unitSnapshot || null;
-
-    if (row.manufacturingProcessId) {
-      const process = await tx.manufacturingProcess.findFirst({
-        where: { id: row.manufacturingProcessId, deletedAt: null },
-      });
-      if (!process) {
-        throw new NotFoundError("Proceso de manufactura no encontrado");
-      }
-      if (process.status !== "ACTIVE") {
-        throw new ValidationError(
-          "No se puede seleccionar un proceso inactivo"
-        );
-      }
-      processNameSnapshot = process.name;
-      unitSnapshot = process.unit;
-    }
-
-    if (!processNameSnapshot) {
+    if (!row.manufacturingProcessId) {
       throw new ValidationError(
-        "El nombre del proceso es requerido en manufactura"
+        "Cada linea de manufactura debe seleccionar un proceso del catalogo"
       );
     }
-    if (!unitSnapshot) {
+
+    const process = await tx.manufacturingProcess.findFirst({
+      where: { id: row.manufacturingProcessId, deletedAt: null },
+    });
+    if (!process) {
+      throw new NotFoundError("Proceso de manufactura no encontrado");
+    }
+    if (process.status !== "ACTIVE") {
       throw new ValidationError(
-        "La unidad del proceso es requerida en manufactura"
+        "No se puede seleccionar un proceso inactivo"
       );
     }
 
     const quantity = Number(row.quantity) || 0;
-    const unitRate = Number(row.unitRate) || 0;
+    const unitRate = Number(process.defaultRate) || 0;
     result.push({
-      manufacturingProcessId: row.manufacturingProcessId || null,
-      processNameSnapshot,
-      unitSnapshot,
+      manufacturingProcessId: process.id,
+      processNameSnapshot: process.name,
+      unitSnapshot: process.unit,
       quantity,
       unitRate,
       amount: lineAmount(quantity, unitRate),
@@ -404,34 +399,47 @@ export async function createQuote(request) {
     throw new ValidationError("La empresa emisora debe estar activa");
   }
 
-  const record = await prisma.$transaction(async (tx) => {
-    const folio = await generateFolio(tx, "QUOTE", data.elaborationDate);
-    return tx.quote.create({
-      data: {
-        folio,
-        clientId: data.clientId,
-        clientContactId: data.clientContactId || null,
-        sellerId,
-        issuingCompanyId: data.issuingCompanyId,
-        orderType: data.orderType,
-        currency: data.currency,
-        elaborationDate: data.elaborationDate,
-        requestDate: data.requestDate || null,
-        validUntil: data.validUntil,
-        purchaseOrder: data.purchaseOrder ?? null,
-        requisition: data.requisition ?? null,
-        internalObservations: data.internalObservations ?? null,
-        clientDesignProvided: data.clientDesignProvided,
-        advancePercentage: data.advancePercentage,
-        settlementPercentage: data.settlementPercentage,
-        paymentNotes: data.paymentNotes ?? null,
-        status: "DRAFT",
-        createdBy: actor.id,
-        updatedBy: actor.id,
-      },
-      include: DETAIL_INCLUDE,
-    });
-  });
+  const record = await prisma.$transaction(
+    async (tx) => {
+      let lastErr;
+      for (let attempt = 1; attempt <= 5; attempt += 1) {
+        try {
+          const folio = await generateFolio(tx, "QUOTE", data.elaborationDate);
+          return await tx.quote.create({
+            data: {
+              folio,
+              clientId: data.clientId,
+              clientContactId: data.clientContactId || null,
+              sellerId,
+              issuingCompanyId: data.issuingCompanyId,
+              orderType: data.orderType,
+              currency: data.currency,
+              elaborationDate: data.elaborationDate,
+              requestDate: data.requestDate || null,
+              validUntil: data.validUntil,
+              purchaseOrder: data.purchaseOrder ?? null,
+              requisition: data.requisition ?? null,
+              internalObservations: data.internalObservations ?? null,
+              clientDesignProvided: data.clientDesignProvided,
+              advancePercentage: data.advancePercentage,
+              settlementPercentage: data.settlementPercentage,
+              paymentNotes: data.paymentNotes ?? null,
+              status: "DRAFT",
+              createdBy: actor.id,
+              updatedBy: actor.id,
+            },
+            include: DETAIL_INCLUDE,
+          });
+        } catch (err) {
+          lastErr = err;
+          if (err?.code === "P2002" && attempt < 5) continue;
+          throw err;
+        }
+      }
+      throw lastErr;
+    },
+    { maxWait: 10000, timeout: 20000 }
+  );
 
   await recordAudit({
     actor,
@@ -456,7 +464,12 @@ export async function updateQuote(request, id) {
 
   const elaborationDate = data.elaborationDate ?? existing.elaborationDate;
   const validUntil = data.validUntil ?? existing.validUntil;
-  if (validUntil < elaborationDate) {
+  const toDay = (d) => {
+    const x = d instanceof Date ? d : new Date(d);
+    if (Number.isNaN(x.getTime())) return "";
+    return x.toISOString().slice(0, 10);
+  };
+  if (toDay(validUntil) && toDay(elaborationDate) && toDay(validUntil) < toDay(elaborationDate)) {
     throw new ValidationError(
       "La vigencia debe ser posterior o igual a la fecha de elaboracion"
     );
