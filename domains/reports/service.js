@@ -6,6 +6,7 @@ import { recordAudit, AUDIT_ACTIONS } from "@/lib/audit/logger";
 import {
   buildPdfBuffer,
   pdfResponse,
+  pdfMoney,
   drawReportHeader,
   drawTable,
   drawFooterTotals,
@@ -72,24 +73,24 @@ export async function quotationPdf(request, id) {
         { key: "total", header: "Total", width: 82 },
       ],
       activeItems.map((it) => ({
-        desc: it.description,
+        desc: String(it.description || "").slice(0, 200),
         qty: String(toNumber(it.quantity)),
         delivery: [it.deliveryTimeMin, it.deliveryTimeMax]
           .filter((v) => v != null)
           .join("-"),
-        subtotal: formatMoney(it.saleSubtotal),
-        total: formatMoney(it.total),
+        subtotal: pdfMoney(toNumber(it.saleSubtotal)),
+        total: pdfMoney(toNumber(it.total)),
       }))
     );
     doc.moveDown();
-    doc.text(`Subtotal: ${formatMoney(quote.subtotal)}`);
-    doc.text(`Descuento: ${formatMoney(quote.discountTotal)}`);
-    doc.text(`IVA: ${formatMoney(quote.taxTotal)}`);
-    doc.font("Helvetica-Bold").text(`Total: ${formatMoney(quote.total)}`);
+    doc.text(`Subtotal: ${pdfMoney(toNumber(quote.subtotal))}`);
+    doc.text(`Descuento: ${pdfMoney(toNumber(quote.discountTotal))}`);
+    doc.text(`IVA: ${pdfMoney(toNumber(quote.taxTotal))}`);
+    doc.font("Helvetica-Bold").text(`Total: ${pdfMoney(toNumber(quote.total))}`);
     doc.font("Helvetica");
     if (quote.paymentNotes) {
       doc.moveDown();
-      doc.text(`Condiciones: ${quote.paymentNotes}`);
+      doc.text(`Condiciones: ${String(quote.paymentNotes)}`);
     }
   });
 

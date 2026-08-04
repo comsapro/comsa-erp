@@ -77,6 +77,13 @@ enum QuoteStatus {
   @@map("quote_status")
 }
 
+enum QuoteAttachmentAudience {
+  SALES
+  PRODUCTION
+
+  @@map("quote_attachment_audience")
+}
+
 enum DirectOrderStatus {
   DRAFT
   PENDING_APPROVAL
@@ -610,12 +617,35 @@ model QuoteItemTemplate {
   materials       QuoteItemTemplateMaterial[]
   extras          QuoteItemTemplateExtra[]
   installations   QuoteItemTemplateInstallation[]
+  attachments     QuoteItemTemplateAttachment[]
   quoteItems      QuoteItem[]
 
   @@index([status])
   @@index([category])
   @@index([deletedAt])
   @@map("quote_item_templates")
+}
+
+model QuoteItemTemplateAttachment {
+  id          String                   @id @default(cuid())
+  templateId  String                   @map("template_id")
+  pathname    String
+  url         String?
+  fileName    String                   @map("file_name")
+  contentType String                   @map("content_type")
+  sizeBytes   Int                      @map("size_bytes")
+  audience    QuoteAttachmentAudience  @default(SALES)
+  sortOrder   Int                      @default(0) @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+
+  template QuoteItemTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@unique([pathname])
+  @@map("quote_item_template_attachments")
 }
 
 model QuoteItemTemplateManufacturing {
@@ -832,14 +862,15 @@ model QuoteItem {
 }
 
 model QuoteItemAttachment {
-  id          String   @id @default(cuid())
-  quoteItemId String   @map("quote_item_id")
+  id          String                  @id @default(cuid())
+  quoteItemId String                  @map("quote_item_id")
   pathname    String
   url         String?
-  fileName    String   @map("file_name")
-  contentType String   @map("content_type")
-  sizeBytes   Int      @map("size_bytes")
-  sortOrder   Int      @default(0) @map("sort_order")
+  fileName    String                  @map("file_name")
+  contentType String                  @map("content_type")
+  sizeBytes   Int                     @map("size_bytes")
+  audience    QuoteAttachmentAudience @default(SALES)
+  sortOrder   Int                     @default(0) @map("sort_order")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -850,6 +881,7 @@ model QuoteItemAttachment {
   createdByUser User?     @relation("QuoteItemAttachmentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@index([quoteItemId])
+  @@index([audience])
   @@unique([pathname])
   @@map("quote_item_attachments")
 }

@@ -54,7 +54,7 @@ export default function ClientsClient() {
   const columns = [
     { key: "commercialName", header: "Nombre comercial", sortable: true, sortKey: "commercialName", render: (r) => <span className="font-medium">{r.commercialName}</span> },
     { key: "rfc", header: "RFC", render: (r) => r.rfc || "-" },
-    { key: "email", header: "Correo", render: (r) => r.email || "-" },
+    { key: "phone", header: "Telefono", render: (r) => r.phone || "-" },
     { key: "contacts", header: "Contactos", render: (r) => <Badge tone="neutral">{r._count?.contacts ?? 0}</Badge> },
     { key: "status", header: "Estatus", sortable: true, sortKey: "status", render: (r) => <StatusBadge status={r.status} /> },
     {
@@ -91,7 +91,7 @@ export default function ClientsClient() {
         ref={listRef}
         endpoint={ENDPOINT}
         columns={columns}
-        searchPlaceholder="Buscar por nombre, RFC o correo..."
+        searchPlaceholder="Buscar por nombre o RFC..."
         initialSort="commercialName"
         initialOrder="asc"
         filters={[{ key: "status", label: "Estatus", options: STATUS_FILTER_OPTIONS, defaultValue: "" }]}

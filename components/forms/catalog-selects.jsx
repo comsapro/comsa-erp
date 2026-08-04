@@ -41,7 +41,6 @@ const quickClientSchema = z.object({
   legalName: optionalString,
   rfc: optionalString,
   phone: optionalString,
-  email: optionalEmail,
 });
 
 const quickContactSchema = z.object({
@@ -81,7 +80,6 @@ export function QuickCreateClientModal({ open, initialName = "", onClose, onCrea
       legalName: "",
       rfc: "",
       phone: "",
-      email: "",
     },
   });
 
@@ -92,7 +90,6 @@ export function QuickCreateClientModal({ open, initialName = "", onClose, onCrea
         legalName: "",
         rfc: "",
         phone: "",
-        email: "",
       });
     }
   }, [open, initialName, reset]);
@@ -130,7 +127,6 @@ export function QuickCreateClientModal({ open, initialName = "", onClose, onCrea
           <TextField label="RFC" name="rfc" register={register} error={errors.rfc?.message} />
           <TextField label="Telefono" name="phone" register={register} error={errors.phone?.message} />
         </div>
-        <TextField label="Correo" name="email" type="email" register={register} error={errors.email?.message} />
         <ModalFormFooter onCancel={onClose} saving={saving} />
       </form>
     </Modal>

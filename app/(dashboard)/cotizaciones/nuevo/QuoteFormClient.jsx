@@ -80,7 +80,6 @@ export default function QuoteFormClient({ currentUser }) {
       elaborationDate: today,
       requestDate: "",
       validUntil: defaultValid,
-      purchaseOrder: "",
       requisition: "",
       internalObservations: "",
       clientDesignProvided: false,
@@ -174,7 +173,7 @@ export default function QuoteFormClient({ currentUser }) {
         clientContactId: values.clientContactId || null,
         sellerId: values.sellerId || currentUser?.id || null,
         requestDate: values.requestDate || null,
-        purchaseOrder: values.purchaseOrder || null,
+        purchaseOrder: null,
         requisition: values.requisition || null,
         internalObservations: values.internalObservations || null,
         paymentNotes: values.paymentNotes || null,
@@ -315,12 +314,6 @@ export default function QuoteFormClient({ currentUser }) {
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <TextField
-                  label="Orden de compra"
-                  name="purchaseOrder"
-                  register={register}
-                  error={errors.purchaseOrder?.message}
-                />
                 <TextField
                   label="Requisicion"
                   name="requisition"

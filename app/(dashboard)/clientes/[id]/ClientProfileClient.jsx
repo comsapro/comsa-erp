@@ -155,12 +155,16 @@ export default function ClientProfileClient({ id }) {
               <dd className="mt-0.5 font-medium">{record.rfc || "-"}</dd>
             </div>
             <div>
-              <dt className="text-[var(--color-muted)]">Correo</dt>
-              <dd className="mt-0.5">{record.email || "-"}</dd>
-            </div>
-            <div>
               <dt className="text-[var(--color-muted)]">Teléfono</dt>
               <dd className="mt-0.5">{record.phone || "-"}</dd>
+            </div>
+            <div>
+              <dt className="text-[var(--color-muted)]">Condiciones comerciales</dt>
+              <dd className="mt-0.5">
+                {record.commercialTerms != null && String(record.commercialTerms).trim() !== ""
+                  ? record.commercialTerms
+                  : "No aplica"}
+              </dd>
             </div>
             <div className="sm:col-span-2">
               <dt className="text-[var(--color-muted)]">Dirección</dt>

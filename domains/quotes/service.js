@@ -23,6 +23,15 @@ import {
   reorderItemsSchema,
 } from "./schemas";
 import { recalculateQuote } from "./recalculate";
+import {
+  copyAttachmentsToQuoteItem,
+  copyAttachmentsToTemplate,
+} from "./attachments";
+import {
+  filterVersionFamily,
+  nextAvailableLetter,
+  parseFolioVersion,
+} from "./versions";
 
 const SORTABLE = [
   "folio",
@@ -342,10 +351,35 @@ export async function listQuotes(request) {
   return jsonOk(paginated(rows, total, params));
 }
 
+async function listQuoteVersionFamily(folio) {
+  const { base } = parseFolioVersion(folio);
+  if (!base) return [];
+
+  const rows = await prisma.quote.findMany({
+    where: {
+      deletedAt: null,
+      folio: { startsWith: `${base}-` },
+    },
+    select: {
+      id: true,
+      folio: true,
+      version: true,
+      status: true,
+      elaborationDate: true,
+      createdAt: true,
+      total: true,
+      currency: true,
+    },
+  });
+
+  return filterVersionFamily(rows, base);
+}
+
 export async function getQuote(request, id) {
   await requirePermission("quotes.view");
   const record = await findQuoteOrThrow(id, DETAIL_INCLUDE);
-  return jsonOk(record);
+  const versions = await listQuoteVersionFamily(record.folio);
+  return jsonOk({ ...record, versions });
 }
 
 export async function createQuote(request) {
@@ -783,6 +817,9 @@ export async function saveQuoteItemToLibrary(request, quoteId, itemId) {
       materials: true,
       extras: true,
       installations: true,
+      attachments: {
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      },
     },
   });
   if (!item) throw new NotFoundError("Item de cotizacion no encontrado");
@@ -865,6 +902,12 @@ export async function saveQuoteItemToLibrary(request, quoteId, itemId) {
     },
   });
 
+  await copyAttachmentsToTemplate({
+    sources: item.attachments || [],
+    templateId: template.id,
+    actorId: actor.id,
+  });
+
   await prisma.quoteItem.update({
     where: { id: itemId },
     data: { templateId: template.id },
@@ -895,13 +938,16 @@ export async function duplicateQuoteItem(request, quoteId, itemId) {
       materials: true,
       extras: true,
       installations: true,
+      attachments: {
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      },
     },
   });
   if (!source) throw new NotFoundError("Item de cotizacion no encontrado");
 
-  const record = await prisma.$transaction(async (tx) => {
+  const { record, createdItemId } = await prisma.$transaction(async (tx) => {
     const position = await nextItemPosition(tx, quoteId);
-    await tx.quoteItem.create({
+    const created = await tx.quoteItem.create({
       data: {
         quoteId,
         position,
@@ -970,7 +1016,15 @@ export async function duplicateQuoteItem(request, quoteId, itemId) {
         },
       },
     });
-    return recalculateQuote(tx, quoteId);
+    const recalculated = await recalculateQuote(tx, quoteId);
+    return { record: recalculated, createdItemId: created.id };
+  });
+
+  await copyAttachmentsToQuoteItem({
+    sources: source.attachments || [],
+    destQuoteId: quoteId,
+    destItemId: createdItemId,
+    actorId: actor.id,
   });
 
   await recordAudit({
@@ -983,7 +1037,12 @@ export async function duplicateQuoteItem(request, quoteId, itemId) {
     newData: record,
   });
 
-  return jsonOk(record);
+  return jsonOk(
+    await prisma.quote.findFirst({
+      where: { id: quoteId },
+      include: DETAIL_INCLUDE,
+    })
+  );
 }
 
 export async function insertFromTemplate(request, quoteId, templateId) {
@@ -1003,6 +1062,9 @@ export async function insertFromTemplate(request, quoteId, templateId) {
       materials: true,
       extras: true,
       installations: true,
+      attachments: {
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      },
     },
   });
   if (!template) throw new NotFoundError("Plantilla no encontrada");
@@ -1010,9 +1072,9 @@ export async function insertFromTemplate(request, quoteId, templateId) {
     throw new ValidationError("No se puede usar una plantilla inactiva");
   }
 
-  const record = await prisma.$transaction(async (tx) => {
+  const { record, createdItemId } = await prisma.$transaction(async (tx) => {
     const position = await nextItemPosition(tx, quoteId);
-    await tx.quoteItem.create({
+    const created = await tx.quoteItem.create({
       data: {
         quoteId,
         position,
@@ -1077,7 +1139,15 @@ export async function insertFromTemplate(request, quoteId, templateId) {
         },
       },
     });
-    return recalculateQuote(tx, quoteId);
+    const recalculated = await recalculateQuote(tx, quoteId);
+    return { record: recalculated, createdItemId: created.id };
+  });
+
+  await copyAttachmentsToQuoteItem({
+    sources: template.attachments || [],
+    destQuoteId: quoteId,
+    destItemId: createdItemId,
+    actorId: actor.id,
   });
 
   await recordAudit({
@@ -1090,7 +1160,12 @@ export async function insertFromTemplate(request, quoteId, templateId) {
     newData: record,
   });
 
-  return jsonOk(record);
+  return jsonOk(
+    await prisma.quote.findFirst({
+      where: { id: quoteId },
+      include: DETAIL_INCLUDE,
+    })
+  );
 }
 
 export async function reorderItems(request, quoteId, orderedIds) {
@@ -1264,6 +1339,9 @@ export async function createQuoteRevision(request, id) {
         materials: true,
         extras: true,
         installations: true,
+        attachments: {
+          orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        },
       },
     },
   });
@@ -1274,21 +1352,23 @@ export async function createQuoteRevision(request, id) {
     );
   }
 
-  const match = String(source.folio).match(/^(.*)-([A-Z])$/i);
-  const base = match ? match[1] : source.folio;
-  const currentLetter = (match ? match[2] : source.version || "A").toUpperCase();
-  const nextLetter = String.fromCharCode(currentLetter.charCodeAt(0) + 1);
-  if (nextLetter > "Z") {
+  const { base } = parseFolioVersion(source.folio);
+  const family = await listQuoteVersionFamily(source.folio);
+  const nextLetter = nextAvailableLetter(family, base);
+  if (!nextLetter) {
     throw new ValidationError("Se alcanzo el limite de versiones (Z)");
   }
   const newFolio = `${base}-${nextLetter}`;
 
-  const existingFolio = await prisma.quote.findUnique({
-    where: { folio: newFolio },
+  // Doble chequeo por carrera; el unique de folio es la garantia final.
+  const existingFolio = await prisma.quote.findFirst({
+    where: { folio: newFolio, deletedAt: null },
     select: { id: true },
   });
   if (existingFolio) {
-    throw new ConflictError(`Ya existe la version ${newFolio}`);
+    throw new ConflictError(
+      `Ya existe la version ${newFolio}. Reintenta para tomar la siguiente letra.`
+    );
   }
 
   const record = await prisma.$transaction(async (tx) => {
@@ -1391,13 +1471,36 @@ export async function createQuoteRevision(request, id) {
     return recalculateQuote(tx, created.id);
   });
 
+  // Copiar adjuntos de cada partida (fuera de la transaccion: Blob API).
+  const destItems = await prisma.quoteItem.findMany({
+    where: { quoteId: record.id },
+    select: { id: true, position: true },
+    orderBy: { position: "asc" },
+  });
+  const destByPosition = new Map(destItems.map((i) => [i.position, i.id]));
+  for (const srcItem of source.items) {
+    const destItemId = destByPosition.get(srcItem.position);
+    if (!destItemId || !(srcItem.attachments || []).length) continue;
+    await copyAttachmentsToQuoteItem({
+      sources: srcItem.attachments,
+      destQuoteId: record.id,
+      destItemId,
+      actorId: actor.id,
+    });
+  }
+
   await recordAudit({
     actor,
     module: "quotes",
     entity: "Quote",
     entityId: record.id,
     action: AUDIT_ACTIONS.CREATE,
-    newData: { folio: record.folio, parentQuoteId: source.id, revision: true },
+    newData: {
+      folio: record.folio,
+      parentQuoteId: source.id,
+      revision: true,
+      sourceFolio: source.folio,
+    },
   });
 
   return jsonCreated(record);

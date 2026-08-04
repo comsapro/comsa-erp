@@ -69,10 +69,8 @@ function ReadOnlyHeader({ quote }) {
           <dd>{quote.version || "A"}</dd>
         </div>
         <div>
-          <dt className="text-content-muted">OC / Requisicion</dt>
-          <dd>
-            {quote.purchaseOrder || "-"} / {quote.requisition || "-"}
-          </dd>
+          <dt className="text-content-muted">Requisicion</dt>
+          <dd>{quote.requisition || "-"}</dd>
         </div>
         {quote.paymentNotes && (
           <div className="sm:col-span-2">

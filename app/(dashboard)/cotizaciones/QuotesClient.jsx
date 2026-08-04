@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -70,6 +70,22 @@ export default function QuotesClient() {
   });
 
   const activeStatus = list.filters.status ?? "";
+  const boardMode = mode === "kanban" || mode === "calendar";
+
+  // Tablero/calendario deben ver todos los estatus. Si venia un filtro de
+  // pestaña (p. ej. Canceladas), limpia al entrar o al montar en ese modo.
+  useEffect(() => {
+    if (boardMode && list.filters.status) {
+      list.setFilter("status", "");
+    }
+  }, [boardMode, list.filters.status, list.setFilter]);
+
+  const handleModeChange = (next) => {
+    setMode(next);
+    if (next === "kanban" || next === "calendar") {
+      list.setFilter("status", "");
+    }
+  };
 
   const columns = useMemo(
     () => [
@@ -221,12 +237,7 @@ export default function QuotesClient() {
     [has, router]
   );
 
-  const kanbanColumns = useMemo(() => {
-    if (activeStatus) {
-      return KANBAN_COLUMNS.filter((c) => c.id === activeStatus);
-    }
-    return KANBAN_COLUMNS;
-  }, [activeStatus]);
+  const kanbanColumns = KANBAN_COLUMNS;
 
   return (
     <div>
@@ -235,7 +246,7 @@ export default function QuotesClient() {
         description="Gestiona cotizaciones, aprobaciones y envio a produccion."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <ViewModeToggle value={mode} onChange={setMode} />
+            <ViewModeToggle value={mode} onChange={handleModeChange} />
             <Can permission="quotes.create">
               <Button as={Link} href="/cotizaciones/nuevo">
                 <Plus className="h-4 w-4" /> Nueva cotizacion
@@ -245,6 +256,7 @@ export default function QuotesClient() {
         }
       />
 
+      {mode === "table" && (
       <div className="mb-4 flex flex-wrap gap-1 border-b border-border">
         {STATUS_TABS.map((tab) => {
           const active = activeStatus === tab.value;
@@ -265,6 +277,7 @@ export default function QuotesClient() {
           );
         })}
       </div>
+      )}
 
       <TableToolbar
         q={list.q}

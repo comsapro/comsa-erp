@@ -13,6 +13,7 @@ export function TextField({
   required,
   hint,
   type = "text",
+  disabled,
   ...props
 }) {
   return (
@@ -21,7 +22,8 @@ export function TextField({
         id={name}
         type={type}
         invalid={!!error}
-        {...register(name)}
+        disabled={disabled}
+        {...register(name, { disabled })}
         {...props}
       />
     </Field>

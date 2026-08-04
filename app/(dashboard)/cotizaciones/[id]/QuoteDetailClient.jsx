@@ -28,6 +28,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
+import { QuoteVersionsNav } from "@/components/quotes/QuoteVersionsNav";
 import { Textarea } from "@/components/ui/Textarea";
 import { Field } from "@/components/forms/Field";
 import { CatalogCombobox } from "@/components/forms/CatalogCombobox";
@@ -377,16 +378,34 @@ export default function QuoteDetailClient({ quoteId }) {
                       if (!res.ok) {
                         const body = await res.json().catch(() => ({}));
                         throw new Error(
-                          body.error || "No se pudo generar el PDF"
+                          body.error || body.message || `Error ${res.status}`
                         );
                       }
                       const blob = await res.blob();
+                      if (!blob || blob.size === 0) {
+                        throw new Error("El PDF vino vacio");
+                      }
+                      const type = (blob.type || "").toLowerCase();
+                      if (type && !type.includes("pdf") && !type.includes("octet-stream")) {
+                        const text = await blob.text().catch(() => "");
+                        throw new Error(
+                          text?.slice(0, 120) || "La respuesta no es un PDF"
+                        );
+                      }
                       const url = URL.createObjectURL(blob);
                       const a = document.createElement("a");
                       a.href = url;
                       a.download = `${quote.folio || "cotizacion"}.pdf`;
+                      a.rel = "noopener";
+                      a.style.display = "none";
+                      document.body.appendChild(a);
                       a.click();
-                      URL.revokeObjectURL(url);
+                      a.remove();
+                      setTimeout(() => URL.revokeObjectURL(url), 4000);
+                      toast({
+                        variant: "success",
+                        title: "PDF descargado",
+                      });
                     } catch (err) {
                       toast({
                         variant: "error",
@@ -543,8 +562,13 @@ export default function QuoteDetailClient({ quoteId }) {
             <QuoteHeaderEdit
               quote={quote}
               onSaved={(updated) => {
-                if (updated?.id) setQuote(updated);
-                else loadQuote();
+                if (updated?.id) {
+                  setQuote((prev) => ({
+                    ...prev,
+                    ...updated,
+                    versions: updated.versions || prev?.versions || [],
+                  }));
+                } else loadQuote();
               }}
             />
             {(quote.productionOrders || []).length > 0 && (
@@ -564,17 +588,11 @@ export default function QuoteDetailClient({ quoteId }) {
                 </div>
               </div>
             )}
-            {quote.parentQuote && (
-              <div className="mt-3 text-sm">
-                <span className="text-content-muted">Version anterior: </span>
-                <Link
-                  className="text-brand-700 hover:underline"
-                  href={`/cotizaciones/${quote.parentQuote.id}`}
-                >
-                  {quote.parentQuote.folio}
-                </Link>
-              </div>
-            )}
+            <QuoteVersionsNav
+              currentId={quote.id}
+              versions={quote.versions || []}
+              parentQuote={quote.parentQuote}
+            />
           </CardBody>
         </Card>
 
