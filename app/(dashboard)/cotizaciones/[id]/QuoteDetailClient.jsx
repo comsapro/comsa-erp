@@ -29,6 +29,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { QuoteVersionsNav } from "@/components/quotes/QuoteVersionsNav";
+import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { Field } from "@/components/forms/Field";
 import { CatalogCombobox } from "@/components/forms/CatalogCombobox";
@@ -73,6 +74,13 @@ export default function QuoteDetailClient({ quoteId }) {
     title: "",
   });
   const [reason, setReason] = useState("");
+  const [productionModalOpen, setProductionModalOpen] = useState(false);
+  const [purchaseOrderInput, setPurchaseOrderInput] = useState("");
+
+  const openSendToProduction = useCallback(() => {
+    setPurchaseOrderInput(quote?.purchaseOrder || "");
+    setProductionModalOpen(true);
+  }, [quote?.purchaseOrder]);
 
   const canViewCost = has("quotes.view_cost");
   const canViewBenefit = has("quotes.view_benefit");
@@ -145,14 +153,26 @@ export default function QuoteDetailClient({ quoteId }) {
       return;
     }
 
+    if (action === "send-production") {
+      const canSend =
+        ["APPROVED", "IN_PRODUCTION"].includes(quote.status) &&
+        has("quotes.send_to_production");
+      if (canSend) {
+        /* eslint-disable react-hooks/set-state-in-effect */
+        setPurchaseOrderInput(quote.purchaseOrder || "");
+        setProductionModalOpen(true);
+        /* eslint-enable react-hooks/set-state-in-effect */
+      }
+      clearActionQuery();
+      return;
+    }
+
     const allowed = {
       submit: quote.status === "DRAFT" && has("quotes.submit"),
       approve: quote.status === "PENDING_APPROVAL" && has("quotes.approve"),
       return:
         ["PENDING_APPROVAL", "REJECTED"].includes(quote.status) &&
         has("quotes.return_to_draft"),
-      "send-production":
-        quote.status === "APPROVED" && has("quotes.send_to_production"),
     };
 
     if (allowed[action]) {
@@ -489,7 +509,7 @@ export default function QuoteDetailClient({ quoteId }) {
               has("quotes.send_to_production") && (
                 <Button
                   loading={actionBusy}
-                  onClick={() => runAction("send-production")}
+                  onClick={openSendToProduction}
                 >
                   <Send className="h-4 w-4" /> Enviar a produccion
                 </Button>
@@ -499,7 +519,7 @@ export default function QuoteDetailClient({ quoteId }) {
                 <Button
                   variant="subtle"
                   loading={actionBusy}
-                  onClick={() => runAction("send-production")}
+                  onClick={openSendToProduction}
                 >
                   <Send className="h-4 w-4" /> Enviar partidas nuevas
                 </Button>
@@ -894,6 +914,64 @@ export default function QuoteDetailClient({ quoteId }) {
               onClick={insertTemplate}
             >
               Insertar
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={productionModalOpen}
+        onClose={() => {
+          if (actionBusy) return;
+          setProductionModalOpen(false);
+          setPurchaseOrderInput("");
+        }}
+        title="Enviar a produccion"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-content-muted">
+            Indica el numero de orden de compra del cliente para registrar el
+            envio a produccion.
+          </p>
+          <Field
+            label="Numero de orden de compra"
+            htmlFor="purchase-order-production"
+            required
+          >
+            <Input
+              id="purchase-order-production"
+              value={purchaseOrderInput}
+              onChange={(e) => setPurchaseOrderInput(e.target.value)}
+              placeholder="Ej. OC-12345"
+              autoFocus
+            />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="secondary"
+              disabled={actionBusy}
+              onClick={() => {
+                setProductionModalOpen(false);
+                setPurchaseOrderInput("");
+              }}
+            >
+              Cerrar
+            </Button>
+            <Button
+              loading={actionBusy}
+              disabled={purchaseOrderInput.trim().length < 1}
+              onClick={async () => {
+                const ok = await runAction("send-production", {
+                  purchaseOrder: purchaseOrderInput.trim(),
+                });
+                if (ok) {
+                  setProductionModalOpen(false);
+                  setPurchaseOrderInput("");
+                }
+              }}
+            >
+              Confirmar envio
             </Button>
           </div>
         </div>

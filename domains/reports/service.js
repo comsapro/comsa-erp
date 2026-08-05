@@ -18,6 +18,7 @@ import { PO_STATUS_LABELS } from "@/domains/purchase-orders/constants";
 import { QUOTE_STATUS_LABELS } from "@/domains/quotes/constants";
 import { PRODUCTION_STATUS_LABELS } from "@/domains/production/constants";
 import { MOVEMENT_TYPE_LABELS } from "@/domains/inventory/constants";
+import { quotePdfResponse } from "@/lib/pdf/quote-pdf";
 
 function filterList(searchParams) {
   const filters = [];
@@ -49,50 +50,7 @@ export async function quotationPdf(request, id) {
     );
   }
 
-  const activeItems = (quote.items || []).filter((it) => it.status !== "INACTIVE");
-  const buffer = await buildPdfBuffer((doc) => {
-    doc.fontSize(14).text(quote.issuingCompany?.commercialName || "COMSA PRO");
-    doc.fontSize(10).text(quote.issuingCompany?.legalName || "");
-    doc.moveDown();
-    doc.fontSize(16).text(`Cotizacion ${quote.folio}`);
-    doc.fontSize(10);
-    doc.text(`Cliente: ${quote.client?.commercialName || ""}`);
-    doc.text(`Contacto: ${quote.clientContact?.name || "—"}`);
-    doc.text(`Vendedor: ${quote.seller?.name || ""}`);
-    doc.text(`Fecha: ${quote.elaborationDate?.toISOString?.().slice(0, 10) || quote.elaborationDate}`);
-    doc.text(`Vigencia: ${quote.validUntil?.toISOString?.().slice(0, 10) || quote.validUntil}`);
-    doc.text(`Moneda: ${quote.currency}`);
-    doc.moveDown();
-    drawTable(
-      doc,
-      [
-        { key: "desc", header: "Descripcion", width: 220 },
-        { key: "qty", header: "Cant.", width: 50 },
-        { key: "delivery", header: "Entrega", width: 80 },
-        { key: "subtotal", header: "Subtotal", width: 80 },
-        { key: "total", header: "Total", width: 82 },
-      ],
-      activeItems.map((it) => ({
-        desc: String(it.description || "").slice(0, 200),
-        qty: String(toNumber(it.quantity)),
-        delivery: [it.deliveryTimeMin, it.deliveryTimeMax]
-          .filter((v) => v != null)
-          .join("-"),
-        subtotal: pdfMoney(toNumber(it.saleSubtotal)),
-        total: pdfMoney(toNumber(it.total)),
-      }))
-    );
-    doc.moveDown();
-    doc.text(`Subtotal: ${pdfMoney(toNumber(quote.subtotal))}`);
-    doc.text(`Descuento: ${pdfMoney(toNumber(quote.discountTotal))}`);
-    doc.text(`IVA: ${pdfMoney(toNumber(quote.taxTotal))}`);
-    doc.font("Helvetica-Bold").text(`Total: ${pdfMoney(toNumber(quote.total))}`);
-    doc.font("Helvetica");
-    if (quote.paymentNotes) {
-      doc.moveDown();
-      doc.text(`Condiciones: ${String(quote.paymentNotes)}`);
-    }
-  });
+  const response = await quotePdfResponse(quote);
 
   await recordAudit({
     actor,
@@ -103,7 +61,7 @@ export async function quotationPdf(request, id) {
     newData: { folio: quote.folio },
   });
 
-  return pdfResponse(buffer, `cotizacion-${quote.folio}.pdf`);
+  return response;
 }
 
 export async function purchaseOrderPdf(request, id) {

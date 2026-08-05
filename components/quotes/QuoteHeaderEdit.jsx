@@ -69,6 +69,10 @@ function ReadOnlyHeader({ quote }) {
           <dd>{quote.version || "A"}</dd>
         </div>
         <div>
+          <dt className="text-content-muted">Orden de compra</dt>
+          <dd>{quote.purchaseOrder || "-"}</dd>
+        </div>
+        <div>
           <dt className="text-content-muted">Requisicion</dt>
           <dd>{quote.requisition || "-"}</dd>
         </div>

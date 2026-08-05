@@ -61,6 +61,10 @@ export const quoteUpdateSchema = z
   .partial()
   .superRefine(refineAdvanceSettlement);
 
+export const sendToProductionSchema = z.object({
+  purchaseOrder: requiredString("El numero de orden de compra es requerido"),
+});
+
 export const manufacturingLineSchema = z.object({
   manufacturingProcessId: requiredString("Selecciona un proceso del catalogo"),
   processNameSnapshot: optionalString,

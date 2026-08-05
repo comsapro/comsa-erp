@@ -2,13 +2,17 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { requirePagePermission } from "@/lib/auth/guard";
 import { prisma } from "@/lib/db";
-import { QUOTE_STATUS_LABELS } from "@/domains/quotes/constants";
-import { formatDate, formatMoney } from "@/lib/utils/format";
+import { buildQuotePrintModel } from "@/domains/quotes/quote-print";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/feedback/Alert";
 import PrintButton from "./PrintButton";
 
 export const metadata = { title: "Imprimir cotizacion" };
+
+const cell = "border border-black px-1.5 py-1 align-top";
+const cellCenter = `${cell} text-center`;
+const cellRight = `${cell} text-right`;
+const th = `${cell} bg-white text-center font-semibold`;
 
 async function getQuoteForPrint(id) {
   return prisma.quote.findFirst({
@@ -47,12 +51,10 @@ export default async function ImprimirCotizacionPage({ params }) {
     );
   }
 
-  const currency = quote.currency || "MXN";
-  const company = quote.issuingCompany;
-  const client = quote.client;
+  const model = buildQuotePrintModel(quote);
 
   return (
-    <div className="print-quote mx-auto max-w-4xl bg-white text-content">
+    <div className="print-quote mx-auto max-w-[900px] bg-white px-3 py-4 text-black">
       <div className="no-print mb-6 flex justify-end gap-2">
         <Button as={Link} href={`/cotizaciones/${quote.id}`} variant="secondary">
           Volver
@@ -60,177 +62,182 @@ export default async function ImprimirCotizacionPage({ params }) {
         <PrintButton />
       </div>
 
-      <header className="mb-8 flex flex-col gap-4 border-b border-border pb-6 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          {company?.logoUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={company.logoUrl}
-              alt={company.commercialName || "Logo"}
-              className="mb-3 h-14 object-contain"
-            />
-          ) : (
-            <p className="text-xl font-semibold tracking-tight">
-              {company?.commercialName || "COMSA"}
-            </p>
-          )}
-          {company?.legalName && (
-            <p className="text-sm text-content-muted">{company.legalName}</p>
-          )}
-          {company?.fiscalAddress && (
-            <p className="mt-1 max-w-sm whitespace-pre-wrap text-xs text-content-muted">
-              {company.fiscalAddress}
-            </p>
-          )}
-          {company?.rfc && (
-            <p className="text-xs text-content-muted">RFC: {company.rfc}</p>
-          )}
-        </div>
-        <div className="text-right">
-          <p className="text-xs uppercase tracking-wide text-content-muted">
-            Cotizacion
-          </p>
-          <p className="text-2xl font-semibold">{quote.folio}</p>
-          <p className="mt-1 text-sm text-content-muted">
-            {QUOTE_STATUS_LABELS[quote.status] || quote.status}
-          </p>
-          <p className="mt-2 text-sm">
-            Elaboracion: {formatDate(quote.elaborationDate)}
-          </p>
-          <p className="text-sm">Vigencia: {formatDate(quote.validUntil)}</p>
-        </div>
-      </header>
+      {/* Header con borde */}
+      <table className="mb-0 w-full border-collapse text-xs">
+        <tbody>
+          <tr>
+            <td className={`${cell} w-[28%] p-2`}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={model.company.logoUrl || "/branding/comsa-logo.jpeg"}
+                alt="COMSA"
+                className="mx-auto h-16 w-auto object-contain"
+              />
+            </td>
+            <td className={`${cell} p-2 leading-snug`}>
+              <p className="font-bold">{model.company.legalName}</p>
+              {model.company.phone ? <p>Tel: {model.company.phone}</p> : null}
+              {model.company.phone ? <p>Cel: {model.company.phone}</p> : null}
+              {model.company.email ? <p>{model.company.email}</p> : null}
+              {model.company.address ? (
+                <p className="whitespace-pre-wrap">{model.company.address}</p>
+              ) : null}
+            </td>
+          </tr>
+          <tr>
+            <td colSpan={2} className={`${cellCenter} py-2 text-base font-bold`}>
+              COTIZACION #{model.folio}
+            </td>
+          </tr>
+        </tbody>
+      </table>
 
-      <section className="mb-8 grid gap-6 sm:grid-cols-2">
-        <div>
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-content-muted">
-            Cliente
-          </h2>
-          <p className="font-medium">{client?.commercialName || "-"}</p>
-          {client?.legalName && (
-            <p className="text-sm text-content-muted">{client.legalName}</p>
-          )}
-          {client?.rfc && (
-            <p className="text-sm text-content-muted">RFC: {client.rfc}</p>
-          )}
-          {client?.address && (
-            <p className="mt-1 whitespace-pre-wrap text-sm">{client.address}</p>
-          )}
-          {quote.clientContact && (
-            <p className="mt-2 text-sm">
-              Contacto: {quote.clientContact.name}
-              {quote.clientContact.email
-                ? ` · ${quote.clientContact.email}`
-                : ""}
-            </p>
-          )}
-        </div>
-        <div>
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-content-muted">
-            Comercial
-          </h2>
-          <p className="text-sm">Vendedor: {quote.seller?.name || "-"}</p>
-          <p className="text-sm">Moneda: {currency}</p>
-          {quote.purchaseOrder && (
-            <p className="text-sm">OC: {quote.purchaseOrder}</p>
-          )}
-          {quote.requisition && (
-            <p className="text-sm">Requisicion: {quote.requisition}</p>
-          )}
-        </div>
-      </section>
+      {/* Meta */}
+      <table className="w-full border-collapse text-xs">
+        <tbody>
+          <tr>
+            <td className={`${cell} w-[14%] font-semibold`}>Empresa</td>
+            <td className={`${cell} w-[36%]`}>{model.meta.empresa}</td>
+            <td className={`${cell} w-[14%] font-semibold`}>Requisicion</td>
+            <td className={`${cell} w-[36%]`}>{model.meta.requisicion}</td>
+          </tr>
+          <tr>
+            <td className={`${cell} font-semibold`}>Responsable</td>
+            <td className={cell}>{model.meta.responsable}</td>
+            <td className={`${cell} font-semibold`}>Emitida</td>
+            <td className={cell}>{model.meta.emitida}</td>
+          </tr>
+          <tr>
+            <td className={`${cell} font-semibold`}>Atentamente</td>
+            <td className={cell}>{model.meta.atentamente}</td>
+            <td className={`${cell} font-semibold`}>Vigencia hasta</td>
+            <td className={cell}>{model.meta.vigenciaHasta}</td>
+          </tr>
+        </tbody>
+      </table>
 
-      <section className="mb-8">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b-2 border-content text-left text-xs uppercase tracking-wide">
-              <th className="py-2 pr-2 font-semibold">#</th>
-              <th className="py-2 pr-2 font-semibold">Descripcion</th>
-              <th className="py-2 pr-2 text-right font-semibold">Cant.</th>
-              <th className="py-2 pr-2 font-semibold">Unidad</th>
-              <th className="py-2 text-right font-semibold">Importe</th>
+      {/* Partidas */}
+      <table className="w-full border-collapse text-[10px] leading-snug">
+        <thead>
+          <tr>
+            <th className={`${th} w-6`}>#</th>
+            <th className={th}>Descripcion</th>
+            <th className={`${th} w-[11%]`}>Tiempo de entrega</th>
+            <th className={`${th} w-[12%]`}>Comentarios</th>
+            <th className={`${th} w-[11%]`}>Precio Unitario</th>
+            <th className={`${th} w-[9%]`}>Descuento</th>
+            <th className={`${th} w-[8%]`}>Cantidad</th>
+            <th className={`${th} w-[10%]`}>Importe</th>
+          </tr>
+        </thead>
+        <tbody>
+          {model.items.length === 0 ? (
+            <tr>
+              <td className={cellCenter} colSpan={8}>
+                &nbsp;
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {(quote.items || []).map((item) => (
-              <tr key={item.id} className="border-b border-border align-top">
-                <td className="py-3 pr-2 text-content-muted">{item.position}</td>
-                <td className="py-3 pr-2">
-                  <p className="font-medium">{item.description}</p>
-                  {item.clientObservations && (
-                    <p className="mt-1 whitespace-pre-wrap text-xs text-content-muted">
-                      {item.clientObservations}
-                    </p>
-                  )}
-                  {(item.deliveryTimeMin != null ||
-                    item.deliveryTimeMax != null) && (
-                    <p className="mt-1 text-xs text-content-muted">
-                      Entrega: {item.deliveryTimeMin ?? "?"}
-                      {item.deliveryTimeMax != null
-                        ? `–${item.deliveryTimeMax}`
-                        : ""}{" "}
-                      {item.deliveryTimeUnit || "dias"}
-                    </p>
-                  )}
+          ) : (
+            model.items.map((item) => (
+              <tr key={item.position} className="print-row">
+                <td className={cellCenter}>{item.position}</td>
+                <td className={cell}>{item.description}</td>
+                <td className={`${cellCenter} whitespace-pre-line`}>
+                  {item.deliveryRange}
+                  {item.deliveryUnit ? `\n${item.deliveryUnit}` : ""}
                 </td>
-                <td className="py-3 pr-2 text-right">{Number(item.quantity)}</td>
-                <td className="py-3 pr-2">{item.unit || "-"}</td>
-                <td className="py-3 text-right font-medium">
-                  {formatMoney(item.total, currency)}
-                </td>
+                <td className={cell}>{item.comments || ""}</td>
+                <td className={cellRight}>{item.unitPrice}</td>
+                <td className={cellRight}>{item.discount}</td>
+                <td className={cellRight}>{item.quantity}</td>
+                <td className={cellRight}>{item.amount}</td>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-
-      <section className="mb-8 flex justify-end">
-        <dl className="w-full max-w-xs space-y-1 text-sm">
-          <div className="flex justify-between gap-6">
-            <dt className="text-content-muted">Subtotal</dt>
-            <dd>{formatMoney(quote.subtotal, currency)}</dd>
-          </div>
-          <div className="flex justify-between gap-6">
-            <dt className="text-content-muted">Descuento</dt>
-            <dd>{formatMoney(quote.discountTotal, currency)}</dd>
-          </div>
-          <div className="flex justify-between gap-6">
-            <dt className="text-content-muted">IVA</dt>
-            <dd>{formatMoney(quote.taxTotal, currency)}</dd>
-          </div>
-          <div className="flex justify-between gap-6 border-t border-border pt-2 text-base font-semibold">
-            <dt>Total</dt>
-            <dd>{formatMoney(quote.total, currency)}</dd>
-          </div>
-        </dl>
-      </section>
-
-      {(quote.paymentNotes ||
-        Number(quote.advancePercentage) > 0 ||
-        Number(quote.settlementPercentage) !== 100) && (
-        <section className="mb-8">
-          <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-content-muted">
-            Condiciones de pago
-          </h2>
-          {quote.paymentNotes && (
-            <p className="whitespace-pre-wrap text-sm">{quote.paymentNotes}</p>
+            ))
           )}
-          <p className="mt-2 text-sm text-content-muted">
-            Anticipo {Number(quote.advancePercentage)}% · Liquidacion{" "}
-            {Number(quote.settlementPercentage)}%
-          </p>
-        </section>
-      )}
+        </tbody>
+      </table>
 
-      <footer className="border-t border-border pt-6 text-xs text-content-muted">
-        {company?.legalText && (
-          <p className="mb-3 whitespace-pre-wrap">{company.legalText}</p>
-        )}
-        <p>
-          Documento generado por COMSA ERP · Folio {quote.folio} · Version{" "}
-          {quote.version}
-        </p>
-      </footer>
+      {/* Totales */}
+      <table className="w-full border-collapse text-xs">
+        <tbody>
+          <tr>
+            <td
+              rowSpan={3}
+              className={`${cellCenter} w-[62%] font-semibold uppercase`}
+            >
+              {model.currencyBanner}
+            </td>
+            <td className={`${cell} w-[22%] font-semibold`}>Subtotal sin IVA</td>
+            <td className={`${cellRight} w-[16%]`}>{model.totals.subtotal}</td>
+          </tr>
+          <tr>
+            <td className={`${cell} font-semibold`}>IVA</td>
+            <td className={cellRight}>{model.totals.tax}</td>
+          </tr>
+          <tr>
+            <td className={`${cell} font-bold`}>Total con IVA</td>
+            <td className={`${cellRight} font-bold`}>{model.totals.total}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* Notas */}
+      <table className="w-full border-collapse text-xs">
+        <thead>
+          <tr>
+            <th colSpan={2} className={`${th} text-sm`}>
+              NOTAS
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {model.notes.map((note, idx) => (
+            <tr key={note}>
+              <td className={`${cellCenter} w-8 font-semibold`}>{idx + 1}</td>
+              <td className={cell}>{note}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Cancelacion */}
+      <table className="w-full border-collapse text-xs">
+        <thead>
+          <tr>
+            <th colSpan={2} className={`${th} text-sm`}>
+              CANCELACION O CAMBIO
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {model.cancellation.map((row) => (
+            <tr key={row.key}>
+              <td className={`${cellCenter} w-8 font-semibold`}>{row.key}</td>
+              <td className={cell}>{row.text}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* Pie */}
+      <table className="w-full border-collapse text-xs">
+        <tbody>
+          <tr>
+            <td className={`${cell} w-[48%] align-middle`}>
+              En caso de vernos favorecidos con su pedido por favor dirigirlo a:
+            </td>
+            <td className={`${cell} w-[52%] leading-snug`}>
+              <p className="font-bold">{model.company.legalName}</p>
+              {model.company.email ? (
+                <p>E-mail: {model.company.email}</p>
+              ) : null}
+              {model.company.rfc ? <p>RFC :{model.company.rfc}</p> : null}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <p className="mt-2 text-[11px] text-neutral-600">{model.revisionLabel}</p>
     </div>
   );
 }

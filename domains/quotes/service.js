@@ -21,6 +21,7 @@ import {
   quoteCancelSchema,
   insertTemplateSchema,
   reorderItemsSchema,
+  sendToProductionSchema,
 } from "./schemas";
 import { recalculateQuote } from "./recalculate";
 import {
@@ -1509,6 +1510,9 @@ export async function createQuoteRevision(request, id) {
 export async function sendToProduction(request, id) {
   await requirePermission("quotes.send_to_production");
   const actor = await getActor(request);
+  const body = await request.json().catch(() => ({}));
+  const { purchaseOrder } = sendToProductionSchema.parse(body);
+
   const existing = await findQuoteOrThrow(id, {
     ...DETAIL_INCLUDE,
     items: { orderBy: { position: "asc" } },
@@ -1602,6 +1606,7 @@ export async function sendToProduction(request, id) {
       where: { id },
       data: {
         status: "IN_PRODUCTION",
+        purchaseOrder,
         productionOrderId: productionOrder.id,
         updatedBy: actor.id,
       },
@@ -1616,7 +1621,7 @@ export async function sendToProduction(request, id) {
     entityId: id,
     action: AUDIT_ACTIONS.SEND_TO_PRODUCTION,
     previousData: existing,
-    newData: record,
+    newData: { ...record, purchaseOrder },
   });
 
   return jsonOk(record);

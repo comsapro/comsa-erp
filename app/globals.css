@@ -93,6 +93,15 @@ body {
     display: block !important;
   }
 
+  .print-quote table {
+    border-collapse: collapse;
+  }
+
+  .print-quote td,
+  .print-quote th {
+    border-color: #000 !important;
+  }
+
   .print-quote table tr,
   .print-quote .print-row {
     break-inside: avoid;
