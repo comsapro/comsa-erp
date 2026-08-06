@@ -9,10 +9,11 @@ import PrintButton from "./PrintButton";
 
 export const metadata = { title: "Imprimir cotizacion" };
 
-const cell = "border border-black px-1.5 py-1 align-top";
-const cellCenter = `${cell} text-center`;
+const cell =
+  "border border-black px-1.5 py-1 align-middle text-center leading-tight";
+const cellLeft = `${cell} text-left`;
 const cellRight = `${cell} text-right`;
-const th = `${cell} bg-white text-center font-semibold`;
+const th = `${cell} bg-white font-semibold`;
 
 async function getQuoteForPrint(id) {
   return prisma.quote.findFirst({
@@ -62,8 +63,8 @@ export default async function ImprimirCotizacionPage({ params }) {
         <PrintButton />
       </div>
 
-      {/* Header con borde */}
-      <table className="mb-0 w-full border-collapse text-xs">
+      {/* Header con borde — tablas encadenadas sin huecos entre secciones */}
+      <table className="w-full border-collapse text-xs">
         <tbody>
           <tr>
             <td className={`${cell} w-[28%] p-2`}>
@@ -74,7 +75,7 @@ export default async function ImprimirCotizacionPage({ params }) {
                 className="mx-auto h-16 w-auto object-contain"
               />
             </td>
-            <td className={`${cell} p-2 leading-snug`}>
+            <td className={`${cellLeft} p-2 leading-snug`}>
               <p className="font-bold">{model.company.legalName}</p>
               {model.company.phone ? <p>Tel: {model.company.phone}</p> : null}
               {model.company.phone ? <p>Cel: {model.company.phone}</p> : null}
@@ -85,7 +86,7 @@ export default async function ImprimirCotizacionPage({ params }) {
             </td>
           </tr>
           <tr>
-            <td colSpan={2} className={`${cellCenter} py-2 text-base font-bold`}>
+            <td colSpan={2} className={`${cell} py-1.5 text-base font-bold`}>
               COTIZACION #{model.folio}
             </td>
           </tr>
@@ -96,21 +97,21 @@ export default async function ImprimirCotizacionPage({ params }) {
       <table className="w-full border-collapse text-xs">
         <tbody>
           <tr>
-            <td className={`${cell} w-[14%] font-semibold`}>Empresa</td>
+            <td className={`${th} w-[14%]`}>Empresa</td>
             <td className={`${cell} w-[36%]`}>{model.meta.empresa}</td>
-            <td className={`${cell} w-[14%] font-semibold`}>Requisicion</td>
+            <td className={`${th} w-[14%]`}>Requisicion</td>
             <td className={`${cell} w-[36%]`}>{model.meta.requisicion}</td>
           </tr>
           <tr>
-            <td className={`${cell} font-semibold`}>Responsable</td>
+            <td className={th}>Responsable</td>
             <td className={cell}>{model.meta.responsable}</td>
-            <td className={`${cell} font-semibold`}>Emitida</td>
+            <td className={th}>Emitida</td>
             <td className={cell}>{model.meta.emitida}</td>
           </tr>
           <tr>
-            <td className={`${cell} font-semibold`}>Atentamente</td>
+            <td className={th}>Atentamente</td>
             <td className={cell}>{model.meta.atentamente}</td>
-            <td className={`${cell} font-semibold`}>Vigencia hasta</td>
+            <td className={th}>Vigencia hasta</td>
             <td className={cell}>{model.meta.vigenciaHasta}</td>
           </tr>
         </tbody>
@@ -133,23 +134,23 @@ export default async function ImprimirCotizacionPage({ params }) {
         <tbody>
           {model.items.length === 0 ? (
             <tr>
-              <td className={cellCenter} colSpan={8}>
+              <td className={cell} colSpan={8}>
                 &nbsp;
               </td>
             </tr>
           ) : (
             model.items.map((item) => (
               <tr key={item.position} className="print-row">
-                <td className={cellCenter}>{item.position}</td>
-                <td className={cell}>{item.description}</td>
-                <td className={`${cellCenter} whitespace-pre-line`}>
+                <td className={cell}>{item.position}</td>
+                <td className={cellLeft}>{item.description}</td>
+                <td className={`${cell} whitespace-pre-line`}>
                   {item.deliveryRange}
                   {item.deliveryUnit ? `\n${item.deliveryUnit}` : ""}
                 </td>
-                <td className={cell}>{item.comments || ""}</td>
+                <td className={cellLeft}>{item.comments || ""}</td>
                 <td className={cellRight}>{item.unitPrice}</td>
                 <td className={cellRight}>{item.discount}</td>
-                <td className={cellRight}>{item.quantity}</td>
+                <td className={cell}>{item.quantity}</td>
                 <td className={cellRight}>{item.amount}</td>
               </tr>
             ))
@@ -161,21 +162,18 @@ export default async function ImprimirCotizacionPage({ params }) {
       <table className="w-full border-collapse text-xs">
         <tbody>
           <tr>
-            <td
-              rowSpan={3}
-              className={`${cellCenter} w-[62%] font-semibold uppercase`}
-            >
+            <td rowSpan={3} className={`${cell} w-[62%] font-semibold uppercase`}>
               {model.currencyBanner}
             </td>
-            <td className={`${cell} w-[22%] font-semibold`}>Subtotal sin IVA</td>
+            <td className={`${th} w-[22%]`}>Subtotal sin IVA</td>
             <td className={`${cellRight} w-[16%]`}>{model.totals.subtotal}</td>
           </tr>
           <tr>
-            <td className={`${cell} font-semibold`}>IVA</td>
+            <td className={th}>IVA</td>
             <td className={cellRight}>{model.totals.tax}</td>
           </tr>
           <tr>
-            <td className={`${cell} font-bold`}>Total con IVA</td>
+            <td className={`${th} font-bold`}>Total con IVA</td>
             <td className={`${cellRight} font-bold`}>{model.totals.total}</td>
           </tr>
         </tbody>
@@ -193,8 +191,8 @@ export default async function ImprimirCotizacionPage({ params }) {
         <tbody>
           {model.notes.map((note, idx) => (
             <tr key={note}>
-              <td className={`${cellCenter} w-8 font-semibold`}>{idx + 1}</td>
-              <td className={cell}>{note}</td>
+              <td className={`${th} w-8`}>{idx + 1}</td>
+              <td className={cellLeft}>{note}</td>
             </tr>
           ))}
         </tbody>
@@ -212,8 +210,8 @@ export default async function ImprimirCotizacionPage({ params }) {
         <tbody>
           {model.cancellation.map((row) => (
             <tr key={row.key}>
-              <td className={`${cellCenter} w-8 font-semibold`}>{row.key}</td>
-              <td className={cell}>{row.text}</td>
+              <td className={`${th} w-8`}>{row.key}</td>
+              <td className={cellLeft}>{row.text}</td>
             </tr>
           ))}
         </tbody>
@@ -223,21 +221,23 @@ export default async function ImprimirCotizacionPage({ params }) {
       <table className="w-full border-collapse text-xs">
         <tbody>
           <tr>
-            <td className={`${cell} w-[48%] align-middle`}>
+            <td className={`${cell} w-[48%] px-2 py-2`}>
               En caso de vernos favorecidos con su pedido por favor dirigirlo a:
             </td>
-            <td className={`${cell} w-[52%] leading-snug`}>
+            <td className={`${cellLeft} w-[52%] px-2 py-2 leading-snug`}>
               <p className="font-bold">{model.company.legalName}</p>
               {model.company.email ? (
                 <p>E-mail: {model.company.email}</p>
               ) : null}
-              {model.company.rfc ? <p>RFC :{model.company.rfc}</p> : null}
+              {model.company.rfc ? <p>RFC: {model.company.rfc}</p> : null}
             </td>
           </tr>
         </tbody>
       </table>
 
-      <p className="mt-2 text-[11px] text-neutral-600">{model.revisionLabel}</p>
+      <p className="mt-1.5 text-left text-[11px] text-neutral-600">
+        {model.revisionLabel}
+      </p>
     </div>
   );
 }

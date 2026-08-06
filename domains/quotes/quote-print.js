@@ -98,7 +98,8 @@ export function buildQuotePrintModel(quote) {
   return {
     folio: quote.folio,
     version: quote.version || "A",
-    revisionLabel: `Revision ${quote.version || "A"}`,
+    /** Documento ISO/NOM: la revisión impresa es siempre 1.1 */
+    revisionLabel: "Revision 1.1",
     currency,
     currencyBanner:
       currency === "USD"
@@ -118,9 +119,9 @@ export function buildQuotePrintModel(quote) {
       legalText: company.legalText || "",
     },
     meta: {
-      empresa: client.commercialName || "-",
+      empresa: client.commercialName || client.legalName || "-",
       requisicion: quote.requisition || "-",
-      responsable: quote.clientContact?.name || "-",
+      responsable: quote.clientContact?.name || client.mainContactName || "-",
       emitida: formatDateIso(quote.elaborationDate),
       atentamente: quote.seller?.name || "-",
       vigenciaHasta: formatDateIso(quote.validUntil),

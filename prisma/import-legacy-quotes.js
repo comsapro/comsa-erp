@@ -129,16 +129,30 @@ function indexBy(rows, keyFn) {
 }
 
 async function ensureIssuingCompany(prisma, actorId) {
+  const preferred = await prisma.issuingCompany.findFirst({
+    where: {
+      deletedAt: null,
+      status: "ACTIVE",
+      commercialName: { equals: "COMSA", mode: "insensitive" },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+  if (preferred) return preferred.id;
+
   const existing = await prisma.issuingCompany.findFirst({
-    where: { deletedAt: null },
+    where: { deletedAt: null, status: "ACTIVE" },
     orderBy: { createdAt: "asc" },
   });
   if (existing) return existing.id;
 
   const created = await prisma.issuingCompany.create({
     data: {
-      commercialName: "COMSA PRO",
-      legalName: "COMSA PRO",
+      commercialName: "COMSA",
+      legalName:
+        "COMERCIALIZADORA, OPERACIONES Y MANUFACTURA, S.A. DE C.V.",
+      rfc: "COM070417GW6",
+      email: "comsamaquinados@comsapro.com.mx",
+      phone: "8715385508",
       status: "ACTIVE",
       createdBy: actorId,
       updatedBy: actorId,
