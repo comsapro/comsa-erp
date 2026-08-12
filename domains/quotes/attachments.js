@@ -447,7 +447,10 @@ export async function deleteItemAttachment(
 }
 
 export async function servePrivateBlob(request) {
-  await requirePermission("quotes.view");
+  const { requireAnyPermission } = await import(
+    "@/lib/permissions/require-permission"
+  );
+  await requireAnyPermission(["quotes.view", "production.view"]);
 
   const { searchParams } = new URL(request.url);
   const pathname = searchParams.get("pathname");
@@ -465,6 +468,9 @@ export async function servePrivateBlob(request) {
       },
     })) ||
     (await prisma.quoteItemTemplateAttachment.findFirst({
+      where: { pathname },
+    })) ||
+    (await prisma.productionAttachment.findFirst({
       where: { pathname },
     }));
 

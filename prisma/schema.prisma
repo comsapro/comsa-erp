@@ -227,6 +227,7 @@ model User {
   purchaseOrdersAuthorized PurchaseOrder[] @relation("PurchaseOrderAuthorizedBy")
   purchaseReceiptsReceived PurchaseReceipt[] @relation("PurchaseReceiptReceivedBy")
   quoteItemAttachmentsCreated QuoteItemAttachment[] @relation("QuoteItemAttachmentCreatedBy")
+  productionAttachmentsCreated ProductionAttachment[] @relation("ProductionAttachmentCreatedBy")
 
   @@index([status])
   @@index([deletedAt])
@@ -1084,11 +1085,36 @@ model ProductionOrder {
   reprints             ProductionOrder[] @relation("ProductionReprints")
   items                ProductionItem[]
   purchaseOrders       PurchaseOrder[]
+  attachments          ProductionAttachment[]
 
   @@index([status, approvalDate])
   @@index([clientId])
   @@index([quoteId])
   @@map("production_orders")
+}
+
+model ProductionAttachment {
+  id                String  @id @default(cuid())
+  productionOrderId String  @map("production_order_id")
+  pathname          String
+  url               String?
+  fileName          String  @map("file_name")
+  contentType       String  @map("content_type")
+  sizeBytes         Int     @map("size_bytes")
+  kind              String  @default("SCAN")
+  sortOrder         Int     @default(0) @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  createdByUser   User?           @relation("ProductionAttachmentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([productionOrderId])
+  @@unique([pathname])
+  @@map("production_attachments")
 }
 
 model ProductionItem {

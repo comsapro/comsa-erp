@@ -16,6 +16,7 @@ import {
   PRODUCTION_SOURCE_TYPES,
 } from "./constants";
 import { updateItemProgressSchema, productionNoteSchema, reprintSchema } from "./schemas";
+import { getQuoteProductionDocsForOrder } from "./attachments";
 
 const SORTABLE = [
   "folio",
@@ -36,6 +37,9 @@ const DETAIL_INCLUDE = {
   quote: { select: { id: true, folio: true, status: true } },
   directOrder: { select: { id: true, folio: true, status: true } },
   materialsReadyByUser: { select: { id: true, name: true } },
+  attachments: {
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  },
   purchaseOrders: {
     where: { deletedAt: null },
     orderBy: { createdAt: "desc" },
@@ -175,7 +179,8 @@ export async function listProduction(request) {
 export async function getProduction(request, id) {
   await requirePermission("production.view");
   const record = await findProductionOrThrow(id, DETAIL_INCLUDE);
-  return jsonOk(record);
+  const quoteDocumentation = await getQuoteProductionDocsForOrder(record);
+  return jsonOk({ ...record, quoteDocumentation });
 }
 
 export async function startProduction(request, id) {

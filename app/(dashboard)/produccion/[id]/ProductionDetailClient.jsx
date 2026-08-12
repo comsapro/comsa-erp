@@ -26,6 +26,10 @@ import {
   PRODUCTION_STATUS_TONES,
   PRODUCTION_SOURCE_LABELS,
 } from "@/domains/production/constants";
+import {
+  ProductionDocuments,
+  ProductionTemplateLinks,
+} from "@/components/production/ProductionDocuments";
 
 export default function ProductionDetailClient({ id }) {
   const { toast } = useToast();
@@ -295,6 +299,15 @@ export default function ProductionDetailClient({ id }) {
           )}
         </Card>
       </div>
+
+      <ProductionTemplateLinks />
+
+      <ProductionDocuments
+        productionId={id}
+        quoteDocumentation={record.quoteDocumentation}
+        initialAttachments={record.attachments || []}
+        canUpload={record.status !== "CANCELLED"}
+      />
 
       <Card className="overflow-hidden">
         <div className="border-b border-border px-5 py-3">
