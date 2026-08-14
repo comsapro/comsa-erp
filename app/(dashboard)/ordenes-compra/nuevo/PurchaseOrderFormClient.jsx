@@ -7,6 +7,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { CatalogCombobox } from "@/components/forms/CatalogCombobox";
 import { api, toQuery } from "@/lib/api/client";
+import { MaterialPreload } from "@/components/purchase-orders/MaterialPreload";
 
 export default function PurchaseOrderFormClient({
   productionOrderId = "",
@@ -21,6 +22,7 @@ export default function PurchaseOrderFormClient({
   const [supplierId, setSupplierId] = useState("");
   const [prodId, setProdId] = useState(productionOrderId);
   const [qId, setQId] = useState(quoteId);
+  const [sourceBanner, setSourceBanner] = useState(null);
   const [requestDate, setRequestDate] = useState(
     new Date().toISOString().slice(0, 10)
   );
@@ -43,6 +45,20 @@ export default function PurchaseOrderFormClient({
       setQuotes(qt?.data || []);
     });
   }, []);
+
+  useEffect(() => {
+    if (!productionOrderId || quoteId) return;
+    api
+      .get(`/api/produccion/${productionOrderId}`)
+      .then((op) => {
+        if (op?.quote?.id) setQId(op.quote.id);
+        setSourceBanner({
+          productionFolio: op?.folio,
+          quoteFolio: op?.quote?.folio,
+        });
+      })
+      .catch(() => {});
+  }, [productionOrderId, quoteId]);
 
   useEffect(() => {
     if (!qId) {
@@ -121,9 +137,12 @@ export default function PurchaseOrderFormClient({
           .filter((l) => l.itemId)
           .map((l) => ({
             itemId: l.itemId,
+            descriptionSnapshot: l.descriptionSnapshot || null,
             quantity: Number(l.quantity),
             unitPrice: Number(l.unitPrice),
             unit: l.unit || null,
+            sourceType: l.sourceMaterialId ? "QUOTE_MATERIAL" : "MANUAL",
+            sourceMaterialId: l.sourceMaterialId || null,
           })),
       });
       router.push(`/ordenes-compra/${created.id}`);
@@ -142,6 +161,20 @@ export default function PurchaseOrderFormClient({
         className="mt-4 space-y-4 rounded-lg border border-border bg-white p-5"
       >
         {error && <p className="text-sm text-danger-700">{error}</p>}
+
+        {(prodId || qId) && (
+          <div className="rounded-md border border-border bg-surface-muted/50 px-3 py-2 text-sm">
+            <p className="font-medium">Origen de la orden de compra</p>
+            <p className="text-content-muted">
+              {sourceBanner?.productionFolio || prodId
+                ? `Produccion ${sourceBanner?.productionFolio || prodId}`
+                : "Sin OP vinculada"}
+              {sourceBanner?.quoteFolio || qId
+                ? ` · Cotizacion ${sourceBanner?.quoteFolio || qId}`
+                : ""}
+            </p>
+          </div>
+        )}
 
         <CatalogCombobox
           label="Proveedor"
@@ -234,6 +267,43 @@ export default function PurchaseOrderFormClient({
             onChange={(e) => setComments(e.target.value)}
           />
         </label>
+
+        <MaterialPreload
+          productionOrderId={prodId}
+          quoteId={qId}
+          catalogItems={items}
+          onApply={(mapped, meta) => {
+            if (meta?.quoteId) setQId(meta.quoteId);
+            if (meta?.productionOrderId) setProdId(meta.productionOrderId);
+            if (meta) {
+              setSourceBanner({
+                productionFolio: meta.productionFolio,
+                quoteFolio: meta.quoteFolio,
+              });
+            }
+            const next = mapped
+              .filter((row) => row.itemId)
+              .map((row) => ({
+                itemId: row.itemId,
+                quantity: row.quantity,
+                unitPrice: 0,
+                unit: row.unit || "",
+                descriptionSnapshot: row.descriptionSnapshot,
+                sourceMaterialId: row.sourceMaterialId,
+              }));
+            if (!next.length) return;
+            setLines((prev) => {
+              const remaining = prev.filter((l) => l.itemId);
+              const existingSources = new Set(
+                remaining.map((l) => l.sourceMaterialId).filter(Boolean)
+              );
+              const extra = next.filter(
+                (n) => !n.sourceMaterialId || !existingSources.has(n.sourceMaterialId)
+              );
+              return extra.length ? [...remaining, ...extra] : remaining.length ? remaining : prev;
+            });
+          }}
+        />
 
         <div className="space-y-3">
           <p className="text-sm font-medium">Partidas</p>

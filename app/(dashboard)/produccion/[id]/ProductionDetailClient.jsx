@@ -5,7 +5,9 @@ import Link from "next/link";
 import {
   ArrowLeft,
   CheckCircle2,
+  FileText,
   Play,
+  RotateCcw,
   XCircle,
 } from "lucide-react";
 import { api } from "@/lib/api/client";
@@ -17,6 +19,7 @@ import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { Alert } from "@/components/feedback/Alert";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
+import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { useToast } from "@/components/feedback/ToastProvider";
 import { Can } from "@/components/permissions/Can";
@@ -26,10 +29,8 @@ import {
   PRODUCTION_STATUS_TONES,
   PRODUCTION_SOURCE_LABELS,
 } from "@/domains/production/constants";
-import {
-  ProductionDocuments,
-  ProductionTemplateLinks,
-} from "@/components/production/ProductionDocuments";
+import { ProductionDocuments } from "@/components/production/ProductionDocuments";
+import { ProductionProcessesPanel } from "@/components/production/ProductionProcessesPanel";
 
 export default function ProductionDetailClient({ id }) {
   const { toast } = useToast();
@@ -39,6 +40,8 @@ export default function ProductionDetailClient({ id }) {
   const [acting, setActing] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [progressDraft, setProgressDraft] = useState({});
+  const [reopenItem, setReopenItem] = useState(null);
+  const [reopenReason, setReopenReason] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -116,6 +119,60 @@ export default function ProductionDetailClient({ id }) {
     }
   };
 
+  const applyUpdated = (updated) => {
+    if (!updated?.id) return;
+    setRecord(updated);
+    const drafts = {};
+    for (const item of updated.items || []) {
+      drafts[item.id] = {
+        completedQuantity: Number(item.completedQuantity) || 0,
+        observations: item.observations || "",
+      };
+    }
+    setProgressDraft(drafts);
+  };
+
+  const runProcessChange = async (itemId, type, processId, payload) => {
+    setActing(true);
+    try {
+      let updated;
+      if (type === "add-process") {
+        updated = await api.post(
+          `/api/produccion/${id}/items/${itemId}/procesos`,
+          payload
+        );
+      } else if (type === "hours") {
+        updated = await api.patch(
+          `/api/produccion/${id}/items/${itemId}/procesos/${processId}`,
+          payload
+        );
+      } else if (type === "complete-process") {
+        updated = await api.post(
+          `/api/produccion/${id}/items/${itemId}/procesos/${processId}/acciones/completar`
+        );
+      } else if (type === "replace-process") {
+        updated = await api.post(
+          `/api/produccion/${id}/items/${itemId}/procesos/${processId}/acciones/reemplazar`,
+          payload
+        );
+      } else if (type === "delete-process") {
+        updated = await api.del(
+          `/api/produccion/${id}/items/${itemId}/procesos/${processId}`
+        );
+      }
+      applyUpdated(updated);
+      toast({ variant: "success", title: "Proceso actualizado" });
+    } catch (err) {
+      toast({
+        variant: "error",
+        title: "No se pudo actualizar el proceso",
+        description: err.message,
+      });
+    } finally {
+      setActing(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col gap-4">
@@ -133,18 +190,16 @@ export default function ProductionDetailClient({ id }) {
     );
   }
 
-  const sourceHref =
-    record.sourceType === "QUOTE" && record.quote
-      ? `/cotizaciones/${record.quote.id}`
-      : record.sourceType === "DIRECT_ORDER" && record.directOrder
-        ? `/ordenes-directas/${record.directOrder.id}`
-        : null;
   const sourceLabel =
     record.sourceType === "QUOTE"
       ? record.quote?.folio
       : record.directOrder?.folio;
   const isOpen =
-    record.status === "PENDING" || record.status === "IN_PROGRESS";
+    record.status === "PENDING" ||
+    record.status === "IN_PROGRESS";
+  const ocHref = record.quote?.id
+    ? `/ordenes-compra/nuevo?productionOrderId=${id}&quoteId=${record.quote.id}`
+    : `/ordenes-compra/nuevo?productionOrderId=${id}`;
 
   return (
     <div className="flex flex-col gap-6">
@@ -250,10 +305,10 @@ export default function ProductionDetailClient({ id }) {
             Reimpresion nuevo folio
           </Button>
         </Can>
-        {sourceHref && (
-          <Button as={Link} href={sourceHref} size="sm" variant="subtle">
+        {sourceLabel && (
+          <span className="rounded-[var(--radius-sm)] border border-border px-3 py-1.5 text-sm text-content-muted">
             Origen {sourceLabel}
-          </Button>
+          </span>
         )}
       </Card>
 
@@ -300,11 +355,8 @@ export default function ProductionDetailClient({ id }) {
         </Card>
       </div>
 
-      <ProductionTemplateLinks />
-
       <ProductionDocuments
         productionId={id}
-        quoteDocumentation={record.quoteDocumentation}
         initialAttachments={record.attachments || []}
         canUpload={record.status !== "CANCELLED"}
       />
@@ -320,7 +372,11 @@ export default function ProductionDetailClient({ id }) {
               observations: "",
             };
             const canProgress =
-              isOpen &&
+              (isOpen || record.status === "COMPLETED") &&
+              item.status !== "COMPLETED" &&
+              item.status !== "CANCELLED";
+            const canManageProcesses =
+              record.status !== "CANCELLED" &&
               item.status !== "COMPLETED" &&
               item.status !== "CANCELLED";
 
@@ -338,6 +394,30 @@ export default function ProductionDetailClient({ id }) {
                         ? ` · ${item.durationMinutes} min`
                         : ""}
                     </p>
+                    <Can permission="production.print">
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="subtle"
+                          as="a"
+                          href={`/api/produccion/${id}/pdf/control-dimensional?itemId=${item.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <FileText className="h-4 w-4" /> Control dimensional
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="subtle"
+                          as="a"
+                          href={`/api/produccion/${id}/pdf/orden-trabajo?itemId=${item.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <FileText className="h-4 w-4" /> Orden de trabajo
+                        </Button>
+                      </div>
+                    </Can>
                     {(item.notes || []).length > 0 && (
                       <ul className="mt-2 space-y-1 text-xs text-content-muted">
                         {item.notes.slice(0, 5).map((n) => (
@@ -438,6 +518,46 @@ export default function ProductionDetailClient({ id }) {
                   </div>
                 )}
 
+                {item.status === "COMPLETED" && (
+                  <Can permission="production.reopen_item">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        setReopenItem(item);
+                        setReopenReason("");
+                      }}
+                    >
+                      <RotateCcw className="h-4 w-4" /> Reabrir / retrabajo
+                    </Button>
+                  </Can>
+                )}
+
+                <ProductionProcessesPanel
+                  productionId={id}
+                  item={item}
+                  canManage={canManageProcesses}
+                  acting={acting}
+                  onChanged={(type, processId, payload) =>
+                    runProcessChange(item.id, type, processId, payload)
+                  }
+                />
+
+                {(item.sourceMaterials || []).length > 0 && (
+                  <div className="rounded-[var(--radius-md)] border border-border p-3">
+                    <p className="mb-2 text-sm font-semibold">Materiales de origen</p>
+                    <ul className="space-y-1 text-sm text-content-muted">
+                      {item.sourceMaterials.map((mat) => (
+                        <li key={mat.id}>
+                          {mat.descriptionSnapshot} · {Number(mat.quantity)}{" "}
+                          {mat.unit || ""}
+                          {mat.dimensions ? ` · ${mat.dimensions}` : ""}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
                 {item.completedByUser && (
                   <p className="text-xs text-content-muted">
                     Completado por {item.completedByUser.name}
@@ -459,7 +579,7 @@ export default function ProductionDetailClient({ id }) {
             <Can permission="purchase_orders.create">
               <Button
                 as={Link}
-                href={`/ordenes-compra/nuevo?productionOrderId=${id}`}
+                href={ocHref}
                 size="sm"
                 variant="secondary"
               >
@@ -489,6 +609,37 @@ export default function ProductionDetailClient({ id }) {
         description={`Se cancelara la orden ${record.folio} y sus items pendientes.`}
         confirmLabel="Cancelar orden"
       />
+
+      <Modal
+        open={Boolean(reopenItem)}
+        onClose={() => setReopenItem(null)}
+        title="Reabrir partida"
+        description="El item pasara a retrabajo. El historial de terminado se conserva en bitacora."
+      >
+        <Textarea
+          rows={4}
+          placeholder="Motivo obligatorio (error, rechazo del cliente, retrabajo, etc.)"
+          value={reopenReason}
+          onChange={(e) => setReopenReason(e.target.value)}
+        />
+        <div className="mt-4 flex justify-end gap-2">
+          <Button variant="secondary" onClick={() => setReopenItem(null)}>
+            Cancelar
+          </Button>
+          <Button
+            loading={acting}
+            onClick={async () => {
+              if (!reopenItem) return;
+              await runItemAction(reopenItem.id, "reopen", {
+                reason: reopenReason,
+              });
+              setReopenItem(null);
+            }}
+          >
+            Reabrir
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -3,6 +3,7 @@ export const PRODUCTION_STATUSES = [
   "IN_PROGRESS",
   "COMPLETED",
   "CANCELLED",
+  "REWORK",
 ];
 
 export const PRODUCTION_STATUS_LABELS = {
@@ -10,6 +11,7 @@ export const PRODUCTION_STATUS_LABELS = {
   IN_PROGRESS: "En progreso",
   COMPLETED: "Completada",
   CANCELLED: "Cancelada",
+  REWORK: "Retrabajo",
 };
 
 export const PRODUCTION_STATUS_TONES = {
@@ -17,6 +19,7 @@ export const PRODUCTION_STATUS_TONES = {
   IN_PROGRESS: "brand",
   COMPLETED: "success",
   CANCELLED: "neutral",
+  REWORK: "warning",
 };
 
 export const PRODUCTION_SOURCE_TYPES = ["QUOTE", "DIRECT_ORDER"];

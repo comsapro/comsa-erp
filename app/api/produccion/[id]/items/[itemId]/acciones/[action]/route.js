@@ -5,6 +5,7 @@ import {
   updateItemProgress,
   completeItem,
   addItemNote,
+  reopenItem,
 } from "@/domains/production/service";
 
 const ACTIONS = {
@@ -12,6 +13,7 @@ const ACTIONS = {
   "update-progress": updateItemProgress,
   complete: completeItem,
   "add-note": addItemNote,
+  reopen: reopenItem,
 };
 
 export const POST = withErrorHandling(async (req, ctx) => {

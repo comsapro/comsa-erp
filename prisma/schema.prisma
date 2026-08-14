@@ -108,8 +108,31 @@ enum ProductionStatus {
   IN_PROGRESS
   COMPLETED
   CANCELLED
+  REWORK
 
   @@map("production_status")
+}
+
+enum ProductionProcessSourceType {
+  QUOTATION
+  PRODUCTION
+
+  @@map("production_process_source_type")
+}
+
+enum ProductionProcessStatus {
+  PENDING
+  COMPLETED
+  REPLACED
+
+  @@map("production_process_status")
+}
+
+enum PurchaseOrderItemSourceType {
+  QUOTE_MATERIAL
+  MANUAL
+
+  @@map("purchase_order_item_source_type")
 }
 
 enum FolioScope {
@@ -228,6 +251,9 @@ model User {
   purchaseReceiptsReceived PurchaseReceipt[] @relation("PurchaseReceiptReceivedBy")
   quoteItemAttachmentsCreated QuoteItemAttachment[] @relation("QuoteItemAttachmentCreatedBy")
   productionAttachmentsCreated ProductionAttachment[] @relation("ProductionAttachmentCreatedBy")
+  productionProcessesCreated ProductionItemProcess[] @relation("ProductionProcessCreatedBy")
+  productionProcessesUpdated ProductionItemProcess[] @relation("ProductionProcessUpdatedBy")
+  productionProcessesReplaced ProductionItemProcess[] @relation("ProductionProcessReplacedBy")
 
   @@index([status])
   @@index([deletedAt])
@@ -559,6 +585,7 @@ model ManufacturingProcess {
 
   quoteItemManufacturing    QuoteItemManufacturing[]
   templateManufacturing     QuoteItemTemplateManufacturing[]
+  productionItemProcesses   ProductionItemProcess[]
 
   @@index([status])
   @@index([deletedAt])
@@ -1139,6 +1166,7 @@ model ProductionItem {
   productionOrder ProductionOrder      @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
   completedByUser User?                @relation("ProductionItemCompletedBy", fields: [completedBy], references: [id], onDelete: SetNull)
   notes           ProductionItemNote[]
+  processes       ProductionItemProcess[]
 
   @@index([productionOrderId, position])
   @@index([sourceItemId])
@@ -1157,6 +1185,43 @@ model ProductionItemNote {
 
   @@index([productionItemId, createdAt])
   @@map("production_item_notes")
+}
+
+model ProductionItemProcess {
+  id                     String                       @id @default(cuid())
+  productionItemId       String                       @map("production_item_id")
+  sourceType             ProductionProcessSourceType  @map("source_type")
+  quotedManufacturingId  String?                      @map("quoted_manufacturing_id")
+  manufacturingProcessId String?                      @map("manufacturing_process_id")
+  processNameSnapshot    String                       @map("process_name_snapshot")
+  unitSnapshot           ProcessUnit                  @map("unit_snapshot")
+  quotedHours            Decimal                      @default(0) @map("quoted_hours") @db.Decimal(14, 3)
+  expectedHours          Decimal                      @default(0) @map("expected_hours") @db.Decimal(14, 3)
+  realHours              Decimal                      @default(0) @map("real_hours") @db.Decimal(14, 3)
+  status                 ProductionProcessStatus      @default(PENDING)
+  replacedProcessId      String?                      @map("replaced_process_id")
+  replacementReason      String?                      @map("replacement_reason")
+  replacedAt             DateTime?                    @map("replaced_at")
+  replacedBy             String?                      @map("replaced_by")
+  notes                  String?
+  sortOrder              Int                          @default(0) @map("sort_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  productionItem ProductionItem              @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
+  process        ManufacturingProcess?       @relation(fields: [manufacturingProcessId], references: [id], onDelete: SetNull)
+  replacedByUser User?                       @relation("ProductionProcessReplacedBy", fields: [replacedBy], references: [id], onDelete: SetNull)
+  createdByUser  User?                       @relation("ProductionProcessCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser  User?                       @relation("ProductionProcessUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  replacedProcess ProductionItemProcess?     @relation("ProductionProcessReplacement", fields: [replacedProcessId], references: [id], onDelete: SetNull)
+  replacements    ProductionItemProcess[]    @relation("ProductionProcessReplacement")
+
+  @@index([productionItemId, sortOrder])
+  @@index([manufacturingProcessId])
+  @@map("production_item_processes")
 }
 
 // -----------------------------------------------------------------------------
@@ -1316,6 +1381,8 @@ model PurchaseOrderItem {
   total                Decimal                 @default(0) @db.Decimal(14, 2)
   warehouseId          String?                 @map("warehouse_id")
   status               PurchaseOrderItemStatus @default(PENDING)
+  sourceType           PurchaseOrderItemSourceType @default(MANUAL) @map("source_type")
+  sourceMaterialId     String?                 @map("source_material_id")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")

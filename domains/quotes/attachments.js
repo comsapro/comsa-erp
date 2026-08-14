@@ -447,10 +447,9 @@ export async function deleteItemAttachment(
 }
 
 export async function servePrivateBlob(request) {
-  const { requireAnyPermission } = await import(
+  const { requirePermission } = await import(
     "@/lib/permissions/require-permission"
   );
-  await requireAnyPermission(["quotes.view", "production.view"]);
 
   const { searchParams } = new URL(request.url);
   const pathname = searchParams.get("pathname");
@@ -458,29 +457,42 @@ export async function servePrivateBlob(request) {
     throw new ValidationError("Missing pathname");
   }
 
-  const attachment =
-    (await prisma.quoteItemAttachment.findFirst({
-      where: { pathname },
-      include: {
-        quoteItem: {
-          select: { quote: { select: { deletedAt: true } } },
-        },
+  const quoteAttachment = await prisma.quoteItemAttachment.findFirst({
+    where: { pathname },
+    include: {
+      quoteItem: {
+        select: { quote: { select: { deletedAt: true } } },
       },
-    })) ||
-    (await prisma.quoteItemTemplateAttachment.findFirst({
-      where: { pathname },
-    })) ||
-    (await prisma.productionAttachment.findFirst({
-      where: { pathname },
-    }));
-
-  if (
-    !attachment ||
-    (attachment.quoteItem && attachment.quoteItem.quote?.deletedAt)
-  ) {
-    throw new NotFoundError("Archivo no encontrado");
+    },
+  });
+  if (quoteAttachment) {
+    await requirePermission("quotes.view");
+    if (quoteAttachment.quoteItem?.quote?.deletedAt) {
+      throw new NotFoundError("Archivo no encontrado");
+    }
+    return streamBlob(pathname, quoteAttachment);
   }
 
+  const templateAttachment = await prisma.quoteItemTemplateAttachment.findFirst({
+    where: { pathname },
+  });
+  if (templateAttachment) {
+    await requirePermission("quotes.view");
+    return streamBlob(pathname, templateAttachment);
+  }
+
+  const productionAttachment = await prisma.productionAttachment.findFirst({
+    where: { pathname },
+  });
+  if (productionAttachment) {
+    await requirePermission("production.view");
+    return streamBlob(pathname, productionAttachment);
+  }
+
+  throw new NotFoundError("Archivo no encontrado");
+}
+
+async function streamBlob(pathname, attachment) {
   const result = await get(pathname, { access: "private" });
   if (!result || result.statusCode !== 200 || !result.stream) {
     throw new NotFoundError("Archivo no encontrado en almacenamiento");

@@ -7,6 +7,8 @@ const poItemSchema = z.object({
   unit: z.string().optional().nullable(),
   unitPrice: z.coerce.number().nonnegative(),
   warehouseId: z.string().optional().nullable(),
+  sourceType: z.enum(["QUOTE_MATERIAL", "MANUAL"]).optional(),
+  sourceMaterialId: z.string().optional().nullable(),
 });
 
 export const poCreateSchema = z.object({

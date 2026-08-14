@@ -3,8 +3,7 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  ArrowLeft,
+import { ShoppingCart } from "lucide-react";
   CheckCircle2,
   ChevronDown,
   ChevronRight,
@@ -18,6 +17,7 @@ import {
   Printer,
   RotateCcw,
   Send,
+  ShoppingCart,
   ThumbsDown,
   Trash2,
   XCircle,
@@ -522,6 +522,22 @@ export default function QuoteDetailClient({ quoteId }) {
                   onClick={openSendToProduction}
                 >
                   <Send className="h-4 w-4" /> Enviar partidas nuevas
+                </Button>
+              )}
+            {quote.status === "IN_PRODUCTION" &&
+              has("purchase_orders.create") && (
+                <Button
+                  as={Link}
+                  href={`/ordenes-compra/nuevo?quoteId=${quote.id}${
+                    quote.productionOrderId
+                      ? `&productionOrderId=${quote.productionOrderId}`
+                      : quote.productionOrder?.id
+                        ? `&productionOrderId=${quote.productionOrder.id}`
+                        : ""
+                  }`}
+                  variant="secondary"
+                >
+                  <ShoppingCart className="h-4 w-4" /> Crear OC
                 </Button>
               )}
             {["APPROVED", "IN_PRODUCTION"].includes(quote.status) &&

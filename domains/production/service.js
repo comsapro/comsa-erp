@@ -15,8 +15,15 @@ import {
   PRODUCTION_STATUSES,
   PRODUCTION_SOURCE_TYPES,
 } from "./constants";
-import { updateItemProgressSchema, productionNoteSchema, reprintSchema } from "./schemas";
+import { updateItemProgressSchema, productionNoteSchema, reprintSchema, reopenItemSchema } from "./schemas";
 import { getQuoteProductionDocsForOrder } from "./attachments";
+import { computeProgress } from "./progress";
+import { allActiveProcessesCompleted } from "./process-rules";
+import { copyQuotedProcessesForOrderItems } from "./process-copy";
+import {
+  PRODUCTION_DETAIL_INCLUDE,
+  recalculateProductionState,
+} from "./recalc";
 
 const SORTABLE = [
   "folio",
@@ -32,41 +39,7 @@ const LIST_INCLUDE = {
   directOrder: { select: { id: true, folio: true, status: true } },
 };
 
-const DETAIL_INCLUDE = {
-  client: true,
-  quote: { select: { id: true, folio: true, status: true } },
-  directOrder: { select: { id: true, folio: true, status: true } },
-  materialsReadyByUser: { select: { id: true, name: true } },
-  attachments: {
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-  },
-  purchaseOrders: {
-    where: { deletedAt: null },
-    orderBy: { createdAt: "desc" },
-    take: 20,
-    select: {
-      id: true,
-      folio: true,
-      status: true,
-      receipts: {
-        select: { id: true, folio: true, receiptDate: true },
-        take: 5,
-        orderBy: { receiptDate: "desc" },
-      },
-    },
-  },
-  items: {
-    orderBy: { position: "asc" },
-    include: {
-      completedByUser: { select: { id: true, name: true } },
-      notes: {
-        orderBy: { createdAt: "desc" },
-        take: 20,
-        include: { createdByUser: { select: { id: true, name: true } } },
-      },
-    },
-  },
-};
+const DETAIL_INCLUDE = PRODUCTION_DETAIL_INCLUDE;
 
 async function findProductionOrThrow(id, include = undefined) {
   const record = await prisma.productionOrder.findFirst({
@@ -77,30 +50,73 @@ async function findProductionOrThrow(id, include = undefined) {
   return record;
 }
 
-function computeProgress(items) {
-  const hasCancelled = items.some((i) => i.status === "CANCELLED");
-  const countable = hasCancelled
-    ? items.filter((i) => i.status !== "CANCELLED")
-    : items;
-  const totalItems = countable.length;
-  const completedItems = countable.filter((i) => i.status === "COMPLETED").length;
-  const progressPercentage =
-    totalItems === 0
-      ? 0
-      : Math.round((completedItems / totalItems) * 10000) / 100;
-  return { totalItems, completedItems, progressPercentage };
-}
-
-async function recalculateProgress(tx, productionOrderId) {
-  const items = await tx.productionItem.findMany({
-    where: { productionOrderId },
+async function attachSourceMaterials(record, canViewCost) {
+  const items = record.items || [];
+  const quoteItemIds = items
+    .filter((i) => i.sourceItemType === "QUOTE_ITEM")
+    .map((i) => i.sourceItemId)
+    .filter(Boolean);
+  if (!quoteItemIds.length) {
+    return {
+      ...record,
+      items: items.map((item) => ({ ...item, sourceMaterials: [] })),
+    };
+  }
+  const materials = await prisma.quoteItemMaterial.findMany({
+    where: { quoteItemId: { in: quoteItemIds } },
+    include: {
+      item: { select: { id: true, sku: true, name: true, unitOfMeasure: true } },
+      supplier: { select: { id: true, name: true } },
+    },
   });
-  const progress = computeProgress(items);
-  return tx.productionOrder.update({
-    where: { id: productionOrderId },
-    data: progress,
-    include: DETAIL_INCLUDE,
+  const extras = await prisma.quoteItemExtra.findMany({
+    where: { quoteItemId: { in: quoteItemIds } },
+    include: { supplier: { select: { id: true, name: true } } },
   });
+  const byItem = new Map();
+  for (const mat of materials) {
+    const list = byItem.get(mat.quoteItemId) || [];
+    list.push({
+      id: mat.id,
+      kind: "MATERIAL",
+      itemId: mat.itemId,
+      sku: mat.item?.sku || null,
+      descriptionSnapshot: mat.descriptionSnapshot,
+      dimensions: mat.dimensions,
+      presentation: mat.presentation,
+      unit: mat.unit,
+      quantity: mat.quantity,
+      supplierId: mat.supplierId,
+      supplierName: mat.supplier?.name || null,
+      ...(canViewCost ? { unitPrice: mat.unitPrice, amount: mat.amount } : {}),
+    });
+    byItem.set(mat.quoteItemId, list);
+  }
+  for (const extra of extras) {
+    const list = byItem.get(extra.quoteItemId) || [];
+    list.push({
+      id: extra.id,
+      kind: "EXTRA",
+      itemId: null,
+      sku: null,
+      descriptionSnapshot: extra.description,
+      dimensions: null,
+      presentation: null,
+      unit: extra.unit,
+      quantity: extra.quantity,
+      supplierId: extra.supplierId,
+      supplierName: extra.supplier?.name || null,
+      ...(canViewCost ? { unitPrice: extra.unitPrice, amount: extra.amount } : {}),
+    });
+    byItem.set(extra.quoteItemId, list);
+  }
+  return {
+    ...record,
+    items: items.map((item) => ({
+      ...item,
+      sourceMaterials: byItem.get(item.sourceItemId) || [],
+    })),
+  };
 }
 
 function assertOrderNotTerminal(order) {
@@ -177,10 +193,14 @@ export async function listProduction(request) {
 }
 
 export async function getProduction(request, id) {
-  await requirePermission("production.view");
+  const user = await requirePermission("production.view");
   const record = await findProductionOrThrow(id, DETAIL_INCLUDE);
   const quoteDocumentation = await getQuoteProductionDocsForOrder(record);
-  return jsonOk({ ...record, quoteDocumentation });
+  const withMaterials = await attachSourceMaterials(
+    record,
+    user.permissions?.includes("quotes.view_cost")
+  );
+  return jsonOk({ ...withMaterials, quoteDocumentation });
 }
 
 export async function startProduction(request, id) {
@@ -271,7 +291,7 @@ export async function cancelProduction(request, id) {
     await tx.productionItem.updateMany({
       where: {
         productionOrderId: id,
-        status: { in: ["PENDING", "IN_PROGRESS"] },
+        status: { in: ["PENDING", "IN_PROGRESS", "REWORK"] },
       },
       data: { status: "CANCELLED" },
     });
@@ -336,7 +356,7 @@ export async function startItem(request, orderId, itemId) {
       });
     }
 
-    return recalculateProgress(tx, orderId);
+    return recalculateProductionState(tx, orderId, actor.id);
   });
 
   await recordAudit({
@@ -420,7 +440,7 @@ export async function updateItemProgress(request, orderId, itemId) {
       });
     }
 
-    return recalculateProgress(tx, orderId);
+    return recalculateProductionState(tx, orderId, actor.id);
   });
 
   await recordAudit({
@@ -450,6 +470,11 @@ export async function completeItem(request, orderId, itemId) {
   if (item.status === "CANCELLED") {
     throw new ConflictError("El item esta cancelado");
   }
+  if (!allActiveProcessesCompleted(item.processes || [])) {
+    throw new ConflictError(
+      "Completa todos los procesos activos de la partida antes de marcarla como terminada"
+    );
+  }
 
   const record = await prisma.$transaction(async (tx) => {
     const completedAt = new Date();
@@ -471,32 +496,7 @@ export async function completeItem(request, orderId, itemId) {
       },
     });
 
-    const items = await tx.productionItem.findMany({
-      where: { productionOrderId: orderId },
-    });
-    const progress = computeProgress(items);
-    const activeItems = items.filter((i) => i.status !== "CANCELLED");
-    const allDone =
-      activeItems.length > 0 &&
-      activeItems.every((i) => i.status === "COMPLETED");
-
-    return tx.productionOrder.update({
-      where: { id: orderId },
-      data: {
-        ...progress,
-        updatedBy: actor.id,
-        ...(order.status === "PENDING"
-          ? { status: "IN_PROGRESS", startedAt: order.startedAt || new Date() }
-          : {}),
-        ...(allDone
-          ? {
-              status: "COMPLETED",
-              completedAt: new Date(),
-            }
-          : {}),
-      },
-      include: DETAIL_INCLUDE,
-    });
+    return recalculateProductionState(tx, orderId, actor.id);
   });
 
   await recordAudit({
@@ -507,6 +507,71 @@ export async function completeItem(request, orderId, itemId) {
     action: AUDIT_ACTIONS.COMPLETE,
     previousData: order,
     newData: record,
+  });
+
+  return jsonOk(record);
+}
+
+export async function reopenItem(request, orderId, itemId) {
+  await requirePermission("production.reopen_item");
+  const actor = await getActor(request);
+  const order = await findProductionOrThrow(orderId, DETAIL_INCLUDE);
+  if (order.status === "CANCELLED") {
+    throw new ConflictError("La orden de produccion esta cancelada");
+  }
+
+  const item = order.items.find((i) => i.id === itemId);
+  if (!item) throw new NotFoundError("Item de produccion no encontrado");
+  if (item.status !== "COMPLETED") {
+    throw new ConflictError("Solo se pueden reabrir items completados");
+  }
+
+  const data = reopenItemSchema.parse(await request.json());
+  const reason = data.reason.trim();
+
+  const record = await prisma.$transaction(async (tx) => {
+    await tx.productionItem.update({
+      where: { id: itemId },
+      data: { status: "REWORK" },
+    });
+
+    await tx.productionItemProcess.updateMany({
+      where: {
+        productionItemId: itemId,
+        status: "COMPLETED",
+      },
+      data: { status: "PENDING", updatedBy: actor.id },
+    });
+
+    await tx.productionItemNote.create({
+      data: {
+        productionItemId: itemId,
+        body: `Reabierto / retrabajo: ${reason}`,
+        createdBy: actor.id,
+      },
+    });
+
+    return recalculateProductionState(tx, orderId, actor.id);
+  });
+
+  await recordAudit({
+    actor,
+    module: "production",
+    entity: "ProductionItem",
+    entityId: itemId,
+    action: AUDIT_ACTIONS.UPDATE,
+    previousData: {
+      status: item.status,
+      completedAt: item.completedAt,
+      completedBy: item.completedBy,
+      orderStatus: order.status,
+    },
+    newData: {
+      status: "REWORK",
+      reason,
+      previousCompletedAt: item.completedAt,
+      orderStatus: record.status,
+    },
   });
 
   return jsonOk(record);
@@ -639,6 +704,8 @@ export async function reprintNewOrder(request, id) {
       },
       include: DETAIL_INCLUDE,
     });
+
+    await copyQuotedProcessesForOrderItems(tx, created.items, actor.id);
 
     if (existing.quoteId) {
       await tx.quote.update({

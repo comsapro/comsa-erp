@@ -11,7 +11,6 @@ import {
   ConflictError,
 } from "@/lib/permissions/errors";
 import { jsonOk, jsonCreated } from "@/lib/api/http";
-import { quotePdfResponse } from "@/lib/pdf/quote-pdf";
 import {
   MAX_ATTACHMENT_BYTES,
   sanitizeFileName,
@@ -249,80 +248,15 @@ export async function deleteProductionAttachment(
 }
 
 /**
- * Adjuntos de cotizacion (audiencia PRODUCTION) ligados a las partidas origen.
+ * Referencia interna a la cotizacion origen (sin documentos comerciales).
  */
 export async function getQuoteProductionDocsForOrder(order) {
   if (order.sourceType !== "QUOTE" || !order.quoteId) {
     return { quoteId: null, quoteFolio: null, attachments: [] };
   }
-
-  const sourceItemIds = (order.items || [])
-    .filter((i) => i.sourceItemType === "QUOTE_ITEM")
-    .map((i) => i.sourceItemId)
-    .filter(Boolean);
-
-  if (!sourceItemIds.length) {
-    return {
-      quoteId: order.quoteId,
-      quoteFolio: order.quote?.folio || null,
-      attachments: [],
-    };
-  }
-
-  const attachments = await prisma.quoteItemAttachment.findMany({
-    where: {
-      quoteItemId: { in: sourceItemIds },
-      audience: "PRODUCTION",
-    },
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-    include: {
-      quoteItem: {
-        select: { id: true, description: true, position: true },
-      },
-    },
-  });
-
   return {
     quoteId: order.quoteId,
     quoteFolio: order.quote?.folio || null,
-    attachments,
+    attachments: [],
   };
-}
-
-/**
- * PDF de la cotizacion origen, accesible con permiso de produccion.
- */
-export async function getRelatedQuotePdf(request, productionOrderId) {
-  await requirePermission("production.view");
-  const actor = await getActor(request);
-  const order = await findProductionOrThrow(productionOrderId);
-
-  if (!order.quoteId) {
-    throw new ValidationError("Esta orden no proviene de una cotizacion");
-  }
-
-  const quote = await prisma.quote.findFirst({
-    where: { id: order.quoteId, deletedAt: null },
-    include: {
-      client: true,
-      clientContact: true,
-      seller: true,
-      issuingCompany: true,
-      items: { orderBy: { position: "asc" } },
-    },
-  });
-  if (!quote) throw new NotFoundError("Cotizacion no encontrada");
-
-  const response = await quotePdfResponse(quote);
-
-  await recordAudit({
-    actor,
-    module: "production",
-    entity: "ProductionOrder",
-    entityId: productionOrderId,
-    action: AUDIT_ACTIONS.PDF_GENERATE,
-    newData: { quoteId: quote.id, quoteFolio: quote.folio },
-  });
-
-  return response;
 }

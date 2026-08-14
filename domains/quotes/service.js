@@ -1515,7 +1515,12 @@ export async function sendToProduction(request, id) {
 
   const existing = await findQuoteOrThrow(id, {
     ...DETAIL_INCLUDE,
-    items: { orderBy: { position: "asc" } },
+    items: {
+      orderBy: { position: "asc" },
+      include: {
+        manufacturing: { orderBy: { sortOrder: "asc" } },
+      },
+    },
   });
 
   if (existing.status !== "APPROVED" && existing.status !== "IN_PRODUCTION") {
@@ -1600,7 +1605,19 @@ export async function sendToProduction(request, id) {
           })),
         },
       },
+      include: {
+        items: true,
+      },
     });
+
+    const { copyQuotedProcessesForOrderItems } = await import(
+      "@/domains/production/process-copy"
+    );
+    await copyQuotedProcessesForOrderItems(
+      tx,
+      productionOrder.items,
+      actor.id
+    );
 
     return tx.quote.update({
       where: { id },

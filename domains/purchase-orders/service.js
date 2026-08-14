@@ -18,6 +18,7 @@ import {
   calculatePurchaseLineTotals,
   calculatePurchaseHeaderTotals,
 } from "./calculations";
+import { dedupeBySourceMaterial } from "./preload";
 
 const DETAIL_INCLUDE = {
   supplier: { select: { id: true, name: true, legalName: true, rfc: true, status: true } },
@@ -69,8 +70,9 @@ async function getPoOrThrow(id) {
 }
 
 async function buildItemRows(items) {
+  const unique = dedupeBySourceMaterial(items);
   const rows = [];
-  for (const it of items) {
+  for (const it of unique) {
     const catalog = await prisma.item.findFirst({
       where: { id: it.itemId, deletedAt: null },
     });
@@ -90,6 +92,8 @@ async function buildItemRows(items) {
       total: new Prisma.Decimal(totals.total),
       warehouseId: it.warehouseId || null,
       status: "PENDING",
+      sourceType: it.sourceMaterialId ? "QUOTE_MATERIAL" : it.sourceType || "MANUAL",
+      sourceMaterialId: it.sourceMaterialId || null,
     });
   }
   return rows;
@@ -195,7 +199,13 @@ export async function createPurchaseOrder(request) {
     entity: "PurchaseOrder",
     entityId: record.id,
     action: AUDIT_ACTIONS.CREATE,
-    newData: { folio: record.folio, status: record.status },
+    newData: {
+      folio: record.folio,
+      status: record.status,
+      productionOrderId: record.productionOrderId,
+      quoteId: record.quoteId,
+      preloaded: (body.items || []).some((i) => i.sourceMaterialId),
+    },
   });
 
   return jsonCreated(record);
@@ -389,4 +399,66 @@ export async function cancelPurchaseOrder(request, id) {
   });
 
   return jsonOk(record);
+}
+
+export async function listPreloadMaterials(request) {
+  const user = await requirePermission("purchase_orders.create");
+  const { searchParams } = new URL(request.url);
+  const productionOrderId = searchParams.get("productionOrderId");
+  const quoteId = searchParams.get("quoteId");
+
+  if (productionOrderId) {
+    const { listProductionMaterials } = await import(
+      "@/domains/production/materials"
+    );
+    return listProductionMaterials(request, productionOrderId);
+  }
+
+  if (!quoteId) {
+    throw new ValidationError("productionOrderId o quoteId es requerido");
+  }
+
+  const quote = await prisma.quote.findFirst({
+    where: { id: quoteId, deletedAt: null },
+    include: {
+      productionOrder: { select: { id: true, folio: true } },
+      items: {
+        where: { status: "ACTIVE" },
+        select: { id: true },
+      },
+    },
+  });
+  if (!quote) throw new NotFoundError("Cotizacion no encontrada");
+
+  const quoteItemIds = (quote.items || []).map((i) => i.id);
+  const materials = quoteItemIds.length
+    ? await prisma.quoteItemMaterial.findMany({
+        where: { quoteItemId: { in: quoteItemIds } },
+        include: {
+          item: { select: { id: true, sku: true, name: true, unitOfMeasure: true } },
+          supplier: { select: { id: true, name: true } },
+        },
+      })
+    : [];
+
+  const includeSalePrice = user.permissions?.includes("quotes.view_cost");
+  return jsonOk({
+    productionOrderId: quote.productionOrder?.id || null,
+    productionFolio: quote.productionOrder?.folio || null,
+    quoteId: quote.id,
+    quoteFolio: quote.folio,
+    materials: materials.map((mat) => ({
+      id: mat.id,
+      itemId: mat.itemId,
+      sku: mat.item?.sku || null,
+      descriptionSnapshot: mat.descriptionSnapshot,
+      dimensions: mat.dimensions,
+      presentation: mat.presentation,
+      unit: mat.unit || mat.item?.unitOfMeasure || null,
+      quantity: Number(mat.quantity) || 0,
+      supplierId: mat.supplierId,
+      supplierName: mat.supplier?.name || null,
+      unitPrice: includeSalePrice ? Number(mat.unitPrice || 0) : 0,
+    })),
+  });
 }

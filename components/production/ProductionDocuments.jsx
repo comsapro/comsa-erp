@@ -2,13 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { upload } from "@vercel/blob/client";
-import {
-  CloudUpload,
-  Download,
-  ExternalLink,
-  FileText,
-  Trash2,
-} from "lucide-react";
+import { CloudUpload, Download, FileText, Trash2 } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -21,11 +15,6 @@ const MAX_BYTES = MAX_MB * 1024 * 1024;
 
 const ACCEPT =
   ".jpg,.jpeg,.png,.webp,.gif,.pdf,.step,.stp,.sldprt,.sldasm,.slddrw,.dxf,.dwg,.x_t,.x_b,.iges,.igs,.stl,.obj,.3mf,.prt,.asm,image/*,application/pdf,application/octet-stream";
-
-const TEMPLATE_CONTROL =
-  "/templates/produccion/control_dimensional.pdf";
-const TEMPLATE_ORDEN_TRABAJO =
-  "/templates/produccion/orden_trabajo_cubopanel.pdf";
 
 function blobUrl(pathname) {
   return `/api/blob?pathname=${encodeURIComponent(pathname)}`;
@@ -89,12 +78,8 @@ function FileRow({ file, href, meta, onDelete, deleting, canDelete }) {
   );
 }
 
-/**
- * Documentacion de cotizacion + produccion + plantillas en blanco.
- */
 export function ProductionDocuments({
   productionId,
-  quoteDocumentation,
   initialAttachments = [],
   canUpload = false,
 }) {
@@ -185,215 +170,86 @@ export function ProductionDocuments({
     }
   };
 
-  const quoteDocs = quoteDocumentation?.attachments || [];
-  const quoteId = quoteDocumentation?.quoteId;
-  const quoteFolio = quoteDocumentation?.quoteFolio;
-
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <Card className="overflow-hidden">
-        <div className="border-b border-border px-5 py-3">
-          <h2 className="text-base font-semibold">
-            Documentacion de cotizacion
-          </h2>
-          <p className="text-xs text-content-muted">
-            Adjuntos de fabricacion y PDF de la cotizacion origen (sin copiar).
-          </p>
-        </div>
-        <ul>
-          {quoteId ? (
-            <li className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
-              <div className="flex min-w-0 items-center gap-3">
-                <FileText className="h-5 w-5 shrink-0 text-content-muted" />
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-content">
-                    Cotizacion {quoteFolio || ""}
-                  </p>
-                  <p className="text-xs text-content-muted">PDF generado</p>
-                </div>
-              </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                as="a"
-                href={`/api/produccion/${productionId}/cotizacion-pdf`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <Download className="h-4 w-4" /> Descargar
-              </Button>
-            </li>
-          ) : null}
-          {quoteDocs.map((att) => (
+    <Card className="overflow-hidden">
+      <div className="border-b border-border px-5 py-3">
+        <h2 className="text-base font-semibold">Documentacion de produccion</h2>
+        <p className="text-xs text-content-muted">
+          Escaneos o fotos de formatos llenados a pluma · max. {MAX_MB} MB.
+          El control dimensional y la orden de trabajo se generan por partida.
+        </p>
+      </div>
+
+      {canUpload ? (
+        <Can permission="production.update_progress">
+          <div
+            className={cn(
+              "m-4 flex flex-col items-center justify-center gap-2 rounded-[var(--radius-md)] border border-dashed px-4 py-8 text-center transition-colors",
+              dragOver
+                ? "border-brand-500 bg-brand-50"
+                : "border-border bg-surface-muted/40"
+            )}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              uploadFiles(e.dataTransfer.files);
+            }}
+          >
+            <CloudUpload className="h-8 w-8 text-content-muted" />
+            <p className="text-sm text-content-muted">
+              Arrastra archivos aqui o adjunta escaneos del formato llenado
+            </p>
+            <input
+              ref={inputRef}
+              type="file"
+              accept={ACCEPT}
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                uploadFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              loading={uploading}
+              onClick={() => inputRef.current?.click()}
+            >
+              {uploading && progress != null
+                ? `Subiendo ${progress}%`
+                : "Adjuntar archivos"}
+            </Button>
+          </div>
+        </Can>
+      ) : null}
+
+      <ul>
+        {attachments.length === 0 ? (
+          <li className="px-4 py-6 text-sm text-content-muted">
+            Sin archivos de produccion adjuntos.
+          </li>
+        ) : (
+          attachments.map((att) => (
             <FileRow
               key={att.id}
               file={att}
               href={blobUrl(att.pathname)}
-              meta={
-                att.quoteItem?.description
-                  ? `Partida: ${att.quoteItem.description}`
-                  : formatBytes(att.sizeBytes || 0)
-              }
+              meta={formatBytes(att.sizeBytes || 0)}
+              canDelete={canUpload}
+              deleting={deletingId === att.id}
+              onDelete={() => onDelete(att)}
             />
-          ))}
-          {!quoteId && quoteDocs.length === 0 ? (
-            <li className="px-4 py-6 text-sm text-content-muted">
-              Sin documentacion de cotizacion (orden directa o sin adjuntos).
-            </li>
-          ) : null}
-          {quoteId && quoteDocs.length === 0 ? (
-            <li className="px-4 py-3 text-sm text-content-muted">
-              No hay adjuntos de fabricacion en las partidas origen.
-            </li>
-          ) : null}
-        </ul>
-      </Card>
-
-      <Card className="overflow-hidden">
-        <div className="border-b border-border px-5 py-3">
-          <h2 className="text-base font-semibold">
-            Documentacion de produccion
-          </h2>
-          <p className="text-xs text-content-muted">
-            Escaneos o fotos de formatos llenados a pluma · max. {MAX_MB} MB
-          </p>
-        </div>
-
-        <div className="space-y-3 border-b border-border px-4 py-3">
-          <p className="text-xs font-medium text-content-muted">
-            Plantillas en blanco
-          </p>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              as="a"
-              href={TEMPLATE_CONTROL}
-              target="_blank"
-              rel="noreferrer"
-              download
-            >
-              <Download className="h-4 w-4" /> Control dimensional
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="secondary"
-              as="a"
-              href={TEMPLATE_ORDEN_TRABAJO}
-              target="_blank"
-              rel="noreferrer"
-              download
-            >
-              <Download className="h-4 w-4" /> Orden de trabajo
-            </Button>
-          </div>
-        </div>
-
-        {canUpload ? (
-          <Can permission="production.update_progress">
-            <div
-              className={cn(
-                "m-4 flex flex-col items-center justify-center gap-2 rounded-[var(--radius-md)] border border-dashed px-4 py-8 text-center transition-colors",
-                dragOver
-                  ? "border-brand-500 bg-brand-50"
-                  : "border-border bg-surface-muted/40"
-              )}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragOver(true);
-              }}
-              onDragLeave={() => setDragOver(false)}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragOver(false);
-                uploadFiles(e.dataTransfer.files);
-              }}
-            >
-              <CloudUpload className="h-8 w-8 text-content-muted" />
-              <p className="text-sm text-content-muted">
-                Arrastra archivos aqui o adjunta escaneos del formato llenado
-              </p>
-              <input
-                ref={inputRef}
-                type="file"
-                accept={ACCEPT}
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  uploadFiles(e.target.files);
-                  e.target.value = "";
-                }}
-              />
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                loading={uploading}
-                onClick={() => inputRef.current?.click()}
-              >
-                {uploading && progress != null
-                  ? `Subiendo ${progress}%`
-                  : "Adjuntar archivos"}
-              </Button>
-            </div>
-          </Can>
-        ) : null}
-
-        <ul>
-          {attachments.length === 0 ? (
-            <li className="px-4 py-6 text-sm text-content-muted">
-              Sin archivos de produccion adjuntos.
-            </li>
-          ) : (
-            attachments.map((att) => (
-              <FileRow
-                key={att.id}
-                file={att}
-                href={blobUrl(att.pathname)}
-                meta={formatBytes(att.sizeBytes || 0)}
-                canDelete={canUpload}
-                deleting={deletingId === att.id}
-                onDelete={() => onDelete(att)}
-              />
-            ))
-          )}
-        </ul>
-      </Card>
-    </div>
-  );
-}
-
-export function ProductionTemplateLinks({ className }) {
-  return (
-    <div className={cn("flex flex-wrap gap-2", className)}>
-      <Button
-        type="button"
-        size="sm"
-        variant="subtle"
-        as="a"
-        href={TEMPLATE_CONTROL}
-        target="_blank"
-        rel="noreferrer"
-        download
-      >
-        <ExternalLink className="h-4 w-4" /> Registro de control dimensional
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        variant="subtle"
-        as="a"
-        href={TEMPLATE_ORDEN_TRABAJO}
-        target="_blank"
-        rel="noreferrer"
-        download
-      >
-        <ExternalLink className="h-4 w-4" /> Orden de trabajo cotizado
-      </Button>
-    </div>
+          ))
+        )}
+      </ul>
+    </Card>
   );
 }
 

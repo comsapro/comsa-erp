@@ -100,6 +100,7 @@ test("Permisos etapa 2 existen en el catalogo", () => {
     "quotes.send_to_production",
     "direct_orders.convert_to_quote",
     "production.complete_item",
+    "production.reopen_item",
   ];
   for (const code of needed) {
     assert.ok(ALL_PERMISSION_CODES.includes(code), `Falta ${code}`);
@@ -125,10 +126,12 @@ test("Supervisor puede aprobar e imprimir cotizaciones", () => {
   assert.ok(supervisor.permissions.includes("manufacturing_processes.create"));
 });
 
-test("Produccion tiene production.complete_order", () => {
+test("Produccion tiene production.complete_order y no quotes.view", () => {
   const prod = SYSTEM_ROLES.find((r) => r.name === "Produccion");
   assert.ok(prod.permissions.includes("production.complete_order"));
   assert.ok(prod.permissions.includes("production.view"));
+  assert.ok(prod.permissions.includes("production.reopen_item"));
+  assert.ok(!prod.permissions.includes("quotes.view"));
 });
 
 test("Menu comercial se oculta sin permisos", () => {
