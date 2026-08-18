@@ -9,14 +9,24 @@ export function activeProcesses(processes = []) {
   return processes.filter((p) => p.status !== "REPLACED");
 }
 
+function round3(n) {
+  return Math.round((Number(n) || 0) * 1000) / 1000;
+}
+
 export function itemHoursSummary(processes = []) {
   const active = activeProcesses(processes);
   const quotedHours = active.reduce((sum, p) => sum + Number(p.quotedHours || 0), 0);
+  const expectedHours = active.reduce(
+    (sum, p) => sum + Number(p.expectedHours || 0),
+    0
+  );
   const realHours = active.reduce((sum, p) => sum + Number(p.realHours || 0), 0);
   return {
-    quotedHours: Math.round(quotedHours * 1000) / 1000,
-    realHours: Math.round(realHours * 1000) / 1000,
-    difference: Math.round((realHours - quotedHours) * 1000) / 1000,
+    quotedHours: round3(quotedHours),
+    expectedHours: round3(expectedHours),
+    realHours: round3(realHours),
+    difference: round3(realHours - quotedHours),
+    differenceExpected: round3(realHours - expectedHours),
   };
 }
 
@@ -33,7 +43,43 @@ export function canDeleteProductionProcess(process) {
     return false;
   }
   if (Number(process.realHours) > 0) return false;
+  if (Array.isArray(process.sessions) && process.sessions.length > 0) return false;
   return true;
+}
+
+export function sessionElapsedMinutes(session, now = new Date()) {
+  if (!session) return 0;
+  const accumulated = Number(session.accumulatedMinutes) || 0;
+  if (session.status === "RUNNING") {
+    const from = new Date(session.lastResumedAt || session.startedAt);
+    const extra = Math.max(0, (now.getTime() - from.getTime()) / 60000);
+    return accumulated + extra;
+  }
+  return Number(session.durationMinutes) || accumulated;
+}
+
+export function sessionsHours(sessions = [], now = new Date()) {
+  const minutes = sessions.reduce(
+    (sum, s) => sum + sessionElapsedMinutes(s, now),
+    0
+  );
+  return round3(minutes / 60);
+}
+
+export function effectiveRealHours(process = {}, now = new Date()) {
+  const sessions = process.sessions || [];
+  const fromSessions = sessionsHours(sessions, now);
+  if (fromSessions > 0) return fromSessions;
+  return round3(process.realHours);
+}
+
+export function hoursTone({ expectedHours, realHours }) {
+  const expected = Number(expectedHours) || 0;
+  const real = Number(realHours) || 0;
+  if (expected <= 0) return "neutral";
+  if (real <= expected) return "success";
+  if (real <= expected * 1.15) return "warning";
+  return "danger";
 }
 
 export function workOrderProcessSections(processes = []) {
@@ -46,5 +92,6 @@ export function workOrderProcessSections(processes = []) {
     realHours: Number(p.realHours) || 0,
     notes: p.notes || "",
     status: p.status,
+    assignedTo: p.assignedToUser?.name || null,
   }));
 }

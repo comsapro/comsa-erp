@@ -18,7 +18,8 @@ import {
 import { updateItemProgressSchema, productionNoteSchema, reprintSchema, reopenItemSchema } from "./schemas";
 import { getQuoteProductionDocsForOrder } from "./attachments";
 import { computeProgress } from "./progress";
-import { allActiveProcessesCompleted } from "./process-rules";
+import { canCompleteItem, canCompleteOrder } from "./close-rules";
+import { recordProductionActivity } from "./activity";
 import { copyQuotedProcessesForOrderItems } from "./process-copy";
 import {
   PRODUCTION_DETAIL_INCLUDE,
@@ -37,6 +38,16 @@ const LIST_INCLUDE = {
   client: { select: { id: true, commercialName: true } },
   quote: { select: { id: true, folio: true, status: true } },
   directOrder: { select: { id: true, folio: true, status: true } },
+  items: {
+    select: {
+      id: true,
+      status: true,
+      priority: true,
+      commitmentDate: true,
+      plannedStartAt: true,
+      plannedEndAt: true,
+    },
+  },
 };
 
 const DETAIL_INCLUDE = PRODUCTION_DETAIL_INCLUDE;
@@ -224,6 +235,13 @@ export async function startProduction(request, id) {
     include: DETAIL_INCLUDE,
   });
 
+  await recordProductionActivity(prisma, {
+    type: "STATUS",
+    productionOrderId: id,
+    body: `Orden ${record.folio} iniciada`,
+    createdBy: actor.id,
+  });
+
   await recordAudit({
     actor,
     module: "production",
@@ -244,16 +262,8 @@ export async function completeOrder(request, id) {
 
   assertOrderNotTerminal(existing);
 
-  const activeItems = existing.items.filter((i) => i.status !== "CANCELLED");
-  if (!activeItems.length) {
-    throw new ValidationError("La orden no tiene items activos");
-  }
-  const incomplete = activeItems.filter((i) => i.status !== "COMPLETED");
-  if (incomplete.length) {
-    throw new ConflictError(
-      "Todos los items activos deben estar completados para cerrar la orden"
-    );
-  }
+  const close = canCompleteOrder(existing);
+  if (!close.ok) throw new ConflictError(close.reason);
 
   const progress = computeProgress(existing.items);
   const record = await prisma.productionOrder.update({
@@ -275,6 +285,13 @@ export async function completeOrder(request, id) {
     action: AUDIT_ACTIONS.COMPLETE,
     previousData: existing,
     newData: record,
+  });
+
+  await recordProductionActivity(prisma, {
+    type: "CLOSE",
+    productionOrderId: id,
+    body: `Orden ${record.folio} cerrada`,
+    createdBy: actor.id,
   });
 
   return jsonOk(record);
@@ -359,6 +376,14 @@ export async function startItem(request, orderId, itemId) {
     return recalculateProductionState(tx, orderId, actor.id);
   });
 
+  await recordProductionActivity(prisma, {
+    type: "STATUS",
+    productionOrderId: orderId,
+    productionItemId: itemId,
+    body: `Partida ${item.position} iniciada`,
+    createdBy: actor.id,
+  });
+
   await recordAudit({
     actor,
     module: "production",
@@ -422,6 +447,13 @@ export async function updateItemProgress(request, orderId, itemId) {
           createdBy: actor.id,
         },
       });
+      await recordProductionActivity(tx, {
+        type: "NOTE",
+        productionOrderId: orderId,
+        productionItemId: itemId,
+        body: noteBody,
+        createdBy: actor.id,
+      });
     }
 
     if (order.status === "PENDING") {
@@ -464,17 +496,11 @@ export async function completeItem(request, orderId, itemId) {
 
   const item = order.items.find((i) => i.id === itemId);
   if (!item) throw new NotFoundError("Item de produccion no encontrado");
-  if (item.status === "COMPLETED") {
-    throw new ConflictError("El item ya esta completado");
-  }
-  if (item.status === "CANCELLED") {
-    throw new ConflictError("El item esta cancelado");
-  }
-  if (!allActiveProcessesCompleted(item.processes || [])) {
-    throw new ConflictError(
-      "Completa todos los procesos activos de la partida antes de marcarla como terminada"
-    );
-  }
+  const close = canCompleteItem({
+    ...item,
+    assignedToUserId: item.assignedToUserId || actor.id,
+  });
+  if (!close.ok) throw new ConflictError(close.reason);
 
   const record = await prisma.$transaction(async (tx) => {
     const completedAt = new Date();
@@ -493,10 +519,20 @@ export async function completeItem(request, orderId, itemId) {
         completedAt,
         startedAt,
         durationMinutes,
+        assignedToUserId: item.assignedToUserId || actor.id,
+        updatedBy: actor.id,
       },
     });
 
     return recalculateProductionState(tx, orderId, actor.id);
+  });
+
+  await recordProductionActivity(prisma, {
+    type: "CLOSE",
+    productionOrderId: orderId,
+    productionItemId: itemId,
+    body: `Partida ${item.position} completada`,
+    createdBy: actor.id,
   });
 
   await recordAudit({
@@ -550,6 +586,13 @@ export async function reopenItem(request, orderId, itemId) {
         createdBy: actor.id,
       },
     });
+    await recordProductionActivity(tx, {
+      type: "REOPEN",
+      productionOrderId: orderId,
+      productionItemId: itemId,
+      body: `Reabierto / retrabajo: ${reason}`,
+      createdBy: actor.id,
+    });
 
     return recalculateProductionState(tx, orderId, actor.id);
   });
@@ -593,6 +636,13 @@ export async function addItemNote(request, orderId, itemId) {
       body: data.body,
       createdBy: actor.id,
     },
+  });
+  await recordProductionActivity(prisma, {
+    type: "NOTE",
+    productionOrderId: orderId,
+    productionItemId: itemId,
+    body: data.body,
+    createdBy: actor.id,
   });
 
   const record = await findProductionOrThrow(orderId, DETAIL_INCLUDE);

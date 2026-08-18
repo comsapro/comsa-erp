@@ -6,9 +6,16 @@ import { Boxes, X } from "lucide-react";
 import { getIcon } from "./icons";
 import { cn } from "@/lib/utils/cn";
 
-function isActive(pathname, href) {
+function isActive(pathname, href, allHrefs = []) {
   if (href === "/") return pathname === "/";
-  return pathname === href || pathname.startsWith(`${href}/`);
+  if (pathname === href) return true;
+  if (!pathname.startsWith(`${href}/`)) return false;
+  return !allHrefs.some(
+    (other) =>
+      other !== href &&
+      other.startsWith(`${href}/`) &&
+      (pathname === other || pathname.startsWith(`${other}/`))
+  );
 }
 
 export function Sidebar({ sections, collapsed, mobileOpen, onCloseMobile }) {
@@ -59,7 +66,9 @@ export function Sidebar({ sections, collapsed, mobileOpen, onCloseMobile }) {
         </div>
 
         <nav className="flex-1 space-y-4 overflow-y-auto px-3 py-4">
-          {sections.map((section) => (
+          {sections.map((section) => {
+            const hrefs = section.items.map((i) => i.href);
+            return (
             <div key={section.id}>
               {section.label && !collapsed && (
                 <p className="px-2 pb-1.5 text-xs font-semibold uppercase tracking-wide text-content-muted">
@@ -69,7 +78,7 @@ export function Sidebar({ sections, collapsed, mobileOpen, onCloseMobile }) {
               <ul className="space-y-0.5">
                 {section.items.map((item) => {
                   const Icon = getIcon(item.icon);
-                  const active = isActive(pathname, item.href);
+                  const active = isActive(pathname, item.href, hrefs);
                   return (
                     <li key={item.href}>
                       <Link
@@ -92,7 +101,8 @@ export function Sidebar({ sections, collapsed, mobileOpen, onCloseMobile }) {
                 })}
               </ul>
             </div>
-          ))}
+            );
+          })}
         </nav>
       </aside>
     </>

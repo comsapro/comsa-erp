@@ -16,6 +16,7 @@ import {
   sanitizeFileName,
   isAllowedAttachment,
 } from "@/domains/quotes/attachments";
+import { recordProductionActivity } from "./activity";
 
 async function findProductionOrThrow(id) {
   const order = await prisma.productionOrder.findFirst({ where: { id } });
@@ -40,6 +41,9 @@ async function persistAttachment({
   contentType,
   sizeBytes,
   kind = "SCAN",
+  productionItemId = null,
+  processId = null,
+  incidentId = null,
 }) {
   const existing = await prisma.productionAttachment.findFirst({
     where: { pathname },
@@ -53,12 +57,15 @@ async function persistAttachment({
   const record = await prisma.productionAttachment.create({
     data: {
       productionOrderId,
+      productionItemId: productionItemId || null,
+      processId: processId || null,
+      incidentId: incidentId || null,
       pathname,
       url: url || null,
       fileName: fileName || pathname.split("/").pop() || "archivo",
       contentType: contentType || "application/octet-stream",
       sizeBytes: Number(sizeBytes) || 0,
-      kind: kind === "OTHER" ? "OTHER" : "SCAN",
+      kind: kind === "PHOTO" ? "PHOTO" : kind === "OTHER" ? "OTHER" : "SCAN",
       sortOrder: count,
       createdBy: actor?.id || null,
       updatedBy: actor?.id || null,
@@ -74,12 +81,24 @@ async function persistAttachment({
       action: AUDIT_ACTIONS.CREATE,
       newData: {
         productionOrderId,
+        productionItemId,
         fileName: record.fileName,
         pathname: record.pathname,
         kind: record.kind,
         sizeBytes: record.sizeBytes,
       },
     });
+    if (productionItemId || kind === "PHOTO") {
+      await recordProductionActivity(prisma, {
+        type: "PHOTO",
+        productionOrderId,
+        productionItemId,
+        processId,
+        incidentId,
+        body: `Evidencia: ${record.fileName}`,
+        createdBy: actor.id,
+      });
+    }
   }
 
   return record;
@@ -202,6 +221,9 @@ export async function registerProductionAttachment(request, productionOrderId) {
     contentType,
     sizeBytes,
     kind: body.kind,
+    productionItemId: body.productionItemId || body.itemId || null,
+    processId: body.processId || null,
+    incidentId: body.incidentId || null,
   });
 
   return jsonCreated(record);
@@ -248,15 +270,46 @@ export async function deleteProductionAttachment(
 }
 
 /**
- * Referencia interna a la cotizacion origen (sin documentos comerciales).
+ * Planos y archivos de cotizacion destinados a produccion.
  */
 export async function getQuoteProductionDocsForOrder(order) {
   if (order.sourceType !== "QUOTE" || !order.quoteId) {
     return { quoteId: null, quoteFolio: null, attachments: [] };
   }
+  const quoteItemIds = (order.items || [])
+    .filter((i) => i.sourceItemType === "QUOTE_ITEM")
+    .map((i) => i.sourceItemId)
+    .filter(Boolean);
+  if (!quoteItemIds.length) {
+    return {
+      quoteId: order.quoteId,
+      quoteFolio: order.quote?.folio || null,
+      attachments: [],
+    };
+  }
+  const attachments = await prisma.quoteItemAttachment.findMany({
+    where: {
+      quoteItemId: { in: quoteItemIds },
+      audience: "PRODUCTION",
+    },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    include: {
+      quoteItem: { select: { id: true, description: true, position: true } },
+    },
+  });
   return {
     quoteId: order.quoteId,
     quoteFolio: order.quote?.folio || null,
-    attachments: [],
+    attachments: attachments.map((row) => ({
+      id: row.id,
+      fileName: row.fileName,
+      pathname: row.pathname,
+      contentType: row.contentType,
+      sizeBytes: row.sizeBytes,
+      quoteItemId: row.quoteItemId,
+      itemLabel: row.quoteItem
+        ? `#${row.quoteItem.position} ${row.quoteItem.description}`
+        : null,
+    })),
   };
 }

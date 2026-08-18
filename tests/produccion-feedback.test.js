@@ -18,13 +18,22 @@ import {
 } from "../domains/purchase-orders/preload.js";
 import { buildWorkOrderModel } from "../lib/pdf/production-docs.js";
 
-test("Rol Produccion no incluye quotes.view y si reopen_item", () => {
+test("Rol Produccion no incluye quotes.view ni cierre de orden", () => {
   const prod = SYSTEM_ROLES.find((r) => r.name === "Produccion");
   assert.ok(prod);
   assert.ok(!prod.permissions.includes("quotes.view"));
-  assert.ok(prod.permissions.includes("production.reopen_item"));
-  assert.ok(prod.permissions.includes("production.manage_processes"));
+  assert.ok(!prod.permissions.includes("production.complete_order"));
+  assert.ok(!prod.permissions.includes("production.manage_processes"));
   assert.ok(prod.permissions.includes("production.record_process_hours"));
+  assert.ok(prod.permissions.includes("production.record_sessions"));
+  assert.ok(prod.permissions.includes("production.manage_incidents"));
+});
+
+test("Supervisor opera piso: cierre, procesos y planeacion", () => {
+  const supervisor = SYSTEM_ROLES.find((r) => r.name === "Supervisor");
+  assert.ok(supervisor.permissions.includes("production.complete_order"));
+  assert.ok(supervisor.permissions.includes("production.manage_planning"));
+  assert.ok(supervisor.permissions.includes("production.manage_handicap"));
 });
 
 test("Catalogo incluye los nuevos permisos de produccion", () => {
@@ -32,6 +41,12 @@ test("Catalogo incluye los nuevos permisos de produccion", () => {
     "production.reopen_item",
     "production.manage_processes",
     "production.record_process_hours",
+    "production.assign_responsible",
+    "production.manage_planning",
+    "production.manage_handicap",
+    "production.manage_incidents",
+    "production.record_sessions",
+    "production.record_extra_materials",
   ]) {
     assert.ok(ALL_PERMISSION_CODES.includes(code), `Falta ${code}`);
   }

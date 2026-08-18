@@ -128,6 +128,63 @@ enum ProductionProcessStatus {
   @@map("production_process_status")
 }
 
+enum ProductionItemPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+
+  @@map("production_item_priority")
+}
+
+enum ProductionActivityType {
+  NOTE
+  STATUS
+  HOURS_MANUAL
+  SESSION_START
+  SESSION_PAUSE
+  SESSION_RESUME
+  SESSION_END
+  PROCESS_CHANGE
+  INCIDENT
+  MATERIAL
+  PHOTO
+  REOPEN
+  CLOSE
+  PLANNING
+
+  @@map("production_activity_type")
+}
+
+enum ProductionIncidentStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+  CLOSED
+
+  @@map("production_incident_status")
+}
+
+enum ProductionIncidentType {
+  ORDER
+  ITEM
+  PROCESS
+  MATERIAL
+  MACHINERY
+  DOCUMENTATION
+  OTHER
+
+  @@map("production_incident_type")
+}
+
+enum ProductionTimeSessionStatus {
+  RUNNING
+  PAUSED
+  CLOSED
+
+  @@map("production_time_session_status")
+}
+
 enum PurchaseOrderItemSourceType {
   QUOTE_MATERIAL
   MANUAL
@@ -254,6 +311,16 @@ model User {
   productionProcessesCreated ProductionItemProcess[] @relation("ProductionProcessCreatedBy")
   productionProcessesUpdated ProductionItemProcess[] @relation("ProductionProcessUpdatedBy")
   productionProcessesReplaced ProductionItemProcess[] @relation("ProductionProcessReplacedBy")
+  productionItemsAssigned ProductionItem[] @relation("ProductionItemAssignedTo")
+  productionItemsUpdated ProductionItem[] @relation("ProductionItemUpdatedBy")
+  productionProcessesAssigned ProductionItemProcess[] @relation("ProductionProcessAssignedTo")
+  productionActivitiesCreated ProductionActivity[] @relation("ProductionActivityCreatedBy")
+  productionSessions ProductionTimeSession[] @relation("ProductionTimeSessionUser")
+  productionIncidentsReported ProductionIncident[] @relation("ProductionIncidentReportedBy")
+  productionIncidentsAssigned ProductionIncident[] @relation("ProductionIncidentAssignedTo")
+  productionExtraMaterialsCreated ProductionExtraMaterial[] @relation("ProductionExtraMaterialCreatedBy")
+  productionScheduleChangesCreated ProductionScheduleChange[] @relation("ProductionScheduleChangeCreatedBy")
+  productionSettingsUpdated ProductionSetting[] @relation("ProductionSettingUpdatedBy")
 
   @@index([status])
   @@index([deletedAt])
@@ -405,6 +472,7 @@ model Supplier {
   templateExtras     QuoteItemTemplateExtra[]
   purchaseOrders     PurchaseOrder[]
   purchaseReceipts   PurchaseReceipt[]
+  productionExtraMaterials ProductionExtraMaterial[]
 
   @@index([status])
   @@index([deletedAt])
@@ -490,6 +558,7 @@ model Item {
   transferItems WarehouseTransferItem[]
   purchaseOrderItems PurchaseOrderItem[]
   purchaseReceiptItems PurchaseReceiptItem[]
+  productionExtraMaterials ProductionExtraMaterial[]
 
   @@index([itemType])
   @@index([categoryId])
@@ -1080,6 +1149,17 @@ model DirectOrderItem {
 // -----------------------------------------------------------------------------
 // Etapa 2 — Produccion
 // -----------------------------------------------------------------------------
+model ProductionSetting {
+  id              String   @id @default("default")
+  handicapPercent Decimal  @default(0) @map("handicap_percent") @db.Decimal(6, 2)
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  updatedBy       String?  @map("updated_by")
+
+  updatedByUser User? @relation("ProductionSettingUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@map("production_settings")
+}
+
 model ProductionOrder {
   id                 String               @id @default(cuid())
   folio              String               @unique
@@ -1113,6 +1193,10 @@ model ProductionOrder {
   items                ProductionItem[]
   purchaseOrders       PurchaseOrder[]
   attachments          ProductionAttachment[]
+  activities           ProductionActivity[]
+  incidents            ProductionIncident[]
+  extraMaterials       ProductionExtraMaterial[]
+  timeSessions         ProductionTimeSession[]
 
   @@index([status, approvalDate])
   @@index([clientId])
@@ -1123,6 +1207,10 @@ model ProductionOrder {
 model ProductionAttachment {
   id                String  @id @default(cuid())
   productionOrderId String  @map("production_order_id")
+  productionItemId  String? @map("production_item_id")
+  processId         String? @map("process_id")
+  incidentId        String? @map("incident_id")
+  activityId        String? @map("activity_id")
   pathname          String
   url               String?
   fileName          String  @map("file_name")
@@ -1136,40 +1224,65 @@ model ProductionAttachment {
   createdBy String?  @map("created_by")
   updatedBy String?  @map("updated_by")
 
-  productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
-  createdByUser   User?           @relation("ProductionAttachmentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  productionOrder ProductionOrder        @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  productionItem  ProductionItem?        @relation(fields: [productionItemId], references: [id], onDelete: SetNull)
+  process         ProductionItemProcess? @relation(fields: [processId], references: [id], onDelete: SetNull)
+  incident        ProductionIncident?    @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+  activity        ProductionActivity?    @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  createdByUser   User?                  @relation("ProductionAttachmentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@index([productionOrderId])
+  @@index([productionItemId])
+  @@index([processId])
+  @@index([incidentId])
   @@unique([pathname])
   @@map("production_attachments")
 }
 
 model ProductionItem {
-  id                String           @id @default(cuid())
-  productionOrderId String           @map("production_order_id")
-  sourceItemId      String           @map("source_item_id")
-  sourceItemType    String           @map("source_item_type")
-  position          Int              @default(1)
+  id                String                 @id @default(cuid())
+  productionOrderId String                 @map("production_order_id")
+  sourceItemId      String                 @map("source_item_id")
+  sourceItemType    String                 @map("source_item_type")
+  position          Int                    @default(1)
   description       String
-  quantity          Decimal          @default(1) @db.Decimal(14, 3)
-  completedQuantity Decimal          @default(0) @map("completed_quantity") @db.Decimal(14, 3)
-  status            ProductionStatus @default(PENDING)
-  startedAt         DateTime?        @map("started_at")
-  completedAt       DateTime?        @map("completed_at")
-  completedBy       String?          @map("completed_by")
+  quantity          Decimal                @default(1) @db.Decimal(14, 3)
+  completedQuantity Decimal                @default(0) @map("completed_quantity") @db.Decimal(14, 3)
+  status            ProductionStatus       @default(PENDING)
+  priority          ProductionItemPriority @default(NORMAL)
+  assignedToUserId  String?                @map("assigned_to_user_id")
+  plannedStartAt    DateTime?              @map("planned_start_at") @db.Date
+  plannedEndAt      DateTime?              @map("planned_end_at") @db.Date
+  commitmentDate    DateTime?              @map("commitment_date") @db.Date
+  startedAt         DateTime?              @map("started_at")
+  completedAt       DateTime?              @map("completed_at")
+  completedBy       String?                @map("completed_by")
   observations      String?
-  durationMinutes   Int?             @map("duration_minutes")
+  durationMinutes   Int?                   @map("duration_minutes")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
 
-  productionOrder ProductionOrder      @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
-  completedByUser User?                @relation("ProductionItemCompletedBy", fields: [completedBy], references: [id], onDelete: SetNull)
+  productionOrder ProductionOrder            @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  completedByUser User?                      @relation("ProductionItemCompletedBy", fields: [completedBy], references: [id], onDelete: SetNull)
+  assignedToUser  User?                      @relation("ProductionItemAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  updatedByUser   User?                      @relation("ProductionItemUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
   notes           ProductionItemNote[]
   processes       ProductionItemProcess[]
+  activities      ProductionActivity[]
+  incidents       ProductionIncident[]
+  extraMaterials  ProductionExtraMaterial[]
+  attachments     ProductionAttachment[]
+  timeSessions    ProductionTimeSession[]
+  scheduleChanges ProductionScheduleChange[]
 
   @@index([productionOrderId, position])
   @@index([sourceItemId])
+  @@index([assignedToUserId])
+  @@index([priority, status])
+  @@index([commitmentDate])
   @@map("production_items")
 }
 
@@ -1198,6 +1311,10 @@ model ProductionItemProcess {
   quotedHours            Decimal                      @default(0) @map("quoted_hours") @db.Decimal(14, 3)
   expectedHours          Decimal                      @default(0) @map("expected_hours") @db.Decimal(14, 3)
   realHours              Decimal                      @default(0) @map("real_hours") @db.Decimal(14, 3)
+  handicapSnapshot       Decimal?                     @map("handicap_snapshot") @db.Decimal(6, 2)
+  assignedToUserId       String?                      @map("assigned_to_user_id")
+  startedAt              DateTime?                    @map("started_at")
+  completedAt            DateTime?                    @map("completed_at")
   status                 ProductionProcessStatus      @default(PENDING)
   replacedProcessId      String?                      @map("replaced_process_id")
   replacementReason      String?                      @map("replacement_reason")
@@ -1213,15 +1330,167 @@ model ProductionItemProcess {
 
   productionItem ProductionItem              @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
   process        ManufacturingProcess?       @relation(fields: [manufacturingProcessId], references: [id], onDelete: SetNull)
+  assignedToUser User?                       @relation("ProductionProcessAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
   replacedByUser User?                       @relation("ProductionProcessReplacedBy", fields: [replacedBy], references: [id], onDelete: SetNull)
   createdByUser  User?                       @relation("ProductionProcessCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   updatedByUser  User?                       @relation("ProductionProcessUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
   replacedProcess ProductionItemProcess?     @relation("ProductionProcessReplacement", fields: [replacedProcessId], references: [id], onDelete: SetNull)
   replacements    ProductionItemProcess[]    @relation("ProductionProcessReplacement")
+  sessions        ProductionTimeSession[]
+  activities      ProductionActivity[]
+  incidents       ProductionIncident[]
+  extraMaterials  ProductionExtraMaterial[]
+  attachments     ProductionAttachment[]
 
   @@index([productionItemId, sortOrder])
   @@index([manufacturingProcessId])
+  @@index([assignedToUserId])
   @@map("production_item_processes")
+}
+
+model ProductionActivity {
+  id                String                 @id @default(cuid())
+  productionOrderId String                 @map("production_order_id")
+  productionItemId  String?                @map("production_item_id")
+  processId         String?                @map("process_id")
+  incidentId        String?                @map("incident_id")
+  extraMaterialId   String?                @map("extra_material_id")
+  type              ProductionActivityType
+  body              String?
+  payload           Json?
+  createdBy         String?                @map("created_by")
+  createdAt         DateTime               @default(now()) @map("created_at")
+
+  productionOrder ProductionOrder        @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  productionItem  ProductionItem?        @relation(fields: [productionItemId], references: [id], onDelete: SetNull)
+  process         ProductionItemProcess? @relation(fields: [processId], references: [id], onDelete: SetNull)
+  incident        ProductionIncident?    @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+  extraMaterial   ProductionExtraMaterial? @relation(fields: [extraMaterialId], references: [id], onDelete: SetNull)
+  createdByUser   User?                  @relation("ProductionActivityCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  attachments     ProductionAttachment[]
+
+  @@index([productionOrderId, createdAt])
+  @@index([productionItemId, createdAt])
+  @@index([type])
+  @@map("production_activities")
+}
+
+model ProductionTimeSession {
+  id                String                       @id @default(cuid())
+  productionOrderId String                       @map("production_order_id")
+  productionItemId  String                       @map("production_item_id")
+  processId         String                       @map("process_id")
+  userId            String                       @map("user_id")
+  status            ProductionTimeSessionStatus  @default(RUNNING)
+  startedAt         DateTime                     @map("started_at")
+  lastResumedAt     DateTime                     @map("last_resumed_at")
+  pausedAt          DateTime?                    @map("paused_at")
+  endedAt           DateTime?                    @map("ended_at")
+  accumulatedMinutes Decimal                     @default(0) @map("accumulated_minutes") @db.Decimal(14, 3)
+  durationMinutes   Decimal                      @default(0) @map("duration_minutes") @db.Decimal(14, 3)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  productionOrder ProductionOrder       @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  productionItem  ProductionItem        @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
+  process         ProductionItemProcess @relation(fields: [processId], references: [id], onDelete: Cascade)
+  user            User                  @relation("ProductionTimeSessionUser", fields: [userId], references: [id])
+
+  @@index([userId, status])
+  @@index([processId, status])
+  @@index([productionItemId])
+  @@map("production_time_sessions")
+}
+
+model ProductionIncident {
+  id                String                    @id @default(cuid())
+  productionOrderId String                    @map("production_order_id")
+  productionItemId  String?                   @map("production_item_id")
+  processId         String?                   @map("process_id")
+  extraMaterialId   String?                   @map("extra_material_id")
+  type              ProductionIncidentType    @default(OTHER)
+  status            ProductionIncidentStatus  @default(OPEN)
+  blocking          Boolean                   @default(false)
+  title             String
+  description       String
+  actionTaken       String?                   @map("action_taken")
+  assignedToUserId  String?                   @map("assigned_to_user_id")
+  reportedBy        String?                   @map("reported_by")
+  resolvedAt        DateTime?                 @map("resolved_at")
+  closedAt          DateTime?                 @map("closed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  productionOrder ProductionOrder        @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  productionItem  ProductionItem?        @relation(fields: [productionItemId], references: [id], onDelete: SetNull)
+  process         ProductionItemProcess? @relation(fields: [processId], references: [id], onDelete: SetNull)
+  extraMaterial   ProductionExtraMaterial? @relation(fields: [extraMaterialId], references: [id], onDelete: SetNull)
+  reportedByUser  User?                  @relation("ProductionIncidentReportedBy", fields: [reportedBy], references: [id], onDelete: SetNull)
+  assignedToUser  User?                  @relation("ProductionIncidentAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  attachments     ProductionAttachment[]
+  activities      ProductionActivity[]
+
+  @@index([productionOrderId, status])
+  @@index([productionItemId, status])
+  @@index([blocking, status])
+  @@map("production_incidents")
+}
+
+model ProductionExtraMaterial {
+  id                String   @id @default(cuid())
+  productionOrderId String   @map("production_order_id")
+  productionItemId  String?  @map("production_item_id")
+  processId         String?  @map("process_id")
+  catalogItemId     String?  @map("catalog_item_id")
+  supplierId        String?  @map("supplier_id")
+  description       String
+  quantity          Decimal  @db.Decimal(14, 3)
+  unit              String?
+  unitCost          Decimal? @map("unit_cost") @db.Decimal(14, 2)
+  reason            String
+  occurredAt        DateTime @default(now()) @map("occurred_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  productionOrder ProductionOrder        @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  productionItem  ProductionItem?        @relation(fields: [productionItemId], references: [id], onDelete: SetNull)
+  process         ProductionItemProcess? @relation(fields: [processId], references: [id], onDelete: SetNull)
+  catalogItem     Item?                  @relation(fields: [catalogItemId], references: [id], onDelete: SetNull)
+  supplier        Supplier?              @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  createdByUser   User?                  @relation("ProductionExtraMaterialCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  incidents       ProductionIncident[]
+  activities      ProductionActivity[]
+
+  @@index([productionOrderId])
+  @@index([productionItemId])
+  @@map("production_extra_materials")
+}
+
+model ProductionScheduleChange {
+  id                       String    @id @default(cuid())
+  productionItemId         String    @map("production_item_id")
+  previousPlannedStartAt   DateTime? @map("previous_planned_start_at") @db.Date
+  previousPlannedEndAt     DateTime? @map("previous_planned_end_at") @db.Date
+  previousCommitmentDate   DateTime? @map("previous_commitment_date") @db.Date
+  newPlannedStartAt        DateTime? @map("new_planned_start_at") @db.Date
+  newPlannedEndAt          DateTime? @map("new_planned_end_at") @db.Date
+  newCommitmentDate        DateTime? @map("new_commitment_date") @db.Date
+  reason                   String?
+  createdBy                String?   @map("created_by")
+  createdAt                DateTime  @default(now()) @map("created_at")
+
+  productionItem ProductionItem @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
+  createdByUser  User?          @relation("ProductionScheduleChangeCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([productionItemId, createdAt])
+  @@map("production_schedule_changes")
 }
 
 // -----------------------------------------------------------------------------

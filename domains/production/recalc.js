@@ -1,4 +1,7 @@
 import { computeProgress, deriveOrderStatus } from "./progress";
+import { PROCESS_USER_SELECT } from "./activity";
+
+const USER = { select: { id: true, name: true } };
 
 export const PRODUCTION_DETAIL_INCLUDE = {
   client: true,
@@ -7,6 +10,25 @@ export const PRODUCTION_DETAIL_INCLUDE = {
   materialsReadyByUser: { select: { id: true, name: true } },
   attachments: {
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    include: { createdByUser: USER },
+  },
+  incidents: {
+    where: { status: { in: ["OPEN", "IN_REVIEW"] } },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    include: {
+      reportedByUser: USER,
+      assignedToUser: USER,
+    },
+  },
+  extraMaterials: {
+    orderBy: { occurredAt: "desc" },
+    take: 50,
+    include: {
+      createdByUser: USER,
+      catalogItem: { select: { id: true, sku: true, name: true } },
+      supplier: { select: { id: true, name: true } },
+    },
   },
   purchaseOrders: {
     where: { deletedAt: null },
@@ -26,17 +48,48 @@ export const PRODUCTION_DETAIL_INCLUDE = {
   items: {
     orderBy: { position: "asc" },
     include: {
-      completedByUser: { select: { id: true, name: true } },
+      completedByUser: USER,
+      assignedToUser: USER,
       notes: {
         orderBy: { createdAt: "desc" },
         take: 20,
-        include: { createdByUser: { select: { id: true, name: true } } },
+        include: { createdByUser: USER },
       },
       processes: {
         orderBy: { sortOrder: "asc" },
         include: {
           process: { select: { id: true, code: true, name: true, unit: true } },
+          ...PROCESS_USER_SELECT,
         },
+      },
+      incidents: {
+        orderBy: { createdAt: "desc" },
+        take: 30,
+        include: {
+          reportedByUser: USER,
+          assignedToUser: USER,
+          attachments: {
+            select: {
+              id: true,
+              fileName: true,
+              pathname: true,
+              contentType: true,
+              kind: true,
+            },
+          },
+        },
+      },
+      extraMaterials: {
+        orderBy: { occurredAt: "desc" },
+        include: {
+          createdByUser: USER,
+          catalogItem: { select: { id: true, sku: true, name: true } },
+          supplier: { select: { id: true, name: true } },
+        },
+      },
+      attachments: {
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        include: { createdByUser: USER },
       },
     },
   },

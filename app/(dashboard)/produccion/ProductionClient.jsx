@@ -247,7 +247,10 @@ export default function ProductionClient() {
           rows={list.rows}
           loading={list.loading}
           error={list.error}
-          getDate={(r) => r.approvalDate}
+          getDate={(r) =>
+            r.items?.find((i) => i.commitmentDate)?.commitmentDate ||
+            r.approvalDate
+          }
           getHref={(r) => `/produccion/${r.id}`}
           getTitle={(r) => r.folio}
           getSubtitle={(r) =>

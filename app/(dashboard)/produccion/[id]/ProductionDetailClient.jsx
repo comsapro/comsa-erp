@@ -1,11 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
   CheckCircle2,
-  FileText,
   Play,
   RotateCcw,
   XCircle,
@@ -15,7 +14,6 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { Alert } from "@/components/feedback/Alert";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
@@ -28,9 +26,20 @@ import {
   PRODUCTION_STATUS_LABELS,
   PRODUCTION_STATUS_TONES,
   PRODUCTION_SOURCE_LABELS,
+  PRODUCTION_PRIORITY_LABELS,
+  PRODUCTION_PRIORITY_TONES,
 } from "@/domains/production/constants";
-import { ProductionDocuments } from "@/components/production/ProductionDocuments";
-import { ProductionProcessesPanel } from "@/components/production/ProductionProcessesPanel";
+import { itemHoursSummary } from "@/domains/production/process-rules";
+import { HoursBar } from "@/components/production/HoursBar";
+import { ProductionItemWorkspace } from "@/components/production/ProductionItemWorkspace";
+
+const EMPTY_INCIDENT = {
+  title: "",
+  description: "",
+  type: "OTHER",
+  blocking: false,
+};
+const EMPTY_EXTRA = { description: "", quantity: "", unit: "", reason: "" };
 
 export default function ProductionDetailClient({ id }) {
   const { toast } = useToast();
@@ -42,49 +51,64 @@ export default function ProductionDetailClient({ id }) {
   const [progressDraft, setProgressDraft] = useState({});
   const [reopenItem, setReopenItem] = useState(null);
   const [reopenReason, setReopenReason] = useState("");
+  const [selectedId, setSelectedId] = useState(null);
+  const [assignables, setAssignables] = useState([]);
+  const [handicap, setHandicap] = useState(0);
+  const [incidentDraft, setIncidentDraft] = useState(EMPTY_INCIDENT);
+  const [extraDraft, setExtraDraft] = useState(EMPTY_EXTRA);
+
+  const applyUpdated = useCallback((updated) => {
+    if (!updated?.id) return;
+    setRecord(updated);
+    const drafts = {};
+    for (const item of updated.items || []) {
+      drafts[item.id] = {
+        completedQuantity: Number(item.completedQuantity) || 0,
+        observations: item.observations || "",
+      };
+    }
+    setProgressDraft(drafts);
+    setSelectedId((curr) => {
+      if (curr && (updated.items || []).some((i) => i.id === curr)) return curr;
+      return updated.items?.[0]?.id || null;
+    });
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.get(`/api/produccion/${id}`);
-      setRecord(data);
-      const drafts = {};
-      for (const item of data.items || []) {
-        drafts[item.id] = {
-          completedQuantity: Number(item.completedQuantity) || 0,
-          observations: item.observations || "",
-        };
-      }
-      setProgressDraft(drafts);
+      const [data, users, settings] = await Promise.all([
+        api.get(`/api/produccion/${id}`),
+        api.get("/api/produccion/asignables").catch(() => []),
+        api.get("/api/produccion/config").catch(() => ({ handicapPercent: 0 })),
+      ]);
+      applyUpdated(data);
+      setAssignables(Array.isArray(users) ? users : users?.data || []);
+      setHandicap(Number(settings?.handicapPercent) || 0);
     } catch (err) {
       setError(err.message || "No se pudo cargar la orden");
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, applyUpdated]);
 
   useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect */
     load();
-    /* eslint-enable react-hooks/set-state-in-effect */
   }, [load]);
+
+  const fail = (err, title = "No se pudo completar") => {
+    toast({ variant: "error", title, description: err.message });
+  };
 
   const runOrderAction = async (action, body) => {
     setActing(true);
     try {
-      const updated = await api.post(
-        `/api/produccion/${id}/acciones/${action}`,
-        body
-      );
-      if (updated?.id) setRecord(updated);
+      const updated = await api.post(`/api/produccion/${id}/acciones/${action}`, body);
+      applyUpdated(updated);
       toast({ variant: "success", title: "Accion aplicada" });
     } catch (err) {
-      toast({
-        variant: "error",
-        title: "No se pudo completar",
-        description: err.message,
-      });
+      fail(err);
     } finally {
       setActing(false);
       setCancelOpen(false);
@@ -98,80 +122,114 @@ export default function ProductionDetailClient({ id }) {
         `/api/produccion/${id}/items/${itemId}/acciones/${action}`,
         body
       );
-      setRecord(updated);
-      const drafts = {};
-      for (const item of updated.items || []) {
-        drafts[item.id] = {
-          completedQuantity: Number(item.completedQuantity) || 0,
-          observations: item.observations || "",
-        };
-      }
-      setProgressDraft(drafts);
-      toast({ variant: "success", title: "Item actualizado" });
+      applyUpdated(updated);
+      toast({ variant: "success", title: "Partida actualizada" });
     } catch (err) {
-      toast({
-        variant: "error",
-        title: "No se pudo actualizar",
-        description: err.message,
-      });
+      fail(err);
     } finally {
       setActing(false);
     }
-  };
-
-  const applyUpdated = (updated) => {
-    if (!updated?.id) return;
-    setRecord(updated);
-    const drafts = {};
-    for (const item of updated.items || []) {
-      drafts[item.id] = {
-        completedQuantity: Number(item.completedQuantity) || 0,
-        observations: item.observations || "",
-      };
-    }
-    setProgressDraft(drafts);
   };
 
   const runProcessChange = async (itemId, type, processId, payload) => {
     setActing(true);
     try {
+      const base = `/api/produccion/${id}/items/${itemId}/procesos`;
       let updated;
-      if (type === "add-process") {
-        updated = await api.post(
-          `/api/produccion/${id}/items/${itemId}/procesos`,
-          payload
-        );
-      } else if (type === "hours") {
-        updated = await api.patch(
-          `/api/produccion/${id}/items/${itemId}/procesos/${processId}`,
-          payload
-        );
-      } else if (type === "complete-process") {
-        updated = await api.post(
-          `/api/produccion/${id}/items/${itemId}/procesos/${processId}/acciones/completar`
-        );
+      if (type === "add-process") updated = await api.post(base, payload);
+      else if (type === "hours") updated = await api.patch(`${base}/${processId}`, payload);
+      else if (type === "complete-process") {
+        updated = await api.post(`${base}/${processId}/acciones/completar`);
       } else if (type === "replace-process") {
-        updated = await api.post(
-          `/api/produccion/${id}/items/${itemId}/procesos/${processId}/acciones/reemplazar`,
-          payload
-        );
-      } else if (type === "delete-process") {
-        updated = await api.del(
-          `/api/produccion/${id}/items/${itemId}/procesos/${processId}`
-        );
+        updated = await api.post(`${base}/${processId}/acciones/reemplazar`, payload);
+      } else if (type === "delete-process") updated = await api.del(`${base}/${processId}`);
+      else if (type === "session-start") {
+        updated = await api.post(`${base}/${processId}/acciones/iniciar-sesion`);
+      } else if (type === "session-pause") {
+        updated = await api.post(`${base}/${processId}/acciones/pausar`);
+      } else if (type === "session-resume") {
+        updated = await api.post(`${base}/${processId}/acciones/reanudar`);
+      } else if (type === "session-end") {
+        updated = await api.post(`${base}/${processId}/acciones/finalizar-sesion`);
+      } else if (type === "assign-process") {
+        updated = await api.post(`${base}/${processId}/acciones/asignar`, payload);
       }
       applyUpdated(updated);
       toast({ variant: "success", title: "Proceso actualizado" });
     } catch (err) {
-      toast({
-        variant: "error",
-        title: "No se pudo actualizar el proceso",
-        description: err.message,
-      });
+      fail(err, "No se pudo actualizar el proceso");
     } finally {
       setActing(false);
     }
   };
+
+  const createIncident = async (itemId) => {
+    setActing(true);
+    try {
+      const updated = await api.post(`/api/produccion/${id}/incidencias`, {
+        ...incidentDraft,
+        productionItemId: itemId,
+      });
+      applyUpdated(updated);
+      setIncidentDraft(EMPTY_INCIDENT);
+      toast({ variant: "success", title: "Incidencia registrada" });
+    } catch (err) {
+      fail(err);
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const updateIncidentStatus = async (incidentId, status) => {
+    setActing(true);
+    try {
+      const updated = await api.patch(
+        `/api/produccion/${id}/incidencias/${incidentId}`,
+        { status }
+      );
+      applyUpdated(updated);
+    } catch (err) {
+      fail(err);
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const saveExtraMaterial = async (itemId) => {
+    setActing(true);
+    try {
+      const updated = await api.post(`/api/produccion/${id}/materiales-extra`, {
+        ...extraDraft,
+        productionItemId: itemId,
+        quantity: Number(extraDraft.quantity),
+      });
+      applyUpdated(updated);
+      setExtraDraft(EMPTY_EXTRA);
+      toast({ variant: "success", title: "Material adicional registrado" });
+    } catch (err) {
+      fail(err);
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const savePlanning = async (itemId, payload) => {
+    setActing(true);
+    try {
+      const updated = await api.patch(`/api/produccion/${id}/items/${itemId}`, payload);
+      applyUpdated(updated);
+      toast({ variant: "success", title: "Planeacion guardada" });
+    } catch (err) {
+      fail(err);
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const selected = useMemo(
+    () => (record?.items || []).find((i) => i.id === selectedId) || null,
+    [record, selectedId]
+  );
 
   if (loading) {
     return (
@@ -194,18 +252,21 @@ export default function ProductionDetailClient({ id }) {
     record.sourceType === "QUOTE"
       ? record.quote?.folio
       : record.directOrder?.folio;
-  const isOpen =
-    record.status === "PENDING" ||
-    record.status === "IN_PROGRESS";
+  const isOpen = record.status === "PENDING" || record.status === "IN_PROGRESS";
   const ocHref = record.quote?.id
     ? `/ordenes-compra/nuevo?productionOrderId=${id}&quoteId=${record.quote.id}`
     : `/ordenes-compra/nuevo?productionOrderId=${id}`;
+  const allHours = itemHoursSummary(
+    (record.items || []).flatMap((i) => i.processes || [])
+  );
+  const openIncidents = (record.incidents || []).length;
+  const quoteDocs = record.quoteDocumentation?.attachments || [];
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <PageHeader
         title={`Produccion ${record.folio}`}
-        description={`${record.client?.commercialName || ""} · ${PRODUCTION_SOURCE_LABELS[record.sourceType] || record.sourceType}`}
+        description={`${record.client?.commercialName || ""} · ${PRODUCTION_SOURCE_LABELS[record.sourceType] || record.sourceType}${sourceLabel ? ` ${sourceLabel}` : ""}`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={PRODUCTION_STATUS_TONES[record.status] || "neutral"}>
@@ -239,11 +300,7 @@ export default function ProductionDetailClient({ id }) {
               </Button>
             </Can>
             <Can permission="production.cancel">
-              <Button
-                size="sm"
-                variant="danger"
-                onClick={() => setCancelOpen(true)}
-              >
+              <Button size="sm" variant="danger" onClick={() => setCancelOpen(true)}>
                 <XCircle className="h-4 w-4" /> Cancelar
               </Button>
             </Can>
@@ -270,326 +327,192 @@ export default function ProductionDetailClient({ id }) {
             target="_blank"
             rel="noreferrer"
           >
-            Reimpresion hoja / PDF
-          </Button>
-          <Button
-            size="sm"
-            variant="secondary"
-            loading={acting}
-            onClick={async () => {
-              const reason = window.prompt(
-                "Motivo obligatorio para nueva orden de produccion:"
-              );
-              if (!reason?.trim()) return;
-              setActing(true);
-              try {
-                const created = await api.post(
-                  `/api/produccion/${id}/acciones/reprint-new-order`,
-                  { reason }
-                );
-                toast({ variant: "success", title: "Nueva OP creada" });
-                if (created?.id) {
-                  window.location.href = `/produccion/${created.id}`;
-                }
-              } catch (err) {
-                toast({
-                  variant: "error",
-                  title: "No se pudo reimprimir",
-                  description: err.message,
-                });
-              } finally {
-                setActing(false);
-              }
-            }}
-          >
-            Reimpresion nuevo folio
+            PDF / QR de piso
           </Button>
         </Can>
-        {sourceLabel && (
-          <span className="rounded-[var(--radius-sm)] border border-border px-3 py-1.5 text-sm text-content-muted">
-            Origen {sourceLabel}
-          </span>
-        )}
+        <Can permission="production.manage_handicap">
+          <span className="text-xs text-content-muted">Handicap {handicap}%</span>
+        </Can>
       </Card>
 
-      <div className="grid gap-4 sm:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-4">
         <Card className="p-4">
           <p className="text-sm text-content-muted">Avance</p>
-          <p className="mt-1 text-2xl font-semibold">
-            {Number(record.progressPercentage)}%
-          </p>
+          <p className="mt-1 text-2xl font-semibold">{Number(record.progressPercentage)}%</p>
           <p className="text-xs text-content-muted">
-            {record.completedItems}/{record.totalItems} items
+            {record.completedItems}/{record.totalItems} partidas
           </p>
         </Card>
         <Card className="p-4">
-          <p className="text-sm text-content-muted">Aprobacion</p>
-          <p className="mt-1 text-base font-medium">
-            {formatDate(record.approvalDate)}
-          </p>
-          {record.startedAt && (
-            <p className="text-xs text-content-muted">
-              Inicio: {formatDateTime(record.startedAt)}
-            </p>
-          )}
-        </Card>
-        <Card className="p-4">
-          <p className="text-sm text-content-muted">Cliente</p>
-          <p className="mt-1 text-base font-medium">
-            {record.client?.commercialName || "-"}
-          </p>
+          <p className="text-sm text-content-muted">Horas</p>
+          <HoursBar
+            quotedHours={allHours.quotedHours}
+            expectedHours={allHours.expectedHours}
+            realHours={allHours.realHours}
+          />
         </Card>
         <Card className="p-4">
           <p className="text-sm text-content-muted">Material</p>
           <p className="mt-1 text-base font-medium">
             {record.materialsReadyAt ? "Listo para fabricar" : "Pendiente"}
           </p>
-          {record.materialsReadyAt && (
+          {record.startedAt && (
             <p className="text-xs text-content-muted">
-              {formatDateTime(record.materialsReadyAt)}
-              {record.materialsReadyByUser?.name
-                ? ` · ${record.materialsReadyByUser.name}`
-                : ""}
+              Inicio {formatDateTime(record.startedAt)}
             </p>
           )}
         </Card>
+        <Card className="p-4">
+          <p className="text-sm text-content-muted">Incidencias abiertas</p>
+          <p className="mt-1 text-2xl font-semibold">{openIncidents}</p>
+          <p className="text-xs text-content-muted">{formatDate(record.approvalDate)}</p>
+        </Card>
       </div>
 
-      <ProductionDocuments
-        productionId={id}
-        initialAttachments={record.attachments || []}
-        canUpload={record.status !== "CANCELLED"}
-      />
-
-      <Card className="overflow-hidden">
-        <div className="border-b border-border px-5 py-3">
-          <h2 className="text-base font-semibold">Items de produccion</h2>
-        </div>
-        <div className="divide-y divide-border">
-          {(record.items || []).map((item) => {
-            const draft = progressDraft[item.id] || {
-              completedQuantity: 0,
-              observations: "",
-            };
-            const canProgress =
-              (isOpen || record.status === "COMPLETED") &&
-              item.status !== "COMPLETED" &&
-              item.status !== "CANCELLED";
-            const canManageProcesses =
-              record.status !== "CANCELLED" &&
-              item.status !== "COMPLETED" &&
-              item.status !== "CANCELLED";
-
-            return (
-              <div key={item.id} className="flex flex-col gap-3 px-5 py-4">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <p className="font-medium text-content">
-                      #{item.position} · {item.description}
+      <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <Card className="overflow-hidden">
+          <div className="border-b border-border px-4 py-3">
+            <h2 className="text-sm font-semibold">Partidas</h2>
+          </div>
+          <ul className="divide-y divide-border">
+            {(record.items || []).map((item) => {
+              const hours = itemHoursSummary(item.processes || []);
+              const blocking = (item.incidents || []).some(
+                (i) => i.blocking && ["OPEN", "IN_REVIEW"].includes(i.status)
+              );
+              return (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedId(item.id)}
+                    className={`w-full px-4 py-3 text-left transition-colors ${
+                      selectedId === item.id ? "bg-brand-50" : "hover:bg-surface-muted"
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-sm font-medium">
+                        #{item.position} {item.description}
+                      </p>
+                      <Badge tone={PRODUCTION_STATUS_TONES[item.status] || "neutral"}>
+                        {PRODUCTION_STATUS_LABELS[item.status]}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-content-muted">
+                      {Number(item.completedQuantity)}/{Number(item.quantity)}
+                      {item.assignedToUser?.name ? ` · ${item.assignedToUser.name}` : ""}
                     </p>
-                    <p className="text-sm text-content-muted">
-                      Cantidad: {Number(item.quantity)} · Completado:{" "}
-                      {Number(item.completedQuantity)}
-                      {item.durationMinutes != null
-                        ? ` · ${item.durationMinutes} min`
-                        : ""}
+                    <div className="mt-2 flex items-center gap-2">
+                      <Badge
+                        tone={PRODUCTION_PRIORITY_TONES[item.priority] || "neutral"}
+                      >
+                        {PRODUCTION_PRIORITY_LABELS[item.priority] || "Normal"}
+                      </Badge>
+                      {blocking ? (
+                        <span className="text-[11px] font-medium text-danger-700">
+                          Incidencia
+                        </span>
+                      ) : null}
+                    </div>
+                    <div className="mt-2">
+                      <HoursBar
+                        compact
+                        quotedHours={hours.quotedHours}
+                        expectedHours={hours.expectedHours}
+                        realHours={hours.realHours}
+                      />
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </Card>
+
+        <Card className="overflow-hidden">
+          {!selected ? (
+            <p className="p-6 text-sm text-content-muted">Selecciona una partida.</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
+                <div>
+                  <h2 className="text-base font-semibold">
+                    #{selected.position} · {selected.description}
+                  </h2>
+                  {selected.completedByUser && (
+                    <p className="text-xs text-content-muted">
+                      Completado por {selected.completedByUser.name}
                     </p>
-                    <Can permission="production.print">
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <Button
-                          size="sm"
-                          variant="subtle"
-                          as="a"
-                          href={`/api/produccion/${id}/pdf/control-dimensional?itemId=${item.id}`}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          <FileText className="h-4 w-4" /> Control dimensional
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="subtle"
-                          as="a"
-                          href={`/api/produccion/${id}/pdf/orden-trabajo?itemId=${item.id}`}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          <FileText className="h-4 w-4" /> Orden de trabajo
-                        </Button>
-                      </div>
-                    </Can>
-                    {(item.notes || []).length > 0 && (
-                      <ul className="mt-2 space-y-1 text-xs text-content-muted">
-                        {item.notes.slice(0, 5).map((n) => (
-                          <li key={n.id}>
-                            <span className="font-medium text-content">
-                              {n.createdByUser?.name || "Usuario"}
-                            </span>{" "}
-                            · {formatDateTime(n.createdAt)}: {n.body}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                  <Badge tone={PRODUCTION_STATUS_TONES[item.status] || "neutral"}>
-                    {PRODUCTION_STATUS_LABELS[item.status] || item.status}
-                  </Badge>
+                  )}
                 </div>
-
-                {canProgress && (
-                  <div className="grid gap-3 rounded-[var(--radius-md)] bg-surface-muted p-3 sm:grid-cols-4">
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-content-muted">
-                        Cant. completada
-                      </label>
-                      <Input
-                        type="number"
-                        step="any"
-                        min="0"
-                        max={Number(item.quantity)}
-                        value={draft.completedQuantity}
-                        onChange={(e) =>
-                          setProgressDraft((prev) => ({
-                            ...prev,
-                            [item.id]: {
-                              ...prev[item.id],
-                              completedQuantity: e.target.value,
-                            },
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="mb-1 block text-xs font-medium text-content-muted">
-                        Nota de bitacora
-                      </label>
-                      <Textarea
-                        rows={2}
-                        value={draft.observations}
-                        onChange={(e) =>
-                          setProgressDraft((prev) => ({
-                            ...prev,
-                            [item.id]: {
-                              ...prev[item.id],
-                              observations: e.target.value,
-                            },
-                          }))
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-wrap items-end gap-2">
-                      {item.status === "PENDING" && (
-                        <Can permission="production.update_progress">
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            loading={acting}
-                            onClick={() => runItemAction(item.id, "start")}
-                          >
-                            Iniciar
-                          </Button>
-                        </Can>
-                      )}
-                      <Can permission="production.update_progress">
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          loading={acting}
-                          onClick={() =>
-                            runItemAction(item.id, "update-progress", {
-                              completedQuantity: Number(draft.completedQuantity),
-                              observations: draft.observations,
-                            })
-                          }
-                        >
-                          Guardar avance
-                        </Button>
-                      </Can>
-                      <Can permission="production.complete_item">
-                        <Button
-                          size="sm"
-                          loading={acting}
-                          onClick={() => runItemAction(item.id, "complete")}
-                        >
-                          Completar
-                        </Button>
-                      </Can>
-                    </div>
-                  </div>
-                )}
-
-                {item.status === "COMPLETED" && (
+                {selected.status === "COMPLETED" && (
                   <Can permission="production.reopen_item">
                     <Button
                       size="sm"
                       variant="secondary"
                       onClick={() => {
-                        setReopenItem(item);
+                        setReopenItem(selected);
                         setReopenReason("");
                       }}
                     >
-                      <RotateCcw className="h-4 w-4" /> Reabrir / retrabajo
+                      <RotateCcw className="h-4 w-4" /> Reabrir
                     </Button>
                   </Can>
                 )}
-
-                <ProductionProcessesPanel
-                  productionId={id}
-                  item={item}
-                  canManage={canManageProcesses}
-                  acting={acting}
-                  onChanged={(type, processId, payload) =>
-                    runProcessChange(item.id, type, processId, payload)
-                  }
-                />
-
-                {(item.sourceMaterials || []).length > 0 && (
-                  <div className="rounded-[var(--radius-md)] border border-border p-3">
-                    <p className="mb-2 text-sm font-semibold">Materiales de origen</p>
-                    <ul className="space-y-1 text-sm text-content-muted">
-                      {item.sourceMaterials.map((mat) => (
-                        <li key={mat.id}>
-                          {mat.descriptionSnapshot} · {Number(mat.quantity)}{" "}
-                          {mat.unit || ""}
-                          {mat.dimensions ? ` · ${mat.dimensions}` : ""}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {item.completedByUser && (
-                  <p className="text-xs text-content-muted">
-                    Completado por {item.completedByUser.name}
-                    {item.completedAt
-                      ? ` · ${formatDateTime(item.completedAt)}`
-                      : ""}
-                  </p>
-                )}
               </div>
-            );
-          })}
-        </div>
-      </Card>
+              <ProductionItemWorkspace
+                productionId={id}
+                record={record}
+                item={selected}
+                assignables={assignables}
+                quoteDocs={quoteDocs}
+                acting={acting}
+                canProgress={
+                  (isOpen || record.status === "COMPLETED") &&
+                  selected.status !== "COMPLETED" &&
+                  selected.status !== "CANCELLED"
+                }
+                canManageProcesses={
+                  record.status !== "CANCELLED" &&
+                  selected.status !== "COMPLETED" &&
+                  selected.status !== "CANCELLED"
+                }
+                progressDraft={
+                  progressDraft[selected.id] || {
+                    completedQuantity: 0,
+                    observations: "",
+                  }
+                }
+                setProgressDraft={setProgressDraft}
+                runItemAction={runItemAction}
+                runProcessChange={runProcessChange}
+                onRecordChange={applyUpdated}
+                incidentDraft={incidentDraft}
+                setIncidentDraft={setIncidentDraft}
+                createIncident={createIncident}
+                updateIncidentStatus={updateIncidentStatus}
+                extraDraft={extraDraft}
+                setExtraDraft={setExtraDraft}
+                saveExtraMaterial={saveExtraMaterial}
+                savePlanning={savePlanning}
+              />
+            </>
+          )}
+        </Card>
+      </div>
 
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-5 py-3">
           <h2 className="text-base font-semibold">Compras e inventario</h2>
           <div className="flex flex-wrap gap-2">
             <Can permission="purchase_orders.create">
-              <Button
-                as={Link}
-                href={ocHref}
-                size="sm"
-                variant="secondary"
-              >
+              <Button as={Link} href={ocHref} size="sm" variant="secondary">
                 Crear OC
               </Button>
             </Can>
             <Can permission="inventory.create_exit">
               <Button
                 as={Link}
-                href={`/inventario/movimientos/salida`}
+                href="/inventario/movimientos/salida"
                 size="sm"
                 variant="secondary"
               >
@@ -614,11 +537,11 @@ export default function ProductionDetailClient({ id }) {
         open={Boolean(reopenItem)}
         onClose={() => setReopenItem(null)}
         title="Reabrir partida"
-        description="El item pasara a retrabajo. El historial de terminado se conserva en bitacora."
+        description="El item pasara a retrabajo. El historial de terminado se conserva."
       >
         <Textarea
           rows={4}
-          placeholder="Motivo obligatorio (error, rechazo del cliente, retrabajo, etc.)"
+          placeholder="Motivo obligatorio"
           value={reopenReason}
           onChange={(e) => setReopenReason(e.target.value)}
         />
@@ -630,9 +553,7 @@ export default function ProductionDetailClient({ id }) {
             loading={acting}
             onClick={async () => {
               if (!reopenItem) return;
-              await runItemAction(reopenItem.id, "reopen", {
-                reason: reopenReason,
-              });
+              await runItemAction(reopenItem.id, "reopen", { reason: reopenReason });
               setReopenItem(null);
             }}
           >
@@ -651,7 +572,9 @@ function ProductionInventoryPanel({ productionId }) {
     api
       .get(`/api/produccion/${productionId}/inventario`)
       .then(setData)
-      .catch(() => setData({ purchaseOrders: [], movements: [], consumedMaterials: [] }));
+      .catch(() =>
+        setData({ purchaseOrders: [], movements: [], consumedMaterials: [] })
+      );
   }, [productionId]);
 
   if (!data) {

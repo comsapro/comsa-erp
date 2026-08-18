@@ -4,10 +4,22 @@ import {
   completeProcess,
   replaceProcess,
 } from "@/domains/production/processes";
+import {
+  startSession,
+  pauseSession,
+  resumeSession,
+  endSession,
+} from "@/domains/production/sessions";
+import { assignProcessResponsible } from "@/domains/production/planning";
 
 const ACTIONS = {
   completar: completeProcess,
   reemplazar: replaceProcess,
+  "iniciar-sesion": startSession,
+  pausar: pauseSession,
+  reanudar: resumeSession,
+  "finalizar-sesion": endSession,
+  asignar: assignProcessResponsible,
 };
 
 export const POST = withErrorHandling(async (req, ctx) => {

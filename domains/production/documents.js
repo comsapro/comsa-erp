@@ -58,7 +58,20 @@ export async function workOrderPdf(request, orderId, itemId) {
   await requirePermission("production.print");
   const actor = await getActor(request);
   const { order, item } = await loadOrderItem(orderId, itemId);
-  const model = buildWorkOrderModel(order, item);
+  const origin =
+    process.env.AUTH_URL ||
+    process.env.NEXTAUTH_URL ||
+    process.env.APP_URL ||
+    "http://localhost:3000";
+  const orderUrl = `${origin.replace(/\/$/, "")}/produccion/${orderId}`;
+  let qrPng = null;
+  try {
+    const QRCode = (await import("qrcode")).default;
+    qrPng = await QRCode.toBuffer(orderUrl, { type: "png", margin: 1, width: 160 });
+  } catch {
+    qrPng = null;
+  }
+  const model = buildWorkOrderModel({ ...order, publicUrl: orderUrl, qrPng }, item);
   const buffer = await buildPdfBuffer((doc) => drawWorkOrder(doc, model));
   await recordAudit({
     actor,

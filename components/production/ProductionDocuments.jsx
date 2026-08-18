@@ -80,8 +80,10 @@ function FileRow({ file, href, meta, onDelete, deleting, canDelete }) {
 
 export function ProductionDocuments({
   productionId,
+  itemId = null,
   initialAttachments = [],
   canUpload = false,
+  kind = "SCAN",
 }) {
   const { toast } = useToast();
   const inputRef = useRef(null);
@@ -134,7 +136,8 @@ export function ProductionDocuments({
           contentType:
             file.type || blob.contentType || "application/octet-stream",
           sizeBytes: file.size,
-          kind: "SCAN",
+          kind: itemId ? "PHOTO" : kind,
+          productionItemId: itemId,
         });
       }
       toast({ variant: "success", title: "Archivo(s) adjuntado(s)" });

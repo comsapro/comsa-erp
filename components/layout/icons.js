@@ -21,6 +21,8 @@ import {
   ShoppingCart,
   PackageCheck,
   FileDown,
+  GanttChart,
+  CalendarDays,
 } from "lucide-react";
 
 export const ICONS = {
@@ -46,6 +48,8 @@ export const ICONS = {
   ShoppingCart,
   PackageCheck,
   FileDown,
+  GanttChart,
+  CalendarDays,
 };
 
 export function getIcon(name) {

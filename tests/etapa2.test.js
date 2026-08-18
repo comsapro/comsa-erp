@@ -126,11 +126,11 @@ test("Supervisor puede aprobar e imprimir cotizaciones", () => {
   assert.ok(supervisor.permissions.includes("manufacturing_processes.create"));
 });
 
-test("Produccion tiene production.complete_order y no quotes.view", () => {
+test("Produccion ejecuta piso y no cierra la orden ni ve cotizaciones", () => {
   const prod = SYSTEM_ROLES.find((r) => r.name === "Produccion");
-  assert.ok(prod.permissions.includes("production.complete_order"));
+  assert.ok(!prod.permissions.includes("production.complete_order"));
   assert.ok(prod.permissions.includes("production.view"));
-  assert.ok(prod.permissions.includes("production.reopen_item"));
+  assert.ok(prod.permissions.includes("production.record_sessions"));
   assert.ok(!prod.permissions.includes("quotes.view"));
 });
 

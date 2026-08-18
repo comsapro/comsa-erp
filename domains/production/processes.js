@@ -16,8 +16,10 @@ import {
   replaceProcessSchema,
 } from "./schemas";
 import { canDeleteProductionProcess } from "./process-rules";
-import { manufacturingToProcessData } from "./process-copy";
+import { manufacturingToProcessData, getActiveHandicapPercent } from "./process-copy";
 import { recalculateProductionState, getDetailInclude } from "./recalc";
+import { recordProductionActivity } from "./activity";
+import { canCompleteProcess } from "./close-rules";
 
 async function loadItemContext(orderId, itemId) {
   const order = await prisma.productionOrder.findFirst({
@@ -68,6 +70,7 @@ export async function addProductionProcess(request, orderId, itemId) {
   });
   if (!catalog) throw new NotFoundError("Proceso de catalogo no encontrado");
 
+  const handicapPercent = await getActiveHandicapPercent(prisma);
   const sortOrder = (item.processes || []).length;
   const expected =
     data.expectedHours != null ? Number(data.expectedHours) : 0;
@@ -84,25 +87,20 @@ export async function addProductionProcess(request, orderId, itemId) {
           sortOrder,
           observations: data.notes,
         },
-        { actorId: actor.id, sourceType: "PRODUCTION" }
+        { actorId: actor.id, sourceType: "PRODUCTION", handicapPercent }
       ),
       quotedHours: toDecimal(0),
       expectedHours: toDecimal(expected),
     },
   });
 
-  await recordAudit({
-    actor,
-    module: "production",
-    entity: "ProductionItemProcess",
-    entityId: created.id,
-    action: AUDIT_ACTIONS.CREATE,
-    newData: {
-      productionOrderId: orderId,
-      productionItemId: itemId,
-      sourceType: "PRODUCTION",
-      processName: catalog.name,
-    },
+  await recordProductionActivity(prisma, {
+    type: "PROCESS_CHANGE",
+    productionOrderId: orderId,
+    productionItemId: itemId,
+    processId: created.id,
+    body: `Proceso agregado: ${catalog.name}`,
+    createdBy: actor.id,
   });
 
   const record = await recalculateProductionState(prisma, orderId, actor.id);
@@ -110,7 +108,7 @@ export async function addProductionProcess(request, orderId, itemId) {
 }
 
 export async function updateProcessHours(request, orderId, itemId, processId) {
-  await requirePermission("production.record_process_hours");
+  const user = await requirePermission("production.record_process_hours");
   const actor = await getActor(request);
   const { order, item } = await loadItemContext(orderId, itemId);
   assertItemMutable(order, item);
@@ -119,6 +117,13 @@ export async function updateProcessHours(request, orderId, itemId, processId) {
   if (!process) throw new NotFoundError("Proceso no encontrado");
   if (process.status === "REPLACED") {
     throw new ConflictError("No se pueden editar horas de un proceso reemplazado");
+  }
+
+  const hasSessions = (process.sessions || []).length > 0;
+  if (hasSessions && !user.permissions?.includes("production.manage_planning")) {
+    throw new ConflictError(
+      "Este proceso tiene sesiones de piso. Las horas reales las define el cronometro, salvo un supervisor."
+    );
   }
 
   const data = updateProcessHoursSchema.parse(await request.json());
@@ -141,17 +146,14 @@ export async function updateProcessHours(request, orderId, itemId, processId) {
     data: patch,
   });
 
-  await recordAudit({
-    actor,
-    module: "production",
-    entity: "ProductionItemProcess",
-    entityId: processId,
-    action: AUDIT_ACTIONS.PROGRESS_UPDATE,
-    previousData: {
-      realHours: process.realHours,
-      expectedHours: process.expectedHours,
-    },
-    newData: { realHours: data.realHours, notes: data.notes || null },
+  await recordProductionActivity(prisma, {
+    type: "HOURS_MANUAL",
+    productionOrderId: orderId,
+    productionItemId: itemId,
+    processId,
+    body: `Horas reales: ${data.realHours} h en ${process.processNameSnapshot}`,
+    payload: { previous: Number(process.realHours) || 0, next: data.realHours },
+    createdBy: actor.id,
   });
 
   const record = await recalculateProductionState(prisma, orderId, actor.id);
@@ -169,22 +171,37 @@ export async function completeProcess(request, orderId, itemId, processId) {
   if (process.status === "REPLACED") {
     throw new ConflictError("El proceso ya fue reemplazado");
   }
-  if (process.status === "COMPLETED") {
-    throw new ConflictError("El proceso ya esta completado");
-  }
+  const ownerId = process.assignedToUserId || item.assignedToUserId || actor.id;
+  const check = canCompleteProcess(
+    {
+      ...process,
+      assignedToUserId: ownerId,
+    },
+    {
+      requireHours:
+        Number(process.quotedHours) > 0 || Number(process.expectedHours) > 0,
+    }
+  );
+  if (!check.ok) throw new ConflictError(check.reason);
 
   await prisma.productionItemProcess.update({
     where: { id: processId },
-    data: { status: "COMPLETED", updatedBy: actor.id },
+    data: {
+      status: "COMPLETED",
+      completedAt: new Date(),
+      startedAt: process.startedAt || new Date(),
+      assignedToUserId: ownerId,
+      updatedBy: actor.id,
+    },
   });
 
-  await recordAudit({
-    actor,
-    module: "production",
-    entity: "ProductionItemProcess",
-    entityId: processId,
-    action: AUDIT_ACTIONS.COMPLETE,
-    newData: { productionOrderId: orderId, productionItemId: itemId },
+  await recordProductionActivity(prisma, {
+    type: "PROCESS_CHANGE",
+    productionOrderId: orderId,
+    productionItemId: itemId,
+    processId,
+    body: `Proceso completado: ${process.processNameSnapshot}`,
+    createdBy: actor.id,
   });
 
   const record = await recalculateProductionState(prisma, orderId, actor.id);
@@ -241,8 +258,14 @@ export async function replaceProcess(request, orderId, itemId, processId) {
         replacementReason: data.reason,
         replacedAt: new Date(),
         replacedBy: actor.id,
-        updatedBy: actor.id,
-      },
+    });
+    await recordProductionActivity(tx, {
+      type: "PROCESS_CHANGE",
+      productionOrderId: orderId,
+      productionItemId: itemId,
+      processId,
+      body: `Proceso sustituido: ${original.processNameSnapshot} -> ${catalog.name}. ${data.reason}`,
+      createdBy: actor.id,
     });
   });
 
