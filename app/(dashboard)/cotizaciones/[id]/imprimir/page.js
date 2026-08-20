@@ -78,7 +78,7 @@ export default async function ImprimirCotizacionPage({ params }) {
             <td className={`${cellLeft} p-2 leading-snug`}>
               <p className="font-bold">{model.company.legalName}</p>
               {model.company.phone ? <p>Tel: {model.company.phone}</p> : null}
-              {model.company.phone ? <p>Cel: {model.company.phone}</p> : null}
+              {model.company.cellPhone ? <p>Cel: {model.company.cellPhone}</p> : null}
               {model.company.email ? <p>{model.company.email}</p> : null}
               {model.company.address ? (
                 <p className="whitespace-pre-wrap">{model.company.address}</p>
@@ -99,7 +99,7 @@ export default async function ImprimirCotizacionPage({ params }) {
           <tr>
             <td className={`${th} w-[14%]`}>Empresa</td>
             <td className={`${cell} w-[36%]`}>{model.meta.empresa}</td>
-            <td className={`${th} w-[14%]`}>Requisicion</td>
+            <td className={`${th} w-[14%]`}>Requisición</td>
             <td className={`${cell} w-[36%]`}>{model.meta.requisicion}</td>
           </tr>
           <tr>
@@ -122,7 +122,7 @@ export default async function ImprimirCotizacionPage({ params }) {
         <thead>
           <tr>
             <th className={`${th} w-6`}>#</th>
-            <th className={th}>Descripcion</th>
+            <th className={th}>Descripción</th>
             <th className={`${th} w-[11%]`}>Tiempo de entrega</th>
             <th className={`${th} w-[12%]`}>Comentarios</th>
             <th className={`${th} w-[11%]`}>Precio Unitario</th>
@@ -225,11 +225,11 @@ export default async function ImprimirCotizacionPage({ params }) {
               En caso de vernos favorecidos con su pedido por favor dirigirlo a:
             </td>
             <td className={`${cellLeft} w-[52%] px-2 py-2 leading-snug`}>
-              <p className="font-bold">{model.company.legalName}</p>
+              <p className="font-bold">{model.company.footerName}</p>
               {model.company.email ? (
                 <p>E-mail: {model.company.email}</p>
               ) : null}
-              {model.company.rfc ? <p>RFC: {model.company.rfc}</p> : null}
+              {model.company.rfc ? <p>RFC :{model.company.rfc}</p> : null}
             </td>
           </tr>
         </tbody>

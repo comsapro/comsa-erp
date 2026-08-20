@@ -82,6 +82,23 @@ export function hoursTone({ expectedHours, realHours }) {
   return "danger";
 }
 
+// El control dimensional tiene cuatro renglones de operador: se ordenan del responsable
+// de la partida hacia quien solo registro tiempo, sin repetir nombres.
+export function operatorNames(item = {}, sessionNames = [], limit = 4) {
+  const names = [];
+  const push = (value) => {
+    const name = String(value || "").trim();
+    if (name && !names.includes(name)) names.push(name);
+  };
+  push(item.assignedToUser?.name);
+  for (const process of activeProcesses(item.processes || [])) {
+    push(process.assignedToUser?.name);
+  }
+  for (const name of sessionNames) push(name);
+  push(item.completedByUser?.name);
+  return names.slice(0, limit);
+}
+
 export function workOrderProcessSections(processes = []) {
   return activeProcesses(processes).map((p, index) => ({
     index: index + 1,
@@ -93,5 +110,7 @@ export function workOrderProcessSections(processes = []) {
     notes: p.notes || "",
     status: p.status,
     assignedTo: p.assignedToUser?.name || null,
+    startedAt: p.startedAt || null,
+    completedAt: p.completedAt || null,
   }));
 }

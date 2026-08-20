@@ -18,6 +18,10 @@ export async function attachSourceMaterialsForPdf(order) {
   }
   const materials = await prisma.quoteItemMaterial.findMany({
     where: { quoteItemId: { in: quoteItemIds } },
+    include: {
+      item: { select: { unitOfMeasure: true } },
+      supplier: { select: { id: true, name: true } },
+    },
   });
   const byItem = new Map();
   for (const mat of materials) {
@@ -26,8 +30,10 @@ export async function attachSourceMaterialsForPdf(order) {
       id: mat.id,
       descriptionSnapshot: mat.descriptionSnapshot,
       quantity: mat.quantity,
-      unit: mat.unit,
+      unit: mat.unit || mat.item?.unitOfMeasure || null,
       dimensions: mat.dimensions,
+      presentation: mat.presentation,
+      supplierName: mat.supplier?.name || null,
     });
     byItem.set(mat.quoteItemId, list);
   }

@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   Play,
   RotateCcw,
+  Undo2,
   XCircle,
 } from "lucide-react";
 import { api } from "@/lib/api/client";
@@ -14,13 +15,12 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
-import { Textarea } from "@/components/ui/Textarea";
 import { Alert } from "@/components/feedback/Alert";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
-import { Modal } from "@/components/ui/Modal";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { useToast } from "@/components/feedback/ToastProvider";
 import { Can } from "@/components/permissions/Can";
+import { usePermissions } from "@/components/permissions/PermissionsProvider";
 import { formatDate, formatDateTime } from "@/lib/utils/format";
 import {
   PRODUCTION_STATUS_LABELS,
@@ -32,6 +32,7 @@ import {
 import { itemHoursSummary } from "@/domains/production/process-rules";
 import { HoursBar } from "@/components/production/HoursBar";
 import { ProductionItemWorkspace } from "@/components/production/ProductionItemWorkspace";
+import { ReopenReasonModal, REOPEN_MODES } from "@/components/production/ReopenReasonModal";
 
 const EMPTY_INCIDENT = {
   title: "",
@@ -43,14 +44,15 @@ const EMPTY_EXTRA = { description: "", quantity: "", unit: "", reason: "" };
 
 export default function ProductionDetailClient({ id }) {
   const { toast } = useToast();
+  const { has } = usePermissions();
+  const canViewQuotes = has("quotes.view");
   const [record, setRecord] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [acting, setActing] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [progressDraft, setProgressDraft] = useState({});
-  const [reopenItem, setReopenItem] = useState(null);
-  const [reopenReason, setReopenReason] = useState("");
+  const [reopenTarget, setReopenTarget] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [assignables, setAssignables] = useState([]);
   const [handicap, setHandicap] = useState(0);
@@ -248,9 +250,13 @@ export default function ProductionDetailClient({ id }) {
     );
   }
 
+  // El folio de la cotizacion solo se muestra a quien puede consultarla; piso ve el
+  // origen sin el dato comercial.
   const sourceLabel =
     record.sourceType === "QUOTE"
-      ? record.quote?.folio
+      ? canViewQuotes
+        ? record.quote?.folio
+        : null
       : record.directOrder?.folio;
   const isOpen = record.status === "PENDING" || record.status === "IN_PROGRESS";
   const ocHref = record.quote?.id
@@ -327,7 +333,7 @@ export default function ProductionDetailClient({ id }) {
             target="_blank"
             rel="noreferrer"
           >
-            PDF / QR de piso
+            PDF de la orden
           </Button>
         </Can>
         <Can permission="production.manage_handicap">
@@ -446,16 +452,22 @@ export default function ProductionDetailClient({ id }) {
                 </div>
                 {selected.status === "COMPLETED" && (
                   <Can permission="production.reopen_item">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => {
-                        setReopenItem(selected);
-                        setReopenReason("");
-                      }}
-                    >
-                      <RotateCcw className="h-4 w-4" /> Reabrir
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="subtle"
+                        onClick={() => setReopenTarget({ item: selected, mode: "uncomplete" })}
+                      >
+                        <Undo2 className="h-4 w-4" /> Deshacer terminado
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setReopenTarget({ item: selected, mode: "rework" })}
+                      >
+                        <RotateCcw className="h-4 w-4" /> Regresar a fabricacion
+                      </Button>
+                    </div>
                   </Can>
                 )}
               </div>
@@ -485,6 +497,7 @@ export default function ProductionDetailClient({ id }) {
                 setProgressDraft={setProgressDraft}
                 runItemAction={runItemAction}
                 runProcessChange={runProcessChange}
+                onReopenRequest={(item, mode) => setReopenTarget({ item, mode })}
                 onRecordChange={applyUpdated}
                 incidentDraft={incidentDraft}
                 setIncidentDraft={setIncidentDraft}
@@ -533,34 +546,18 @@ export default function ProductionDetailClient({ id }) {
         confirmLabel="Cancelar orden"
       />
 
-      <Modal
-        open={Boolean(reopenItem)}
-        onClose={() => setReopenItem(null)}
-        title="Reabrir partida"
-        description="El item pasara a retrabajo. El historial de terminado se conserva."
-      >
-        <Textarea
-          rows={4}
-          placeholder="Motivo obligatorio"
-          value={reopenReason}
-          onChange={(e) => setReopenReason(e.target.value)}
-        />
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="secondary" onClick={() => setReopenItem(null)}>
-            Cancelar
-          </Button>
-          <Button
-            loading={acting}
-            onClick={async () => {
-              if (!reopenItem) return;
-              await runItemAction(reopenItem.id, "reopen", { reason: reopenReason });
-              setReopenItem(null);
-            }}
-          >
-            Reabrir
-          </Button>
-        </div>
-      </Modal>
+      <ReopenReasonModal
+        open={Boolean(reopenTarget)}
+        mode={reopenTarget?.mode || "rework"}
+        loading={acting}
+        onClose={() => setReopenTarget(null)}
+        onConfirm={async (payload) => {
+          if (!reopenTarget) return;
+          const action = REOPEN_MODES[reopenTarget.mode]?.action || "reopen";
+          await runItemAction(reopenTarget.item.id, action, payload);
+          setReopenTarget(null);
+        }}
+      />
     </div>
   );
 }

@@ -1,7 +1,18 @@
 import { computeProgress, deriveOrderStatus } from "./progress";
-import { PROCESS_USER_SELECT } from "./activity";
 
 const USER = { select: { id: true, name: true } };
+
+// Vive aqui y no en activity.js para no cerrar el ciclo activity -> recalc -> activity:
+// el include se evalua al cargar el modulo y la constante quedaria en TDZ.
+export const PROCESS_USER_SELECT = {
+  assignedToUser: USER,
+  sessions: {
+    where: { status: { in: ["RUNNING", "PAUSED"] } },
+    orderBy: { startedAt: "desc" },
+    take: 3,
+    include: { user: USER },
+  },
+};
 
 export const PRODUCTION_DETAIL_INCLUDE = {
   client: true,

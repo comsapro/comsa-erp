@@ -24,6 +24,7 @@ import { ViewModeToggle } from "@/components/views/ViewModeToggle";
 import { StatusKanban } from "@/components/views/StatusKanban";
 import { MonthCalendar } from "@/components/views/MonthCalendar";
 import { useViewMode } from "@/components/views/useViewMode";
+import { usePermissions } from "@/components/permissions/PermissionsProvider";
 
 const ENDPOINT = "/api/produccion";
 
@@ -39,14 +40,19 @@ const KANBAN_COLUMNS = PRODUCTION_STATUSES.map((id) => ({
   tone: PRODUCTION_STATUS_TONES[id] || "neutral",
 }));
 
-function sourceFolio(row) {
-  if (row.sourceType === "QUOTE") return row.quote?.folio || "-";
+// El folio de la cotizacion es dato comercial: piso ve solo el tipo de origen.
+function sourceFolio(row, canViewQuotes) {
+  if (row.sourceType === "QUOTE") {
+    return canViewQuotes ? row.quote?.folio || "-" : "-";
+  }
   if (row.sourceType === "DIRECT_ORDER") return row.directOrder?.folio || "-";
   return "-";
 }
 
 export default function ProductionClient() {
   const router = useRouter();
+  const { has } = usePermissions();
+  const canViewQuotes = has("quotes.view");
   const { mode, setMode } = useViewMode("production:viewMode");
   const list = useResourceList(ENDPOINT, {
     initialSort: "createdAt",
@@ -81,7 +87,7 @@ export default function ProductionClient() {
             <span className="text-content-muted">
               {PRODUCTION_SOURCE_LABELS[r.sourceType] || r.sourceType}:{" "}
             </span>
-            {sourceFolio(r)}
+            {sourceFolio(r, canViewQuotes)}
           </span>
         ),
       },
@@ -141,7 +147,7 @@ export default function ProductionClient() {
         ),
       },
     ],
-    [router]
+    [router, canViewQuotes]
   );
 
   const kanbanColumns = useMemo(() => {
@@ -234,7 +240,7 @@ export default function ProductionClient() {
           getHref={(r) => `/produccion/${r.id}`}
           getTitle={(r) => r.folio}
           getSubtitle={(r) =>
-            `${r.client?.commercialName || "Sin cliente"} · ${sourceFolio(r)}`
+            `${r.client?.commercialName || "Sin cliente"} · ${sourceFolio(r, canViewQuotes)}`
           }
           getDate={(r) => r.approvalDate}
           emptyTitle="Sin ordenes de produccion"

@@ -14,8 +14,15 @@ import { generateFolio } from "@/lib/folios";
 import {
   PRODUCTION_STATUSES,
   PRODUCTION_SOURCE_TYPES,
+  reopenReasonText,
 } from "./constants";
-import { updateItemProgressSchema, productionNoteSchema, reprintSchema, reopenItemSchema } from "./schemas";
+import {
+  updateItemProgressSchema,
+  productionNoteSchema,
+  reprintSchema,
+  reopenItemSchema,
+  uncompleteItemSchema,
+} from "./schemas";
 import { getQuoteProductionDocsForOrder } from "./attachments";
 import { computeProgress } from "./progress";
 import { canCompleteItem, canCompleteOrder } from "./close-rules";
@@ -563,7 +570,7 @@ export async function reopenItem(request, orderId, itemId) {
   }
 
   const data = reopenItemSchema.parse(await request.json());
-  const reason = data.reason.trim();
+  const reason = reopenReasonText(data.reasonCode, data.reason);
 
   const record = await prisma.$transaction(async (tx) => {
     await tx.productionItem.update({
@@ -611,6 +618,82 @@ export async function reopenItem(request, orderId, itemId) {
     },
     newData: {
       status: "REWORK",
+      reasonCode: data.reasonCode,
+      reason,
+      previousCompletedAt: item.completedAt,
+      orderStatus: record.status,
+    },
+  });
+
+  return jsonOk(record);
+}
+
+// Deshacer un terminado capturado por error: se quita el cierre de la partida sin tocar
+// el avance ni los procesos, para que piso pueda corregir y volver a cerrarla.
+export async function uncompleteItem(request, orderId, itemId) {
+  await requirePermission("production.reopen_item");
+  const actor = await getActor(request);
+  const order = await findProductionOrThrow(orderId, DETAIL_INCLUDE);
+  if (order.status === "CANCELLED") {
+    throw new ConflictError("La orden de produccion esta cancelada");
+  }
+
+  const item = order.items.find((i) => i.id === itemId);
+  if (!item) throw new NotFoundError("Item de produccion no encontrado");
+  if (item.status !== "COMPLETED") {
+    throw new ConflictError("Solo se puede deshacer el terminado de items completados");
+  }
+
+  const data = uncompleteItemSchema.parse(await request.json());
+  const reason = reopenReasonText(data.reasonCode, data.reason);
+  const nextStatus =
+    item.startedAt || Number(item.completedQuantity) > 0 ? "IN_PROGRESS" : "PENDING";
+
+  const record = await prisma.$transaction(async (tx) => {
+    await tx.productionItem.update({
+      where: { id: itemId },
+      data: {
+        status: nextStatus,
+        completedAt: null,
+        completedBy: null,
+        durationMinutes: null,
+        updatedBy: actor.id,
+      },
+    });
+
+    await tx.productionItemNote.create({
+      data: {
+        productionItemId: itemId,
+        body: `Terminado deshecho: ${reason}`,
+        createdBy: actor.id,
+      },
+    });
+    await recordProductionActivity(tx, {
+      type: "STATUS",
+      productionOrderId: orderId,
+      productionItemId: itemId,
+      body: `Terminado deshecho: ${reason}`,
+      createdBy: actor.id,
+    });
+
+    return recalculateProductionState(tx, orderId, actor.id);
+  });
+
+  await recordAudit({
+    actor,
+    module: "production",
+    entity: "ProductionItem",
+    entityId: itemId,
+    action: AUDIT_ACTIONS.UPDATE,
+    previousData: {
+      status: item.status,
+      completedAt: item.completedAt,
+      completedBy: item.completedBy,
+      orderStatus: order.status,
+    },
+    newData: {
+      status: nextStatus,
+      reasonCode: data.reasonCode,
       reason,
       previousCompletedAt: item.completedAt,
       orderStatus: record.status,

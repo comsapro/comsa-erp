@@ -45,6 +45,7 @@ export function ProductionItemWorkspace({
   setProgressDraft,
   runItemAction,
   runProcessChange,
+  onReopenRequest,
   onRecordChange,
   incidentDraft,
   setIncidentDraft,
@@ -145,6 +146,32 @@ export function ProductionItemWorkspace({
                   </Can>
                 </div>
               </div>
+            )}
+            {item.status === "COMPLETED" && onReopenRequest && (
+              <Can permission="production.reopen_item">
+                <div className="flex flex-wrap items-center gap-2 rounded-md bg-surface-muted p-3">
+                  <p className="mr-auto text-xs text-content-muted">
+                    Partida terminada. Si el cierre fue un error o la pieza regresa de calidad,
+                    registra el motivo.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="subtle"
+                    loading={acting}
+                    onClick={() => onReopenRequest(item, "uncomplete")}
+                  >
+                    Deshacer terminado
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    loading={acting}
+                    onClick={() => onReopenRequest(item, "rework")}
+                  >
+                    Regresar a fabricacion
+                  </Button>
+                </div>
+              </Can>
             )}
             <ProductionProcessesPanel
               productionId={productionId}

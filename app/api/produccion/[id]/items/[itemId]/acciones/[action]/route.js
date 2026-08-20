@@ -6,6 +6,7 @@ import {
   completeItem,
   addItemNote,
   reopenItem,
+  uncompleteItem,
 } from "@/domains/production/service";
 
 const ACTIONS = {
@@ -14,6 +15,7 @@ const ACTIONS = {
   complete: completeItem,
   "add-note": addItemNote,
   reopen: reopenItem,
+  uncomplete: uncompleteItem,
 };
 
 export const POST = withErrorHandling(async (req, ctx) => {

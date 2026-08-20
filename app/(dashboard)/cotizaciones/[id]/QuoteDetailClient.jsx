@@ -3,7 +3,8 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ShoppingCart } from "lucide-react";
+import {
+  ArrowLeft,
   CheckCircle2,
   ChevronDown,
   ChevronRight,

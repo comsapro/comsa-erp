@@ -1,5 +1,7 @@
 import { z } from "zod";
-import { optionalString } from "@/lib/validations/common";
+// Ruta relativa: los tests con node --test no resuelven el alias "@/".
+import { optionalString } from "../../lib/validations/common.js";
+import { PRODUCTION_REOPEN_REASON_CODES } from "./constants.js";
 
 export const updateItemProgressSchema = z.object({
   completedQuantity: z.coerce.number().min(0),
@@ -15,9 +17,27 @@ export const reprintSchema = z.object({
   itemIds: z.array(z.string()).optional(),
 });
 
-export const reopenItemSchema = z.object({
-  reason: z.string().trim().min(8, "Indica el motivo de la reapertura (min. 8 caracteres)"),
-});
+// El motivo se elige del catalogo; la nota libre solo es obligatoria cuando es "Otro".
+const reopenReasonShape = {
+  reasonCode: z.enum(PRODUCTION_REOPEN_REASON_CODES, {
+    message: "Selecciona el motivo del catalogo",
+  }),
+  reason: z.string().trim().max(500).optional().default(""),
+};
+
+function requireNoteForOther(data, ctx) {
+  if (data.reasonCode === "OTRO" && String(data.reason || "").trim().length < 8) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["reason"],
+      message: "Describe el motivo (min. 8 caracteres)",
+    });
+  }
+}
+
+export const reopenItemSchema = z.object(reopenReasonShape).superRefine(requireNoteForOther);
+
+export const uncompleteItemSchema = z.object(reopenReasonShape).superRefine(requireNoteForOther);
 
 export const createProcessSchema = z.object({
   manufacturingProcessId: z.string().min(1, "Selecciona un proceso del catalogo"),

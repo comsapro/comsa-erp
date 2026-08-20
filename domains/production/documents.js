@@ -10,9 +10,47 @@ import {
   buildWorkOrderModel,
   drawDimensionalControl,
   drawWorkOrder,
+  PDF_OPTIONS,
 } from "@/lib/pdf/production-docs";
 import { PRODUCTION_DETAIL_INCLUDE } from "./recalc";
 import { attachSourceMaterialsForPdf } from "./materials";
+import { operatorNames } from "./process-rules";
+
+// Las observaciones que el formato imprime son las que el vendedor dejo en el origen;
+// si produccion ya capturo observaciones propias, esas tienen prioridad.
+async function loadSellerObservations(item) {
+  if (item.observations) return item.observations;
+  if (!item.sourceItemId) return "";
+  if (item.sourceItemType === "QUOTE_ITEM") {
+    const quoteItem = await prisma.quoteItem.findUnique({
+      where: { id: item.sourceItemId },
+      select: { clientObservations: true, internalObservations: true },
+    });
+    return quoteItem?.clientObservations || quoteItem?.internalObservations || "";
+  }
+  if (item.sourceItemType === "DIRECT_ORDER_ITEM") {
+    const directItem = await prisma.directOrderItem.findUnique({
+      where: { id: item.sourceItemId },
+      select: { observations: true },
+    });
+    return directItem?.observations || "";
+  }
+  return "";
+}
+
+// Las sesiones del include de detalle vienen filtradas a las activas, asi que para el
+// formato se consultan todas las del item y se ordenan por inicio.
+async function loadOperators(item) {
+  const sessions = await prisma.productionTimeSession.findMany({
+    where: { productionItemId: item.id },
+    orderBy: { startedAt: "asc" },
+    select: { user: { select: { name: true } } },
+  });
+  return operatorNames(
+    item,
+    sessions.map((session) => session.user?.name)
+  );
+}
 
 async function loadOrderItem(orderId, itemId) {
   const order = await prisma.productionOrder.findFirst({
@@ -24,6 +62,17 @@ async function loadOrderItem(orderId, itemId) {
           id: true,
           folio: true,
           status: true,
+          requestDate: true,
+          seller: { select: { id: true, name: true } },
+        },
+      },
+      directOrder: {
+        select: {
+          id: true,
+          folio: true,
+          status: true,
+          requestDate: true,
+          observations: true,
           seller: { select: { id: true, name: true } },
         },
       },
@@ -33,8 +82,15 @@ async function loadOrderItem(orderId, itemId) {
   const item = (order.items || []).find((i) => i.id === itemId);
   if (!item) throw new NotFoundError("Item de produccion no encontrado");
   const withMaterials = await attachSourceMaterialsForPdf(order);
-  const itemWithMats = (withMaterials.items || []).find((i) => i.id === itemId);
-  return { order: withMaterials, item: itemWithMats || item };
+  const itemWithMats = (withMaterials.items || []).find((i) => i.id === itemId) || item;
+  const [sellerObservations, operators] = await Promise.all([
+    loadSellerObservations(itemWithMats),
+    loadOperators(itemWithMats),
+  ]);
+  return {
+    order: withMaterials,
+    item: { ...itemWithMats, sellerObservations, operators },
+  };
 }
 
 export async function dimensionalControlPdf(request, orderId, itemId) {
@@ -42,7 +98,7 @@ export async function dimensionalControlPdf(request, orderId, itemId) {
   const actor = await getActor(request);
   const { order, item } = await loadOrderItem(orderId, itemId);
   const model = buildDimensionalControlModel(order, item);
-  const buffer = await buildPdfBuffer((doc) => drawDimensionalControl(doc, model));
+  const buffer = await buildPdfBuffer((doc) => drawDimensionalControl(doc, model), PDF_OPTIONS);
   await recordAudit({
     actor,
     module: "production",
@@ -58,21 +114,8 @@ export async function workOrderPdf(request, orderId, itemId) {
   await requirePermission("production.print");
   const actor = await getActor(request);
   const { order, item } = await loadOrderItem(orderId, itemId);
-  const origin =
-    process.env.AUTH_URL ||
-    process.env.NEXTAUTH_URL ||
-    process.env.APP_URL ||
-    "http://localhost:3000";
-  const orderUrl = `${origin.replace(/\/$/, "")}/produccion/${orderId}`;
-  let qrPng = null;
-  try {
-    const QRCode = (await import("qrcode")).default;
-    qrPng = await QRCode.toBuffer(orderUrl, { type: "png", margin: 1, width: 160 });
-  } catch {
-    qrPng = null;
-  }
-  const model = buildWorkOrderModel({ ...order, publicUrl: orderUrl, qrPng }, item);
-  const buffer = await buildPdfBuffer((doc) => drawWorkOrder(doc, model));
+  const model = buildWorkOrderModel(order, item);
+  const buffer = await buildPdfBuffer((doc) => drawWorkOrder(doc, model), PDF_OPTIONS);
   await recordAudit({
     actor,
     module: "production",

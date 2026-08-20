@@ -20,7 +20,7 @@ import {
   SYSTEM_ROLES,
   buildPermissionList,
 } from "../lib/permissions/catalog.js";
-import { buildMenu } from "../lib/navigation/menu.js";
+import { buildMenu, NAV_SECTIONS } from "../lib/navigation/menu.js";
 import { ValidationError } from "../lib/permissions/errors.js";
 
 test("Entrada incrementa quantity", () => {
@@ -169,8 +169,15 @@ test("Menu muestra inventario con permiso", () => {
   assert.ok(labels.includes("Existencias"));
 });
 
-test("Menu reportes con anyOf", () => {
+// Los reportes PDF quedaron fuera del alcance actual, asi que el permiso no debe abrir
+// ninguna entrada de menu; el filtro anyOf se conserva para cuando vuelvan al alcance.
+test("Menu no publica reportes PDF y respeta el filtro anyOf", () => {
   const menu = buildMenu(["reports.inventory_pdf", "dashboard.view"]);
   const labels = menu.flatMap((s) => s.items.map((i) => i.label));
-  assert.ok(labels.includes("Reportes PDF"));
+  assert.equal(labels.includes("Reportes PDF"), false);
+  assert.deepEqual(labels, ["Inicio"]);
+  const withAnyOf = NAV_SECTIONS.some((section) =>
+    section.items.some((item) => item.anyOf?.length)
+  );
+  assert.equal(withAnyOf, false);
 });

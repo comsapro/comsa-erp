@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@prisma/client";
-import { requirePermission } from "@/lib/permissions/require-permission";
+import { requirePermission, requireAnyPermission } from "@/lib/permissions/require-permission";
 import { getActor } from "@/lib/api/actor";
 import { recordAudit, AUDIT_ACTIONS } from "@/lib/audit/logger";
 import {
@@ -48,8 +48,12 @@ function toDecimal(value) {
   return new Prisma.Decimal(Number(value) || 0);
 }
 
+// Piso puede agregar procesos no cotizados con production.add_process; reemplazar o
+// eliminar procesos sigue reservado a production.manage_processes.
+const CAN_ADD_PROCESS = ["production.manage_processes", "production.add_process"];
+
 export async function listProcessCatalog(request) {
-  await requirePermission("production.manage_processes");
+  await requireAnyPermission(CAN_ADD_PROCESS);
   const rows = await prisma.manufacturingProcess.findMany({
     where: { deletedAt: null, status: "ACTIVE" },
     orderBy: { name: "asc" },
@@ -59,7 +63,7 @@ export async function listProcessCatalog(request) {
 }
 
 export async function addProductionProcess(request, orderId, itemId) {
-  await requirePermission("production.manage_processes");
+  await requireAnyPermission(CAN_ADD_PROCESS);
   const actor = await getActor(request);
   const { order, item } = await loadItemContext(orderId, itemId);
   assertItemMutable(order, item);
@@ -258,7 +262,9 @@ export async function replaceProcess(request, orderId, itemId, processId) {
         replacementReason: data.reason,
         replacedAt: new Date(),
         replacedBy: actor.id,
+      },
     });
+
     await recordProductionActivity(tx, {
       type: "PROCESS_CHANGE",
       productionOrderId: orderId,

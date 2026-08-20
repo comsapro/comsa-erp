@@ -3,10 +3,31 @@ import { toNumber } from "@/lib/quotes/calculations";
 import { normalizeDeliveryTimeUnit } from "@/domains/quotes/constants";
 
 export const QUOTE_PRINT_NOTES = [
-  "Condiciones de pago seran: pago del 100% a el credito establecido.",
-  "Se consideran dias habiles de lunes a viernes y quitando los dias festivos.",
+  "Condiciones de pago serán: pago del 100% a el crédito establecido.",
+  "Se consideran días hábiles de lunes a viernes y quitando los días festivos.",
   "Antes de favorecernos con su PO confirmar el tiempo de entrega.",
 ];
+
+const COMSA_TEL = "(871) 538 5508";
+const COMSA_CEL = "(871) 167 5229";
+
+function formatPhone(value) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)} ${digits.slice(6)}`;
+  }
+  return String(value || "").trim();
+}
+
+function footerLegalName(legalName) {
+  let name = String(legalName || "")
+    .replace(/\s*S\.?\s*A\.?\s*DE\s*C\.?\s*V\.?/gi, " SA DE CV")
+    .replace(/,\s*SA DE CV/i, " SA DE CV")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (name && !name.endsWith(".")) name += ".";
+  return name;
+}
 
 export const QUOTE_PRINT_CANCELLATION = [
   {
@@ -99,7 +120,7 @@ export function buildQuotePrintModel(quote) {
     folio: quote.folio,
     version: quote.version || "A",
     /** Documento ISO/NOM: la revisión impresa es siempre 1.1 */
-    revisionLabel: "Revision 1.1",
+    revisionLabel: "Revisión 1.1",
     currency,
     currencyBanner:
       currency === "USD"
@@ -110,8 +131,13 @@ export function buildQuotePrintModel(quote) {
         company.legalName ||
         company.commercialName ||
         "COMERCIALIZADORA, OPERACIONES Y MANUFACTURA, S.A. DE C.V.",
+      footerName: footerLegalName(
+        company.legalName ||
+          "COMERCIALIZADORA, OPERACIONES Y MANUFACTURA, S.A. DE C.V."
+      ),
       commercialName: company.commercialName || "COMSA",
-      phone: company.phone || "",
+      phone: formatPhone(company.phone) || COMSA_TEL,
+      cellPhone: formatPhone(company.cellPhone) || COMSA_CEL,
       email: company.email || "",
       address: company.fiscalAddress || "",
       rfc: company.rfc || "",

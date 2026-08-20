@@ -105,13 +105,3 @@ export async function addProductionComment(request, orderId) {
   });
   return jsonCreated(record);
 }
-
-export const PROCESS_USER_SELECT = {
-  assignedToUser: { select: USER_SELECT },
-  sessions: {
-    where: { status: { in: ["RUNNING", "PAUSED"] } },
-    orderBy: { startedAt: "desc" },
-    take: 3,
-    include: { user: { select: USER_SELECT } },
-  },
-};

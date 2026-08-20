@@ -123,6 +123,29 @@ export const PRODUCTION_INCIDENT_TYPE_LABELS = {
 
 export const OPEN_INCIDENT_STATUSES = ["OPEN", "IN_REVIEW"];
 
+// Catalogo de motivos para quitar el cierre de una partida o regresarla a fabricacion.
+// Se guarda el codigo en bitacora para poder reportar por causa.
+export const PRODUCTION_REOPEN_REASONS = [
+  { code: "RECHAZO_CLIENTE", label: "Rechazo del cliente" },
+  { code: "ERROR_PIEZA", label: "Error o defecto en la pieza" },
+  { code: "CAMBIO_ALCANCE", label: "Cambio de alcance" },
+  { code: "CAPTURA_ERRONEA", label: "Terminado capturado por error" },
+  { code: "OTRO", label: "Otro" },
+];
+
+export const PRODUCTION_REOPEN_REASON_CODES = PRODUCTION_REOPEN_REASONS.map((r) => r.code);
+
+export const PRODUCTION_REOPEN_REASON_LABELS = PRODUCTION_REOPEN_REASONS.reduce(
+  (acc, reason) => ({ ...acc, [reason.code]: reason.label }),
+  {}
+);
+
+export function reopenReasonText(reasonCode, note) {
+  const label = PRODUCTION_REOPEN_REASON_LABELS[reasonCode] || reasonCode || "Sin motivo";
+  const detail = String(note || "").trim();
+  return detail ? `${label}: ${detail}` : label;
+}
+
 export const SESSION_STATUS_LABELS = {
   RUNNING: "En curso",
   PAUSED: "Pausada",

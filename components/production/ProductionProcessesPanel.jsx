@@ -301,7 +301,7 @@ export function ProductionProcessesPanel({
       )}
 
       {canManage && (
-        <Can permission="production.manage_processes">
+        <Can anyOf={["production.manage_processes", "production.add_process"]}>
           <div className="grid gap-2 rounded-md border border-dashed border-border p-3 sm:grid-cols-4">
             <Select
               value={processId}

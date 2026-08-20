@@ -447,7 +447,7 @@ export async function deleteItemAttachment(
 }
 
 export async function servePrivateBlob(request) {
-  const { requirePermission } = await import(
+  const { requirePermission, requireAnyPermission } = await import(
     "@/lib/permissions/require-permission"
   );
 
@@ -461,13 +461,30 @@ export async function servePrivateBlob(request) {
     where: { pathname },
     include: {
       quoteItem: {
-        select: { quote: { select: { deletedAt: true } } },
+        select: {
+          quote: {
+            select: {
+              deletedAt: true,
+              productionOrders: { select: { id: true }, take: 1 },
+            },
+          },
+        },
       },
     },
   });
   if (quoteAttachment) {
-    await requirePermission("quotes.view");
-    if (quoteAttachment.quoteItem?.quote?.deletedAt) {
+    const quote = quoteAttachment.quoteItem?.quote;
+    // Los planos marcados para produccion se descargan desde piso: el operador ve el
+    // listado de documentos de la orden pero no tiene acceso a la cotizacion.
+    if (
+      quoteAttachment.audience === "PRODUCTION" &&
+      quote?.productionOrders?.length
+    ) {
+      await requireAnyPermission(["quotes.view", "production.view"]);
+    } else {
+      await requirePermission("quotes.view");
+    }
+    if (quote?.deletedAt) {
       throw new NotFoundError("Archivo no encontrado");
     }
     return streamBlob(pathname, quoteAttachment);

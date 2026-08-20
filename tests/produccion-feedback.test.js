@@ -139,7 +139,7 @@ test("OT emite una seccion por proceso activo", () => {
     }
   );
   assert.equal(model.processes.length, 2);
-  assert.equal(model.productionFolio, "2608-13");
+  assert.equal(model.workCode, "2608-13");
   assert.equal(model.pieceName, "11-E-9851-02");
 });
 
