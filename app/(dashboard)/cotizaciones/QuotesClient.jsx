@@ -105,7 +105,7 @@ export default function QuotesClient() {
       },
       {
         key: "elaborationDate",
-        header: "Elaboracion",
+        header: "Emision",
         sortable: true,
         sortKey: "elaborationDate",
         render: (r) => formatDate(r.elaborationDate),

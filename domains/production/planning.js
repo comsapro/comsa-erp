@@ -5,7 +5,7 @@ import { getActor } from "@/lib/api/actor";
 import { recordAudit, AUDIT_ACTIONS } from "@/lib/audit/logger";
 import { NotFoundError, ConflictError } from "@/lib/permissions/errors";
 import { jsonOk } from "@/lib/api/http";
-import { updateItemPlanningSchema, assignProcessSchema } from "./schemas";
+import { updateItemPlanningSchema, assignProcessSchema, updateOrderPlanningSchema } from "./schemas";
 import { recordProductionActivity } from "./activity";
 import { getDetailInclude } from "./recalc";
 
@@ -140,51 +140,148 @@ export async function assignProcessResponsible(request, orderId, itemId, process
   );
 }
 
+export async function updateOrderPlanning(request, orderId) {
+  await requirePermission("production.manage_planning");
+  const actor = await getActor(request);
+  const order = await prisma.productionOrder.findFirst({
+    where: { id: orderId },
+  });
+  if (!order) throw new NotFoundError("Orden de produccion no encontrada");
+  if (order.status === "CANCELLED") {
+    throw new ConflictError("La orden esta cancelada");
+  }
+
+  const data = updateOrderPlanningSchema.parse(await request.json());
+  const next = {
+    updatedBy: actor.id,
+  };
+  if (data.estimatedDeliveryDate !== undefined) {
+    next.estimatedDeliveryDate = asDate(data.estimatedDeliveryDate);
+  }
+
+  const updated = await prisma.productionOrder.update({
+    where: { id: orderId },
+    data: next,
+    include: getDetailInclude(),
+  });
+
+  await recordProductionActivity(prisma, {
+    type: "PLANNING",
+    productionOrderId: orderId,
+    body: `Fecha de entrega aproximada actualizada${
+      data.reason ? `: ${data.reason}` : ""
+    }`,
+    payload: {
+      previous: { estimatedDeliveryDate: order.estimatedDeliveryDate },
+      next: { estimatedDeliveryDate: next.estimatedDeliveryDate },
+    },
+    createdBy: actor.id,
+  });
+
+  await recordAudit({
+    actor,
+    module: "production",
+    entity: "ProductionOrder",
+    entityId: orderId,
+    action: AUDIT_ACTIONS.UPDATE,
+    previousData: { estimatedDeliveryDate: order.estimatedDeliveryDate },
+    newData: next,
+  });
+
+  return jsonOk(updated);
+}
+
 export async function listSchedule(request) {
   await requirePermission("production.view");
   const url = new URL(request.url);
   const from = url.searchParams.get("from");
   const to = url.searchParams.get("to");
   const assignedTo = url.searchParams.get("assignedToUserId");
-
-  const dateFilter = {};
+  const clientId = url.searchParams.get("clientId");
+  const sellerId = url.searchParams.get("sellerId");
+  const status = url.searchParams.get("status");
+  const orderStatus = url.searchParams.get("orderStatus");
+  const processId = url.searchParams.get("processId");
+  const processName = url.searchParams.get("processName");
+  const datedOnly = url.searchParams.get("datedOnly") === "1";
+  // from/to definen la ventana del tablero. Sin datedOnly tambien se incluyen
+  // partidas sin ninguna fecha (aparecen en lista pero sin barra).
+  const andClauses = [];
   if (from || to) {
-    dateFilter.OR = [
-      {
-        plannedStartAt: {
-          gte: from ? new Date(from) : undefined,
-          lte: to ? new Date(to) : undefined,
-        },
-      },
-      {
-        plannedEndAt: {
-          gte: from ? new Date(from) : undefined,
-          lte: to ? new Date(to) : undefined,
-        },
-      },
-      {
-        commitmentDate: {
-          gte: from ? new Date(from) : undefined,
-          lte: to ? new Date(to) : undefined,
-        },
-      },
-    ].map((clause) => {
-      const key = Object.keys(clause)[0];
-      const range = {};
-      if (from) range.gte = new Date(from);
-      if (to) range.lte = new Date(to);
-      return { [key]: range };
+    const range = {};
+    if (from) range.gte = new Date(from);
+    if (to) range.lte = new Date(to);
+    const inWindow = {
+      OR: [
+        { plannedStartAt: range },
+        { plannedEndAt: range },
+        { commitmentDate: range },
+        { productionOrder: { estimatedDeliveryDate: range } },
+      ],
+    };
+    if (datedOnly) {
+      andClauses.push(inWindow);
+    } else {
+      andClauses.push({
+        OR: [
+          ...inWindow.OR,
+          {
+            AND: [
+              { plannedStartAt: null },
+              { plannedEndAt: null },
+              { commitmentDate: null },
+              { productionOrder: { estimatedDeliveryDate: null } },
+            ],
+          },
+        ],
+      });
+    }
+  } else if (datedOnly) {
+    andClauses.push({
+      OR: [
+        { plannedStartAt: { not: null } },
+        { plannedEndAt: { not: null } },
+        { commitmentDate: { not: null } },
+        { productionOrder: { estimatedDeliveryDate: { not: null } } },
+      ],
     });
+  }
+
+  const processWhere = { status: { not: "REPLACED" } };
+  if (processId) processWhere.manufacturingProcessId = processId;
+  if (processName) {
+    processWhere.processNameSnapshot = {
+      contains: processName,
+      mode: "insensitive",
+    };
   }
 
   const rows = await prisma.productionItem.findMany({
     where: {
-      status: { not: "CANCELLED" },
-      productionOrder: { status: { not: "CANCELLED" } },
+      status: status || { not: "CANCELLED" },
+      productionOrder: {
+        status: orderStatus || { not: "CANCELLED" },
+        ...(clientId ? { clientId } : {}),
+        ...(sellerId
+          ? {
+              OR: [
+                { quote: { sellerId } },
+                { directOrder: { sellerId } },
+              ],
+            }
+          : {}),
+      },
       ...(assignedTo ? { assignedToUserId: assignedTo } : {}),
-      ...dateFilter,
+      ...(processId || processName
+        ? { processes: { some: processWhere } }
+        : {}),
+      ...(andClauses.length ? { AND: andClauses } : {}),
     },
-    orderBy: [{ plannedStartAt: "asc" }, { commitmentDate: "asc" }, { position: "asc" }],
+    orderBy: [
+      { plannedStartAt: "asc" },
+      { commitmentDate: "asc" },
+      { position: "asc" },
+    ],
     include: {
       assignedToUser: { select: { id: true, name: true } },
       productionOrder: {
@@ -192,16 +289,63 @@ export async function listSchedule(request) {
           id: true,
           folio: true,
           status: true,
-          client: { select: { commercialName: true } },
+          estimatedDeliveryDate: true,
+          client: { select: { id: true, commercialName: true } },
+          quote: {
+            select: {
+              id: true,
+              folio: true,
+              seller: { select: { id: true, name: true } },
+            },
+          },
+          directOrder: {
+            select: {
+              id: true,
+              folio: true,
+              seller: { select: { id: true, name: true } },
+            },
+          },
         },
       },
       processes: {
         where: { status: { not: "REPLACED" } },
-        select: { quotedHours: true, expectedHours: true, realHours: true, status: true },
+        orderBy: { sortOrder: "asc" },
+        select: {
+          id: true,
+          processNameSnapshot: true,
+          manufacturingProcessId: true,
+          quotedHours: true,
+          expectedHours: true,
+          realHours: true,
+          status: true,
+          sortOrder: true,
+        },
       },
     },
     take: 500,
   });
 
-  return jsonOk(rows);
+  const enriched = rows.map((row) => {
+    const processes = row.processes || [];
+    const nextProcess =
+      processes.find((p) => p.status === "PENDING") ||
+      (processes.length
+        ? processes.every((p) => p.status === "COMPLETED")
+          ? processes[processes.length - 1]
+          : null
+        : null);
+    return {
+      ...row,
+      currentStage: nextProcess
+        ? {
+            id: nextProcess.id,
+            name: nextProcess.processNameSnapshot,
+            status: nextProcess.status,
+          }
+        : null,
+      processNames: processes.map((p) => p.processNameSnapshot),
+    };
+  });
+
+  return jsonOk(enriched);
 }

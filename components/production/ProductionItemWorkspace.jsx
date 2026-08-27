@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
 import { Select } from "@/components/ui/Select";
+import { Field } from "@/components/forms/Field";
 import { Badge } from "@/components/ui/Badge";
 import { Can } from "@/components/permissions/Can";
 import { ProductionProcessesPanel } from "@/components/production/ProductionProcessesPanel";
@@ -454,43 +455,76 @@ export function ProductionItemWorkspace({
                 });
               }}
             >
-              <Select
-                name="assignedToUserId"
-                defaultValue={item.assignedToUserId || ""}
+              <p className="sm:col-span-2 text-xs text-content-muted">
+                Planeacion de esta partida: fechas de piso (inicio/fin) frente a la
+                fecha de compromiso con el cliente. Si reprogramas, indica el motivo.
+              </p>
+              <Field label="Responsable" htmlFor={`plan-resp-${item.id}`}>
+                <Select
+                  id={`plan-resp-${item.id}`}
+                  name="assignedToUserId"
+                  defaultValue={item.assignedToUserId || ""}
+                >
+                  <option value="">Sin responsable</option>
+                  {assignables.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Prioridad" htmlFor={`plan-prio-${item.id}`}>
+                <Select
+                  id={`plan-prio-${item.id}`}
+                  name="priority"
+                  defaultValue={item.priority || "NORMAL"}
+                >
+                  {PRODUCTION_ITEM_PRIORITIES.map((p) => (
+                    <option key={p} value={p}>
+                      {PRODUCTION_PRIORITY_LABELS[p]}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Inicio planeado" htmlFor={`plan-start-${item.id}`}>
+                <Input
+                  id={`plan-start-${item.id}`}
+                  type="date"
+                  name="plannedStartAt"
+                  defaultValue={toDateInputValue(item.plannedStartAt)}
+                />
+              </Field>
+              <Field label="Fin planeado" htmlFor={`plan-end-${item.id}`}>
+                <Input
+                  id={`plan-end-${item.id}`}
+                  type="date"
+                  name="plannedEndAt"
+                  defaultValue={toDateInputValue(item.plannedEndAt)}
+                />
+              </Field>
+              <Field label="Fecha compromiso" htmlFor={`plan-commit-${item.id}`}>
+                <Input
+                  id={`plan-commit-${item.id}`}
+                  type="date"
+                  name="commitmentDate"
+                  defaultValue={toDateInputValue(item.commitmentDate)}
+                />
+              </Field>
+              <Field
+                label="Motivo de reprogramacion"
+                htmlFor={`plan-reason-${item.id}`}
               >
-                <option value="">Sin responsable</option>
-                {assignables.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name}
-                  </option>
-                ))}
-              </Select>
-              <Select name="priority" defaultValue={item.priority || "NORMAL"}>
-                {PRODUCTION_ITEM_PRIORITIES.map((p) => (
-                  <option key={p} value={p}>
-                    {PRODUCTION_PRIORITY_LABELS[p]}
-                  </option>
-                ))}
-              </Select>
-              <Input
-                type="date"
-                name="plannedStartAt"
-                defaultValue={toDateInputValue(item.plannedStartAt)}
-              />
-              <Input
-                type="date"
-                name="plannedEndAt"
-                defaultValue={toDateInputValue(item.plannedEndAt)}
-              />
-              <Input
-                type="date"
-                name="commitmentDate"
-                defaultValue={toDateInputValue(item.commitmentDate)}
-              />
-              <Input name="reason" placeholder="Motivo (si reprogramas)" />
-              <Button size="sm" type="submit" loading={acting}>
-                Guardar planeacion
-              </Button>
+                <Input
+                  id={`plan-reason-${item.id}`}
+                  name="reason"
+                  placeholder="Obligatorio si cambias fechas"
+                />
+              </Field>
+              <div className="sm:col-span-2">
+                <Button size="sm" type="submit" loading={acting}>
+                  Guardar planeacion
+                </Button>
+              </div>
             </form>
           </Can>
         )}

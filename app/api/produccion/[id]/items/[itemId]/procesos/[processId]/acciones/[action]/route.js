@@ -2,6 +2,7 @@ import { withErrorHandling } from "@/lib/api/http";
 import { ValidationError } from "@/lib/permissions/errors";
 import {
   completeProcess,
+  reopenProcess,
   replaceProcess,
 } from "@/domains/production/processes";
 import {
@@ -14,6 +15,7 @@ import { assignProcessResponsible } from "@/domains/production/planning";
 
 const ACTIONS = {
   completar: completeProcess,
+  reabrir: reopenProcess,
   reemplazar: replaceProcess,
   "iniciar-sesion": startSession,
   pausar: pauseSession,

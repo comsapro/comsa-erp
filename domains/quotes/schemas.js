@@ -22,7 +22,7 @@ const quoteHeaderFields = {
   issuingCompanyId: requiredString("La empresa emisora es requerida"),
   orderType: z.enum(ORDER_TYPES).default("GENERAL"),
   currency: z.enum(CURRENCIES).default("MXN"),
-  elaborationDate: z.coerce.date({ message: "Fecha de elaboracion invalida" }),
+  elaborationDate: z.coerce.date({ message: "Fecha de emision invalida" }),
   requestDate: z.preprocess(
     (v) => (v === "" || v == null ? null : v),
     z.coerce.date().nullable().optional()

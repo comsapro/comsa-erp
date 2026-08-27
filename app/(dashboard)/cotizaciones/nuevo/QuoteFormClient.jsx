@@ -289,7 +289,7 @@ export default function QuoteFormClient({ currentUser }) {
 
               <div className="grid gap-4 sm:grid-cols-3">
                 <TextField
-                  label="Fecha de elaboracion"
+                  label="Fecha de emision"
                   name="elaborationDate"
                   type="date"
                   register={register}
@@ -381,7 +381,7 @@ export default function QuoteFormClient({ currentUser }) {
               />
 
               <div className="mt-2 flex justify-end gap-2">
-                <Button as={Link} href="/cotizaciones" variant="secondary">
+                <Button as={Link} href="/cotizaciones" variant="secondary" type="button">
                   Cancelar
                 </Button>
                 <Button type="submit" loading={saving}>

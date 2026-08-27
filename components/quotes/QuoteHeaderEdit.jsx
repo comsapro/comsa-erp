@@ -45,7 +45,7 @@ function ReadOnlyHeader({ quote }) {
           <dd>{quote.seller?.name || "-"}</dd>
         </div>
         <div>
-          <dt className="text-content-muted">Elaboracion</dt>
+          <dt className="text-content-muted">Fecha de emision</dt>
           <dd>{formatDate(quote.elaborationDate)}</dd>
         </div>
         <div>
@@ -102,6 +102,7 @@ export function QuoteHeaderEdit({ quote, onSaved }) {
     clientId: quote.clientId || "",
     clientContactId: quote.clientContactId || "",
     sellerId: quote.sellerId || "",
+    elaborationDate: toDateInputValue(quote.elaborationDate),
     validUntil: toDateInputValue(quote.validUntil),
     advancePercentage: Number(quote.advancePercentage) || 0,
     settlementPercentage: Number(quote.settlementPercentage) || 100,
@@ -113,6 +114,7 @@ export function QuoteHeaderEdit({ quote, onSaved }) {
       clientId: quote.clientId || "",
       clientContactId: quote.clientContactId || "",
       sellerId: quote.sellerId || "",
+      elaborationDate: toDateInputValue(quote.elaborationDate),
       validUntil: toDateInputValue(quote.validUntil),
       advancePercentage: Number(quote.advancePercentage) || 0,
       settlementPercentage: Number(quote.settlementPercentage) || 100,
@@ -185,6 +187,14 @@ export function QuoteHeaderEdit({ quote, onSaved }) {
       });
       return;
     }
+    if (!form.elaborationDate) {
+      toast({
+        variant: "error",
+        title: "Fecha de emision requerida",
+        description: "Indica la fecha de emision",
+      });
+      return;
+    }
     if (!form.validUntil) {
       toast({
         variant: "error",
@@ -200,6 +210,7 @@ export function QuoteHeaderEdit({ quote, onSaved }) {
         clientId: form.clientId,
         clientContactId: form.clientContactId || null,
         sellerId: form.sellerId,
+        elaborationDate: form.elaborationDate,
         validUntil: form.validUntil,
         advancePercentage: form.advancePercentage,
         settlementPercentage: form.settlementPercentage,
@@ -265,6 +276,16 @@ export function QuoteHeaderEdit({ quote, onSaved }) {
           options={sellers}
           required
         />
+        <Field label="Fecha de emision" htmlFor="quote-elaborationDate" required>
+          <Input
+            id="quote-elaborationDate"
+            type="date"
+            value={form.elaborationDate}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, elaborationDate: e.target.value }))
+            }
+          />
+        </Field>
         <Field label="Vigencia" htmlFor="quote-validUntil" required>
           <Input
             id="quote-validUntil"
@@ -317,10 +338,6 @@ export function QuoteHeaderEdit({ quote, onSaved }) {
         <div>
           <dt className="text-content-muted">Empresa emisora</dt>
           <dd>{quote.issuingCompany?.commercialName || "-"}</dd>
-        </div>
-        <div>
-          <dt className="text-content-muted">Elaboracion</dt>
-          <dd>{formatDate(quote.elaborationDate)}</dd>
         </div>
         <div>
           <dt className="text-content-muted">Moneda</dt>

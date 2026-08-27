@@ -75,6 +75,11 @@ export const updateItemPlanningSchema = z.object({
   reason: optionalString,
 });
 
+export const updateOrderPlanningSchema = z.object({
+  estimatedDeliveryDate: optionalDate,
+  reason: optionalString,
+});
+
 export const handicapSchema = z.object({
   handicapPercent: z.coerce.number().min(0).max(90),
   applyToPending: z.coerce.boolean().optional().default(true),

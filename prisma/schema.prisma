@@ -1175,6 +1175,7 @@ model ProductionOrder {
   completedAt        DateTime?            @map("completed_at")
   materialsReadyAt   DateTime?            @map("materials_ready_at")
   materialsReadyBy   String?              @map("materials_ready_by")
+  estimatedDeliveryDate DateTime?         @map("estimated_delivery_date") @db.Date
   reprintOfId        String?              @map("reprint_of_id")
   reprintReason      String?              @map("reprint_reason")
 

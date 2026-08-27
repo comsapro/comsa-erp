@@ -212,6 +212,49 @@ export async function completeProcess(request, orderId, itemId, processId) {
   return jsonOk(record);
 }
 
+export async function reopenProcess(request, orderId, itemId, processId) {
+  await requirePermission("production.record_process_hours");
+  const actor = await getActor(request);
+  const { order, item } = await loadItemContext(orderId, itemId);
+  assertItemMutable(order, item);
+
+  const process = (item.processes || []).find((p) => p.id === processId);
+  if (!process) throw new NotFoundError("Proceso no encontrado");
+  if (process.status !== "COMPLETED") {
+    throw new ConflictError("Solo se pueden reabrir procesos completados");
+  }
+
+  await prisma.productionItemProcess.update({
+    where: { id: processId },
+    data: {
+      status: "PENDING",
+      completedAt: null,
+      updatedBy: actor.id,
+    },
+  });
+
+  await recordProductionActivity(prisma, {
+    type: "PROCESS_CHANGE",
+    productionOrderId: orderId,
+    productionItemId: itemId,
+    processId,
+    body: `Proceso reabierto: ${process.processNameSnapshot}`,
+    createdBy: actor.id,
+  });
+
+  await recordAudit({
+    actor,
+    module: "production",
+    entity: "ProductionItemProcess",
+    entityId: processId,
+    action: AUDIT_ACTIONS.UPDATE,
+    newData: { status: "PENDING", reopened: true },
+  });
+
+  const record = await recalculateProductionState(prisma, orderId, actor.id);
+  return jsonOk(record);
+}
+
 export async function replaceProcess(request, orderId, itemId, processId) {
   await requirePermission("production.manage_processes");
   const actor = await getActor(request);

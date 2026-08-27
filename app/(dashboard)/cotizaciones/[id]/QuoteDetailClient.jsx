@@ -541,7 +541,7 @@ export default function QuoteDetailClient({ quoteId }) {
                   <ShoppingCart className="h-4 w-4" /> Crear OC
                 </Button>
               )}
-            {["APPROVED", "IN_PRODUCTION"].includes(quote.status) &&
+            {["APPROVED", "IN_PRODUCTION", "CANCELLED"].includes(quote.status) &&
               has("quotes.create") && (
                 <Button
                   variant="secondary"

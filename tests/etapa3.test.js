@@ -181,3 +181,23 @@ test("Menu no publica reportes PDF y respeta el filtro anyOf", () => {
   );
   assert.equal(withAnyOf, false);
 });
+
+test("OC exige orden de produccion y cotizacion", async () => {
+  const { poCreateSchema } = await import("../domains/purchase-orders/schemas.js");
+  const base = {
+    supplierId: "sup1",
+    quoteId: "quote1",
+    requestDate: "2026-08-01",
+    items: [],
+  };
+  assert.throws(() => poCreateSchema.parse(base));
+  assert.throws(() =>
+    poCreateSchema.parse({ ...base, productionOrderId: "" })
+  );
+  const ok = poCreateSchema.parse({
+    ...base,
+    productionOrderId: "op1",
+  });
+  assert.equal(ok.productionOrderId, "op1");
+  assert.equal(ok.quoteId, "quote1");
+});

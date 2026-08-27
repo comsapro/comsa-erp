@@ -391,7 +391,7 @@ export async function createQuote(request) {
 
   if (data.validUntil < data.elaborationDate) {
     throw new ValidationError(
-      "La vigencia debe ser posterior o igual a la fecha de elaboracion"
+      "La vigencia debe ser posterior o igual a la fecha de emision"
     );
   }
 
@@ -439,7 +439,8 @@ export async function createQuote(request) {
       let lastErr;
       for (let attempt = 1; attempt <= 5; attempt += 1) {
         try {
-          const folio = await generateFolio(tx, "QUOTE", data.elaborationDate);
+          // Folio por fecha de creacion (mes actual), no por fecha de emision.
+          const folio = await generateFolio(tx, "QUOTE", new Date());
           return await tx.quote.create({
             data: {
               folio,
@@ -506,7 +507,7 @@ export async function updateQuote(request, id) {
   };
   if (toDay(validUntil) && toDay(elaborationDate) && toDay(validUntil) < toDay(elaborationDate)) {
     throw new ValidationError(
-      "La vigencia debe ser posterior o igual a la fecha de elaboracion"
+      "La vigencia debe ser posterior o igual a la fecha de emision"
     );
   }
 
@@ -1347,9 +1348,9 @@ export async function createQuoteRevision(request, id) {
     },
   });
 
-  if (!["APPROVED", "IN_PRODUCTION"].includes(source.status)) {
+  if (!["APPROVED", "IN_PRODUCTION", "CANCELLED"].includes(source.status)) {
     throw new ConflictError(
-      "Solo se puede versionar una cotizacion aprobada o en produccion"
+      "Solo se puede versionar una cotizacion aprobada, en produccion o cancelada"
     );
   }
 

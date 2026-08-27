@@ -64,6 +64,15 @@ function ModalFormFooter({ onCancel, saving, submitLabel = "Guardar" }) {
   );
 }
 
+/** Evita que el submit del modal dispare el form padre (p. ej. crear cotizacion). */
+function isolateModalSubmit(handler) {
+  return (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    return handler(event);
+  };
+}
+
 export function QuickCreateClientModal({ open, initialName = "", onClose, onCreated }) {
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
@@ -120,7 +129,7 @@ export function QuickCreateClientModal({ open, initialName = "", onClose, onCrea
 
   return (
     <Modal open={open} onClose={saving ? undefined : onClose} title="Nuevo cliente" size="md">
-      <form onSubmit={onSubmit} className="flex flex-col gap-3" noValidate>
+      <form onSubmit={isolateModalSubmit(onSubmit)} className="flex flex-col gap-3" noValidate>
         <TextField label="Nombre comercial" name="commercialName" register={register} error={errors.commercialName?.message} required />
         <TextField label="Razon social" name="legalName" register={register} error={errors.legalName?.message} />
         <div className="grid gap-3 sm:grid-cols-2">
@@ -224,7 +233,7 @@ export function QuickCreateContactModal({
 
   return (
     <Modal open={open} onClose={saving ? undefined : onClose} title="Nuevo contacto" size="md">
-      <form onSubmit={onSubmit} className="flex flex-col gap-3" noValidate>
+      <form onSubmit={isolateModalSubmit(onSubmit)} className="flex flex-col gap-3" noValidate>
         <TextField label="Nombre" name="name" register={register} error={errors.name?.message} required />
         <TextField label="Puesto" name="position" register={register} error={errors.position?.message} />
         <div className="grid gap-3 sm:grid-cols-2">
@@ -314,7 +323,7 @@ export function QuickCreateIssuingCompanyModal({
 
   return (
     <Modal open={open} onClose={saving ? undefined : onClose} title="Nueva empresa emisora" size="md">
-      <form onSubmit={onSubmit} className="flex flex-col gap-3" noValidate>
+      <form onSubmit={isolateModalSubmit(onSubmit)} className="flex flex-col gap-3" noValidate>
         <TextField label="Nombre comercial" name="commercialName" register={register} error={errors.commercialName?.message} required />
         <TextField label="Razon social" name="legalName" register={register} error={errors.legalName?.message} />
         <div className="grid gap-3 sm:grid-cols-2">
@@ -385,7 +394,7 @@ export function QuickCreateProcessModal({ open, initialName = "", onClose, onCre
 
   return (
     <Modal open={open} onClose={saving ? undefined : onClose} title="Nuevo proceso" size="md">
-      <form onSubmit={onSubmit} className="flex flex-col gap-3" noValidate>
+      <form onSubmit={isolateModalSubmit(onSubmit)} className="flex flex-col gap-3" noValidate>
         <div className="grid gap-3 sm:grid-cols-2">
           <TextField label="Codigo" name="code" register={register} error={errors.code?.message} required />
           <TextField label="Nombre" name="name" register={register} error={errors.name?.message} required />
@@ -466,7 +475,7 @@ export function QuickCreateInstallationModal({
 
   return (
     <Modal open={open} onClose={saving ? undefined : onClose} title="Nuevo concepto de instalacion" size="md">
-      <form onSubmit={onSubmit} className="flex flex-col gap-3" noValidate>
+      <form onSubmit={isolateModalSubmit(onSubmit)} className="flex flex-col gap-3" noValidate>
         <div className="grid gap-3 sm:grid-cols-2">
           <TextField label="Codigo" name="code" register={register} error={errors.code?.message} required />
           <TextField label="Nombre" name="name" register={register} error={errors.name?.message} required />
@@ -887,7 +896,7 @@ export function QuickCreateCategoryModal({ open, initialName = "", onClose, onCr
 
   return (
     <Modal open={open} onClose={onClose} title="Nueva categoria" size="md">
-      <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+      <form onSubmit={isolateModalSubmit(onSubmit)} className="flex flex-col gap-4" noValidate>
         <TextField label="Nombre" name="name" register={register} error={errors.name?.message} required />
         <TextareaField label="Descripcion" name="description" register={register} error={errors.description?.message} />
         <ModalFormFooter onCancel={onClose} saving={saving} />

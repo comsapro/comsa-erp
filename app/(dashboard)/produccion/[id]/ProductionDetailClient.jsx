@@ -58,10 +58,16 @@ export default function ProductionDetailClient({ id }) {
   const [handicap, setHandicap] = useState(0);
   const [incidentDraft, setIncidentDraft] = useState(EMPTY_INCIDENT);
   const [extraDraft, setExtraDraft] = useState(EMPTY_EXTRA);
+  const [deliveryDraft, setDeliveryDraft] = useState("");
 
   const applyUpdated = useCallback((updated) => {
     if (!updated?.id) return;
     setRecord(updated);
+    setDeliveryDraft(
+      updated.estimatedDeliveryDate
+        ? String(updated.estimatedDeliveryDate).slice(0, 10)
+        : ""
+    );
     const drafts = {};
     for (const item of updated.items || []) {
       drafts[item.id] = {
@@ -142,6 +148,8 @@ export default function ProductionDetailClient({ id }) {
       else if (type === "hours") updated = await api.patch(`${base}/${processId}`, payload);
       else if (type === "complete-process") {
         updated = await api.post(`${base}/${processId}/acciones/completar`);
+      } else if (type === "reopen-process") {
+        updated = await api.post(`${base}/${processId}/acciones/reabrir`);
       } else if (type === "replace-process") {
         updated = await api.post(`${base}/${processId}/acciones/reemplazar`, payload);
       } else if (type === "delete-process") updated = await api.del(`${base}/${processId}`);
@@ -221,6 +229,22 @@ export default function ProductionDetailClient({ id }) {
       const updated = await api.patch(`/api/produccion/${id}/items/${itemId}`, payload);
       applyUpdated(updated);
       toast({ variant: "success", title: "Planeacion guardada" });
+    } catch (err) {
+      fail(err);
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const saveEstimatedDelivery = async () => {
+    setActing(true);
+    try {
+      const updated = await api.patch(`/api/produccion/${id}`, {
+        estimatedDeliveryDate: deliveryDraft || null,
+        reason: "Actualizacion de entrega aproximada",
+      });
+      applyUpdated(updated);
+      toast({ variant: "success", title: "Entrega aproximada guardada" });
     } catch (err) {
       fail(err);
     } finally {
@@ -341,7 +365,7 @@ export default function ProductionDetailClient({ id }) {
         </Can>
       </Card>
 
-      <div className="grid gap-3 sm:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Card className="p-4">
           <p className="text-sm text-content-muted">Avance</p>
           <p className="mt-1 text-2xl font-semibold">{Number(record.progressPercentage)}%</p>
@@ -372,6 +396,34 @@ export default function ProductionDetailClient({ id }) {
           <p className="text-sm text-content-muted">Incidencias abiertas</p>
           <p className="mt-1 text-2xl font-semibold">{openIncidents}</p>
           <p className="text-xs text-content-muted">{formatDate(record.approvalDate)}</p>
+        </Card>
+        <Card className="p-4 sm:col-span-2 lg:col-span-1">
+          <p className="text-sm text-content-muted">Entrega aproximada</p>
+          <Can
+            permission="production.manage_planning"
+            fallback={
+              <p className="mt-1 text-base font-medium">
+                {formatDate(record.estimatedDeliveryDate) || "Sin definir"}
+              </p>
+            }
+          >
+            <div className="mt-2 flex flex-wrap items-end gap-2">
+              <input
+                type="date"
+                value={deliveryDraft}
+                onChange={(e) => setDeliveryDraft(e.target.value)}
+                className="h-9 rounded-[var(--radius-sm)] border border-border bg-white px-2 text-sm"
+              />
+              <Button
+                size="sm"
+                variant="secondary"
+                loading={acting}
+                onClick={saveEstimatedDelivery}
+              >
+                Guardar
+              </Button>
+            </div>
+          </Can>
         </Card>
       </div>
 

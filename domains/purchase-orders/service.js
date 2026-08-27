@@ -166,6 +166,24 @@ export async function createPurchaseOrder(request) {
   });
   if (!supplier) throw new ValidationError("Proveedor inactivo o inexistente");
 
+  const productionOrder = await prisma.productionOrder.findFirst({
+    where: { id: body.productionOrderId, deletedAt: null },
+    select: { id: true, folio: true, quoteId: true },
+  });
+  if (!productionOrder) {
+    throw new ValidationError("Orden de produccion inexistente");
+  }
+  if (!productionOrder.quoteId) {
+    throw new ValidationError(
+      "La orden de produccion debe estar ligada a una cotizacion"
+    );
+  }
+  if (productionOrder.quoteId !== body.quoteId) {
+    throw new ValidationError(
+      "La cotizacion no coincide con la orden de produccion seleccionada"
+    );
+  }
+
   const itemRows = await buildItemRows(body.items || []);
   const header = calculatePurchaseHeaderTotals(itemRows);
 
@@ -175,8 +193,8 @@ export async function createPurchaseOrder(request) {
       data: {
         folio,
         supplierId: body.supplierId,
-        productionOrderId: body.productionOrderId || null,
-        quoteId: body.quoteId || null,
+        productionOrderId: productionOrder.id,
+        quoteId: productionOrder.quoteId,
         requestedBy: actor.id,
         requestDate: body.requestDate,
         expectedDate: body.expectedDate || null,

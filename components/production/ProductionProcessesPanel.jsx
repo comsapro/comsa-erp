@@ -115,6 +115,21 @@ export function ProductionProcessesPanel({
                   />
                 </div>
 
+                {proc.status === "COMPLETED" && (
+                  <div className="mt-3">
+                    <Can permission="production.record_process_hours">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        loading={acting}
+                        onClick={() => onChanged("reopen-process", proc.id)}
+                      >
+                        Reabrir proceso
+                      </Button>
+                    </Can>
+                  </div>
+                )}
+
                 {proc.status !== "REPLACED" && proc.status !== "COMPLETED" && (
                   <div className="mt-3 space-y-2">
                     <Can permission="production.assign_responsible">

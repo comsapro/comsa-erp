@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -34,17 +34,49 @@ export default function PurchaseOrderFormClient({
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    Promise.all([
-      api.get(`/api/proveedores${toQuery({ status: "ACTIVE", pageSize: 100 })}`),
-      api.get(`/api/items${toQuery({ status: "ACTIVE", pageSize: 100 })}`),
-      api.get(`/api/cotizaciones${toQuery({ pageSize: 100 })}`),
-    ]).then(([sup, it, qt]) => {
-      setSuppliers(sup?.data || []);
-      setItems(it?.data || []);
-      setQuotes(qt?.data || []);
-    });
+  const searchSuppliers = useCallback(async (q) => {
+    const res = await api.get(
+      `/api/proveedores${toQuery({
+        status: "ACTIVE",
+        q: q || undefined,
+        pageSize: 50,
+        sort: "name",
+        order: "asc",
+      })}`
+    );
+    setSuppliers(res?.data || []);
   }, []);
+
+  const searchItems = useCallback(async (q) => {
+    const res = await api.get(
+      `/api/items${toQuery({
+        status: "ACTIVE",
+        q: q || undefined,
+        pageSize: 50,
+        sort: "name",
+        order: "asc",
+      })}`
+    );
+    setItems(res?.data || []);
+  }, []);
+
+  const searchQuotes = useCallback(async (q) => {
+    const res = await api.get(
+      `/api/cotizaciones${toQuery({
+        q: q || undefined,
+        pageSize: 50,
+        sort: "folio",
+        order: "desc",
+      })}`
+    );
+    setQuotes(res?.data || []);
+  }, []);
+
+  useEffect(() => {
+    Promise.all([searchSuppliers(""), searchItems(""), searchQuotes("")]).catch(
+      () => {}
+    );
+  }, [searchSuppliers, searchItems, searchQuotes]);
 
   useEffect(() => {
     if (!productionOrderId || quoteId) return;
@@ -70,13 +102,21 @@ export default function PurchaseOrderFormClient({
       .get(`/api/cotizaciones/${qId}`)
       .then((quote) => {
         if (cancelled) return;
-        const ops = quote?.productionOrders || [];
-        if (quote?.productionOrder && !ops.find((o) => o.id === quote.productionOrder.id)) {
+        const ops = (quote?.productionOrders || []).filter((o) => o?.id);
+        if (
+          quote?.productionOrder &&
+          !ops.find((o) => o.id === quote.productionOrder.id)
+        ) {
           ops.unshift(quote.productionOrder);
         }
+        // Solo OPs ligadas a cotizacion (todas las de esta lista ya lo estan).
         setLinkedProductions(ops);
         if (productionOrderId) setProdId(productionOrderId);
         else if (ops.length === 1) setProdId(ops[0].id);
+        setSourceBanner((prev) => ({
+          productionFolio: prev?.productionFolio,
+          quoteFolio: quote?.folio || prev?.quoteFolio,
+        }));
       })
       .catch(() => {
         if (!cancelled) setLinkedProductions([]);
@@ -87,7 +127,12 @@ export default function PurchaseOrderFormClient({
   }, [qId, productionOrderId]);
 
   const supplierOptions = useMemo(
-    () => suppliers.map((s) => ({ value: s.id, label: s.name, description: s.rfc || "" })),
+    () =>
+      suppliers.map((s) => ({
+        value: s.id,
+        label: s.name,
+        description: s.rfc || "",
+      })),
     [suppliers]
   );
   const quoteOptions = useMemo(
@@ -126,9 +171,12 @@ export default function PurchaseOrderFormClient({
     setError(null);
     try {
       if (!qId) throw new Error("La cotizacion es obligatoria");
+      if (!prodId) {
+        throw new Error("La orden de produccion es obligatoria");
+      }
       const created = await api.post("/api/ordenes-compra", {
         supplierId,
-        productionOrderId: prodId || null,
+        productionOrderId: prodId,
         quoteId: qId,
         requestDate,
         expectedDate: expectedDate || null,
@@ -168,7 +216,7 @@ export default function PurchaseOrderFormClient({
             <p className="text-content-muted">
               {sourceBanner?.productionFolio || prodId
                 ? `Produccion ${sourceBanner?.productionFolio || prodId}`
-                : "Sin OP vinculada"}
+                : "Selecciona una OP"}
               {sourceBanner?.quoteFolio || qId
                 ? ` · Cotizacion ${sourceBanner?.quoteFolio || qId}`
                 : ""}
@@ -183,6 +231,7 @@ export default function PurchaseOrderFormClient({
           options={supplierOptions}
           required
           placeholder="Buscar proveedor..."
+          onSearch={searchSuppliers}
         />
 
         <CatalogCombobox
@@ -195,6 +244,7 @@ export default function PurchaseOrderFormClient({
           options={quoteOptions}
           required
           placeholder="Buscar cotizacion..."
+          onSearch={searchQuotes}
         />
 
         {qId && (
@@ -204,7 +254,8 @@ export default function PurchaseOrderFormClient({
             </p>
             {linkedProductions.length === 0 ? (
               <p className="text-sm text-content-muted">
-                Sin OP vinculadas. Puedes crear la OC y asociar despues.
+                Sin OP vinculadas a esta cotizacion. Debes tener una OP antes de
+                crear la OC.
               </p>
             ) : (
               <ul className="mb-3 space-y-1 text-sm">
@@ -225,13 +276,13 @@ export default function PurchaseOrderFormClient({
               </ul>
             )}
             <CatalogCombobox
-              label="OP vinculada (opcional)"
+              label="OP vinculada"
               value={prodId}
               onChange={setProdId}
               options={productionOptions}
-              allowClear
-              clearLabel="Sin OP"
-              placeholder="Filtrar OP..."
+              required
+              placeholder="Seleccionar OP..."
+              hint="Obligatoria: la OC debe ligarse a un folio de produccion"
             />
           </div>
         )}
@@ -298,15 +349,25 @@ export default function PurchaseOrderFormClient({
                 remaining.map((l) => l.sourceMaterialId).filter(Boolean)
               );
               const extra = next.filter(
-                (n) => !n.sourceMaterialId || !existingSources.has(n.sourceMaterialId)
+                (n) =>
+                  !n.sourceMaterialId ||
+                  !existingSources.has(n.sourceMaterialId)
               );
-              return extra.length ? [...remaining, ...extra] : remaining.length ? remaining : prev;
+              return extra.length
+                ? [...remaining, ...extra]
+                : remaining.length
+                  ? remaining
+                  : prev;
             });
           }}
         />
 
         <div className="space-y-3">
           <p className="text-sm font-medium">Partidas</p>
+          <p className="text-xs text-content-muted">
+            Puedes precargar materiales de la cotizacion o agregar items del
+            catalogo que no hayan sido cotizados.
+          </p>
           {lines.map((line, idx) => (
             <div key={idx} className="grid gap-2 sm:grid-cols-4">
               <div className="sm:col-span-2">
@@ -315,11 +376,16 @@ export default function PurchaseOrderFormClient({
                   value={line.itemId}
                   onChange={(v) => {
                     const next = [...lines];
-                    next[idx] = { ...next[idx], itemId: v };
+                    next[idx] = {
+                      ...next[idx],
+                      itemId: v,
+                      sourceMaterialId: null,
+                    };
                     setLines(next);
                   }}
                   options={itemOptions}
                   placeholder="Buscar item..."
+                  onSearch={searchItems}
                 />
               </div>
               <label className="block text-sm">

@@ -13,7 +13,7 @@ const poItemSchema = z.object({
 
 export const poCreateSchema = z.object({
   supplierId: z.string().min(1),
-  productionOrderId: z.string().optional().nullable(),
+  productionOrderId: z.string().min(1, "La orden de produccion es obligatoria"),
   quoteId: z.string().min(1, "La cotizacion es obligatoria"),
   requestDate: z.coerce.date(),
   expectedDate: z.coerce.date().optional().nullable(),
