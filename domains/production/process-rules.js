@@ -36,6 +36,31 @@ export function allActiveProcessesCompleted(processes = []) {
   return active.every((p) => p.status === "COMPLETED");
 }
 
+/** Primer proceso activo pendiente (etapa actual de piso). */
+export function nextPendingProcess(processes = []) {
+  return activeProcesses(processes).find((p) => p.status === "PENDING") || null;
+}
+
+export function findUserOpenSession(process, userId) {
+  if (!process || !userId) return null;
+  return (
+    (process.sessions || []).find(
+      (s) => s.userId === userId && ["RUNNING", "PAUSED"].includes(s.status)
+    ) || null
+  );
+}
+
+export function resolveScanSessionAction(process, userId) {
+  if (!process || process.status === "REPLACED" || process.status === "COMPLETED") {
+    return { action: null, reason: "no_process" };
+  }
+  const session = findUserOpenSession(process, userId);
+  if (!session) return { action: "start", processId: process.id };
+  if (session.status === "RUNNING") return { action: "end", processId: process.id };
+  if (session.status === "PAUSED") return { action: "resume", processId: process.id };
+  return { action: null, reason: "unknown" };
+}
+
 export function canDeleteProductionProcess(process) {
   if (!process) return false;
   if (process.sourceType !== "PRODUCTION") return false;

@@ -10,6 +10,7 @@ import { Field } from "@/components/forms/Field";
 import { Badge } from "@/components/ui/Badge";
 import { Can } from "@/components/permissions/Can";
 import { ProductionProcessesPanel } from "@/components/production/ProductionProcessesPanel";
+import { ProductionItemQr } from "@/components/production/ProductionItemQr";
 import { ProductionActivityFeed } from "@/components/production/ProductionActivityFeed";
 import { ProductionDocuments } from "@/components/production/ProductionDocuments";
 import {
@@ -86,6 +87,20 @@ export function ProductionItemWorkspace({
       <div className="flex-1 p-4">
         {tab === "ejecucion" && (
           <div className="space-y-4">
+            <div className="flex flex-col gap-3 rounded-md border border-border bg-surface-muted/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold">Codigo QR de la partida</p>
+                <p className="text-xs text-content-muted">
+                  Escanear para iniciar o terminar tiempos en la etapa pendiente.
+                </p>
+              </div>
+              <ProductionItemQr
+                orderId={productionId}
+                item={item}
+                size="lg"
+                showLabel={false}
+              />
+            </div>
             {canProgress && (
               <div className="grid gap-3 rounded-md bg-surface-muted p-3 sm:grid-cols-4">
                 <div>

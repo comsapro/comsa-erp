@@ -32,6 +32,7 @@ import {
 import { itemHoursSummary } from "@/domains/production/process-rules";
 import { HoursBar } from "@/components/production/HoursBar";
 import { ProductionItemWorkspace } from "@/components/production/ProductionItemWorkspace";
+import { ProductionQrPanel } from "@/components/production/ProductionQrPanel";
 import { ReopenReasonModal, REOPEN_MODES } from "@/components/production/ReopenReasonModal";
 
 const EMPTY_INCIDENT = {
@@ -426,6 +427,8 @@ export default function ProductionDetailClient({ id }) {
           </Can>
         </Card>
       </div>
+
+      <ProductionQrPanel orderId={id} items={record.items || []} />
 
       <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
         <Card className="overflow-hidden">
