@@ -96,11 +96,34 @@ async function seedAdmin() {
   console.log(`  Administrador creado: ${email}`);
 }
 
+async function seedHolidays() {
+  const year = new Date().getFullYear();
+  const holidays = [
+    { date: new Date(Date.UTC(year, 0, 1)), name: "Año Nuevo" },
+    { date: new Date(Date.UTC(year, 1, 5)), name: "Día de la Constitución" },
+    { date: new Date(Date.UTC(year, 2, 16)), name: "Natalicio de Benito Juárez" },
+    { date: new Date(Date.UTC(year, 4, 1)), name: "Día del Trabajo" },
+    { date: new Date(Date.UTC(year, 8, 16)), name: "Independencia de México" },
+    { date: new Date(Date.UTC(year, 10, 2)), name: "Día de Muertos / Revolución" },
+    { date: new Date(Date.UTC(year, 11, 25)), name: "Navidad" },
+  ];
+
+  for (const h of holidays) {
+    await prisma.holiday.upsert({
+      where: { date: h.date },
+      update: { name: h.name },
+      create: h,
+    });
+  }
+  console.log(`  Festivos: ${holidays.length} (${year})`);
+}
+
 async function main() {
   console.log("Seeding COMSA ERP...");
   const permissions = await seedPermissions();
   await seedRoles(permissions);
   await seedAdmin();
+  await seedHolidays();
   console.log("Seed completado.");
 }
 

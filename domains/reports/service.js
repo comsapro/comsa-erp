@@ -19,6 +19,7 @@ import { QUOTE_STATUS_LABELS } from "@/domains/quotes/constants";
 import { PRODUCTION_STATUS_LABELS } from "@/domains/production/constants";
 import { MOVEMENT_TYPE_LABELS } from "@/domains/inventory/constants";
 import { quotePdfResponse } from "@/lib/pdf/quote-pdf";
+import { purchaseOrderPdfResponse } from "@/lib/pdf/purchase-order-pdf";
 
 function filterList(searchParams) {
   const filters = [];
@@ -64,6 +65,15 @@ export async function quotationPdf(request, id) {
   return response;
 }
 
+const quotePrintInclude = {
+  select: {
+    id: true,
+    folio: true,
+    currency: true,
+    issuingCompany: true,
+  },
+};
+
 export async function purchaseOrderPdf(request, id) {
   await requirePermission("purchase_orders.print");
   const actor = await getActor(request);
@@ -71,49 +81,49 @@ export async function purchaseOrderPdf(request, id) {
     where: { id, deletedAt: null },
     include: {
       supplier: true,
-      requestedByUser: true,
-      authorizedByUser: true,
-      productionOrder: true,
+      requestedByUser: { select: { id: true, name: true } },
+      quote: quotePrintInclude,
+      productionOrder: {
+        select: {
+          id: true,
+          folio: true,
+          quote: quotePrintInclude,
+        },
+      },
       items: {
-        include: { item: { select: { sku: true } } },
+        orderBy: { createdAt: "asc" },
+        include: {
+          item: {
+            select: { sku: true, name: true, description: true, unitOfMeasure: true },
+          },
+          warehouse: { select: { location: true, name: true } },
+        },
       },
     },
   });
   if (!po) throw new NotFoundError("Orden de compra no encontrada");
 
-  const buffer = await buildPdfBuffer((doc) => {
-    doc.fontSize(16).text(`Orden de compra ${po.folio}`);
-    doc.fontSize(10);
-    doc.text(`Proveedor: ${po.supplier?.name}`);
-    doc.text(`Solicitante: ${po.requestedByUser?.name}`);
-    doc.text(`Autorizo: ${po.authorizedByUser?.name || "—"}`);
-    doc.text(`Fecha solicitud: ${po.requestDate?.toISOString?.().slice(0, 10) || po.requestDate}`);
-    doc.text(`Estatus: ${PO_STATUS_LABELS[po.status] || po.status}`);
-    doc.text(`Produccion: ${po.productionOrder?.folio || "—"}`);
-    if (po.comments) doc.text(`Comentarios: ${po.comments}`);
-    doc.moveDown();
-    drawTable(
-      doc,
-      [
-        { key: "item", header: "Item", width: 200 },
-        { key: "qty", header: "Cant.", width: 60 },
-        { key: "price", header: "P. unit.", width: 80 },
-        { key: "sub", header: "Subtotal", width: 80 },
-        { key: "total", header: "Total", width: 92 },
-      ],
-      po.items.map((it) => ({
-        item: `${it.item?.sku || ""} ${it.descriptionSnapshot}`,
-        qty: String(toNumber(it.quantity)),
-        price: formatMoney(it.unitPrice),
-        sub: formatMoney(it.subtotal),
-        total: formatMoney(it.total),
-      }))
-    );
-    doc.moveDown();
-    doc.text(`Subtotal: ${formatMoney(po.subtotal)}`);
-    doc.text(`IVA: ${formatMoney(po.tax)}`);
-    doc.font("Helvetica-Bold").text(`Total: ${formatMoney(po.total)}`);
-  });
+  const materialIds = [
+    ...new Set(
+      (po.items || [])
+        .filter((it) => it.sourceType === "QUOTE_MATERIAL" && it.sourceMaterialId)
+        .map((it) => it.sourceMaterialId)
+    ),
+  ];
+  const materials = materialIds.length
+    ? await prisma.quoteItemMaterial.findMany({ where: { id: { in: materialIds } } })
+    : [];
+  const materialsById = Object.fromEntries(materials.map((row) => [row.id, row]));
+
+  let issuingCompany = po.quote?.issuingCompany || po.productionOrder?.quote?.issuingCompany || null;
+  if (!issuingCompany) {
+    issuingCompany = await prisma.issuingCompany.findFirst({
+      where: { status: "ACTIVE", deletedAt: null },
+      orderBy: { createdAt: "asc" },
+    });
+  }
+
+  const response = await purchaseOrderPdfResponse(po, { materialsById, issuingCompany });
 
   await recordAudit({
     actor,
@@ -124,7 +134,7 @@ export async function purchaseOrderPdf(request, id) {
     newData: { folio: po.folio },
   });
 
-  return pdfResponse(buffer, `oc-${po.folio}.pdf`);
+  return response;
 }
 
 export async function productionOrderPdf(request, id) {

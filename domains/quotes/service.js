@@ -1582,6 +1582,12 @@ export async function sendToProduction(request, id) {
 
   const record = await prisma.$transaction(async (tx) => {
     const folio = await generateFolio(tx, "PRODUCTION");
+    const { addBusinessDays, deliveryDaysFromQuoteItem, formatDateKey } =
+      await import("@/lib/calendar/business-days");
+    const holidays = await tx.holiday.findMany({ select: { date: true } });
+    const holidayKeys = holidays.map((h) => formatDateKey(h.date));
+    const commitmentBase = new Date();
+
     const productionOrder = await tx.productionOrder.create({
       data: {
         folio,
@@ -1596,14 +1602,22 @@ export async function sendToProduction(request, id) {
         createdBy: actor.id,
         updatedBy: actor.id,
         items: {
-          create: itemsToSend.map((item) => ({
-            sourceItemId: item.id,
-            sourceItemType: "QUOTE_ITEM",
-            position: item.position,
-            description: item.description,
-            quantity: item.quantity,
-            status: "PENDING",
-          })),
+          create: itemsToSend.map((item) => {
+            const days = deliveryDaysFromQuoteItem(item);
+            const commitmentDate =
+              days > 0
+                ? addBusinessDays(commitmentBase, days, holidayKeys)
+                : null;
+            return {
+              sourceItemId: item.id,
+              sourceItemType: "QUOTE_ITEM",
+              position: item.position,
+              description: item.description,
+              quantity: item.quantity,
+              status: "PENDING",
+              commitmentDate,
+            };
+          }),
         },
       },
       include: {

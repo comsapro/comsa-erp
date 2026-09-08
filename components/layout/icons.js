@@ -23,6 +23,9 @@ import {
   FileDown,
   GanttChart,
   CalendarDays,
+  Banknote,
+  Receipt,
+  Target,
 } from "lucide-react";
 
 export const ICONS = {
@@ -50,6 +53,9 @@ export const ICONS = {
   FileDown,
   GanttChart,
   CalendarDays,
+  Banknote,
+  Receipt,
+  Target,
 };
 
 export function getIcon(name) {

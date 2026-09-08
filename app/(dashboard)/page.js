@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import {
   Users,
   Contact,
@@ -22,6 +23,7 @@ import {
   ArrowUpFromLine,
 } from "lucide-react";
 import { requireUser, userHasPermission } from "@/lib/auth/session";
+import { isSalesHomeUser } from "@/domains/sales/scope";
 import {
   getDashboardStats,
   getStage2DashboardStats,
@@ -162,6 +164,9 @@ function KpiGrid({ cards, stats }) {
 
 export default async function DashboardHome() {
   const user = await requireUser();
+  if (isSalesHomeUser(user)) {
+    redirect("/ventas");
+  }
   const canAudit = userHasPermission(user, "audit.view");
   const canQuotes = userHasPermission(user, "quotes.view");
   const canDirectOrders = userHasPermission(user, "direct_orders.view");

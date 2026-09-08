@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   CheckCircle2,
   Eye,
@@ -60,12 +60,20 @@ const KANBAN_COLUMNS = QUOTE_STATUSES.map((id) => ({
 
 export default function QuotesClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { has } = usePermissions();
   const { mode, setMode } = useViewMode("quotes:viewMode");
+  const initialStatus = QUOTE_STATUSES.includes(searchParams.get("status"))
+    ? searchParams.get("status")
+    : "";
+  const initialSellerId = searchParams.get("sellerId") || "";
   const list = useResourceList(ENDPOINT, {
     initialSort: "createdAt",
     initialOrder: "desc",
-    initialFilters: { status: "" },
+    initialFilters: {
+      status: initialStatus,
+      sellerId: initialSellerId,
+    },
     pageSize: mode === "table" ? 10 : 200,
   });
 

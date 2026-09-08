@@ -321,6 +321,13 @@ model User {
   productionExtraMaterialsCreated ProductionExtraMaterial[] @relation("ProductionExtraMaterialCreatedBy")
   productionScheduleChangesCreated ProductionScheduleChange[] @relation("ProductionScheduleChangeCreatedBy")
   productionSettingsUpdated ProductionSetting[] @relation("ProductionSettingUpdatedBy")
+  salesGoalsCreated SalesGoal[] @relation("SalesGoalCreatedBy")
+  salesGoalsUpdated SalesGoal[] @relation("SalesGoalUpdatedBy")
+  salesGoalMemberships SalesGoalSeller[]
+  salesInvoicesAsSeller SalesInvoice[] @relation("SalesInvoiceSeller")
+  salesInvoicesCreated SalesInvoice[] @relation("SalesInvoiceCreatedBy")
+  salesInvoicesUpdated SalesInvoice[] @relation("SalesInvoiceUpdatedBy")
+  materialPurchaseDecisions MaterialPurchaseDecision[] @relation("MaterialPurchaseDecisionBy")
 
   @@index([status])
   @@index([deletedAt])
@@ -901,6 +908,7 @@ model Quote {
   directOrder    DirectOrder?    @relation("DirectOrderQuote", fields: [directOrderId], references: [id], onDelete: SetNull)
   items          QuoteItem[]
   purchaseOrders PurchaseOrder[]
+  salesInvoiceQuotes SalesInvoiceQuote[]
 
   @@index([status, elaborationDate])
   @@index([clientId])
@@ -953,6 +961,7 @@ model QuoteItem {
   extras         QuoteItemExtra[]
   installations  QuoteItemInstallation[]
   attachments    QuoteItemAttachment[]
+  salesInvoiceItems SalesInvoiceQuoteItem[]
 
   @@index([quoteId, position])
   @@map("quote_items")
@@ -1026,6 +1035,7 @@ model QuoteItemMaterial {
   quoteItem QuoteItem @relation(fields: [quoteItemId], references: [id], onDelete: Cascade)
   item      Item?     @relation(fields: [itemId], references: [id], onDelete: SetNull)
   supplier  Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  purchaseDecision MaterialPurchaseDecision?
 
   @@index([quoteItemId])
   @@map("quote_item_materials")
@@ -1708,5 +1718,149 @@ model PurchaseReceiptItem {
   @@index([purchaseReceiptId])
   @@index([purchaseOrderItemId])
   @@map("purchase_receipt_items")
+}
+
+// -----------------------------------------------------------------------------
+// Dashboard de Ventas
+// -----------------------------------------------------------------------------
+enum SalesGoalPeriod {
+  MONTHLY
+  QUARTERLY
+  SEMIANNUAL
+  ANNUAL
+
+  @@map("sales_goal_period")
+}
+
+enum MaterialSkipReason {
+  IN_STOCK
+  CLIENT_PROVIDED
+  USE_SURPLUS
+  NOT_APPLICABLE
+  OTHER
+
+  @@map("material_skip_reason")
+}
+
+model Holiday {
+  id        String   @id @default(cuid())
+  date      DateTime @unique @db.Date
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  @@map("holidays")
+}
+
+model SalesGoal {
+  id        String          @id @default(cuid())
+  period    SalesGoalPeriod
+  periodKey String          @map("period_key")
+  amount    Decimal         @db.Decimal(14, 2)
+  label     String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String   @map("created_by")
+  updatedBy String   @map("updated_by")
+  deletedAt DateTime? @map("deleted_at")
+
+  createdByUser User @relation("SalesGoalCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User @relation("SalesGoalUpdatedBy", fields: [updatedBy], references: [id])
+  sellers       SalesGoalSeller[]
+
+  @@unique([period, periodKey])
+  @@index([deletedAt])
+  @@map("sales_goals")
+}
+
+model SalesGoalSeller {
+  salesGoalId String @map("sales_goal_id")
+  sellerId    String @map("seller_id")
+
+  salesGoal SalesGoal @relation(fields: [salesGoalId], references: [id], onDelete: Cascade)
+  seller    User      @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+
+  @@id([salesGoalId, sellerId])
+  @@index([sellerId])
+  @@map("sales_goal_sellers")
+}
+
+model SalesInvoice {
+  id               String   @id @default(cuid())
+  invoiceNumber    String   @unique @map("invoice_number")
+  netAmount        Decimal  @map("net_amount") @db.Decimal(14, 2)
+  invoiceDate      DateTime @map("invoice_date") @db.Date
+  sellerId         String   @map("seller_id")
+  clientPoNumber   String   @map("client_po_number")
+  receivedByClient Boolean  @default(false) @map("received_by_client")
+  receptionDate    DateTime? @map("reception_date") @db.Date
+  notes            String?
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String    @map("created_by")
+  updatedBy String    @map("updated_by")
+  deletedAt DateTime? @map("deleted_at")
+
+  seller        User @relation("SalesInvoiceSeller", fields: [sellerId], references: [id])
+  createdByUser User @relation("SalesInvoiceCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User @relation("SalesInvoiceUpdatedBy", fields: [updatedBy], references: [id])
+  quotes        SalesInvoiceQuote[]
+
+  @@index([sellerId, invoiceDate])
+  @@index([receivedByClient])
+  @@index([deletedAt])
+  @@map("sales_invoices")
+}
+
+model SalesInvoiceQuote {
+  id             String @id @default(cuid())
+  salesInvoiceId String @map("sales_invoice_id")
+  quoteId        String @map("quote_id")
+
+  salesInvoice SalesInvoice            @relation(fields: [salesInvoiceId], references: [id], onDelete: Cascade)
+  quote        Quote                   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  items        SalesInvoiceQuoteItem[]
+
+  @@unique([salesInvoiceId, quoteId])
+  @@index([quoteId])
+  @@map("sales_invoice_quotes")
+}
+
+model SalesInvoiceQuoteItem {
+  id                  String @id @default(cuid())
+  salesInvoiceQuoteId String @map("sales_invoice_quote_id")
+  quoteItemId         String @map("quote_item_id")
+
+  salesInvoiceQuote SalesInvoiceQuote @relation(fields: [salesInvoiceQuoteId], references: [id], onDelete: Cascade)
+  quoteItem         QuoteItem         @relation(fields: [quoteItemId], references: [id], onDelete: Cascade)
+
+  @@unique([salesInvoiceQuoteId, quoteItemId])
+  @@index([quoteItemId])
+  @@map("sales_invoice_quote_items")
+}
+
+model MaterialPurchaseDecision {
+  id                   String              @id @default(cuid())
+  quoteItemMaterialId  String              @unique @map("quote_item_material_id")
+  willPurchase         Boolean             @map("will_purchase")
+  skipReason           MaterialSkipReason? @map("skip_reason")
+  observations         String?
+  decidedBy            String              @map("decided_by")
+  decidedAt            DateTime            @default(now()) @map("decided_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  quoteItemMaterial QuoteItemMaterial @relation(fields: [quoteItemMaterialId], references: [id], onDelete: Cascade)
+  decidedByUser     User              @relation("MaterialPurchaseDecisionBy", fields: [decidedBy], references: [id])
+
+  @@index([willPurchase])
+  @@map("material_purchase_decisions")
 }
 
