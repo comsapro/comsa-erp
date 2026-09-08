@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getActor } from "@/lib/api/actor";
 import { requirePermission } from "@/lib/permissions/require-permission";
 import { jsonOk, jsonCreated } from "@/lib/api/http";
+import { parseListParams, paginated } from "@/lib/api/list-params";
 import { recordAudit, AUDIT_ACTIONS } from "@/lib/audit/logger";
 import {
   ConflictError,
@@ -24,6 +25,34 @@ import {
   sellerWhere,
 } from "./scope";
 import { getCurrentUser, userHasPermission } from "@/lib/auth/session";
+
+function parseMaterialsPage(request) {
+  return parseListParams(request, {
+    defaultSort: "createdAt",
+    defaultOrder: "asc",
+  });
+}
+
+async function purchasedMaterialIdSet(quoteIds) {
+  if (!quoteIds.length) return new Set();
+  const purchased = await prisma.purchaseOrderItem.findMany({
+    where: {
+      sourceType: "QUOTE_MATERIAL",
+      sourceMaterialId: { not: null },
+      purchaseOrder: {
+        deletedAt: null,
+        status: { not: "CANCELLED" },
+        OR: [
+          { quoteId: { in: quoteIds } },
+          { productionOrder: { quoteId: { in: quoteIds } } },
+        ],
+      },
+    },
+    select: { sourceMaterialId: true },
+    distinct: ["sourceMaterialId"],
+  });
+  return new Set(purchased.map((p) => p.sourceMaterialId).filter(Boolean));
+}
 
 function startOfWeek(date = new Date()) {
   const d = new Date(date);
@@ -214,7 +243,10 @@ async function countPendingPurchaseMaterials(scope) {
   const quoteIds = await sellerQuoteIds(scope);
   if (!quoteIds.length) return 0;
 
-  const materials = await prisma.quoteItemMaterial.findMany({
+  const purchasedSet = await purchasedMaterialIdSet(quoteIds);
+  const purchasedIds = [...purchasedSet];
+
+  return prisma.quoteItemMaterial.count({
     where: {
       quoteItem: {
         status: "ACTIVE",
@@ -224,31 +256,10 @@ async function countPendingPurchaseMaterials(scope) {
           deletedAt: null,
         },
       },
-    },
-    select: {
-      id: true,
-      purchaseDecision: { select: { willPurchase: true } },
+      NOT: { purchaseDecision: { willPurchase: false } },
+      ...(purchasedIds.length ? { id: { notIn: purchasedIds } } : {}),
     },
   });
-
-  const materialIds = materials.map((m) => m.id);
-  if (!materialIds.length) return 0;
-
-  const purchased = await prisma.purchaseOrderItem.findMany({
-    where: {
-      sourceType: "QUOTE_MATERIAL",
-      sourceMaterialId: { in: materialIds },
-      purchaseOrder: { deletedAt: null, status: { not: "CANCELLED" } },
-    },
-    select: { sourceMaterialId: true },
-  });
-  const purchasedSet = new Set(purchased.map((p) => p.sourceMaterialId));
-
-  return materials.filter((m) => {
-    if (purchasedSet.has(m.id)) return false;
-    if (m.purchaseDecision && m.purchaseDecision.willPurchase === false) return false;
-    return true;
-  }).length;
 }
 
 async function countPendingReceiptMaterials(scope) {
@@ -318,87 +329,91 @@ async function countCommitmentsThisWeek(scope) {
 export async function listPendingPurchaseMaterials(request) {
   await requirePermission("sales.view");
   const url = new URL(request.url);
+  const params = parseMaterialsPage(request);
   const scope = await resolveSalesScope(request, {
     sellerIdParam: url.searchParams.get("sellerId"),
   });
   const quoteIds = await sellerQuoteIds(scope);
-  if (!quoteIds.length) return jsonOk({ data: [], count: 0 });
+  if (!quoteIds.length) {
+    return jsonOk(paginated([], 0, params));
+  }
 
-  const materials = await prisma.quoteItemMaterial.findMany({
-    where: {
-      quoteItem: {
-        status: "ACTIVE",
-        quote: { id: { in: quoteIds }, status: "IN_PRODUCTION", deletedAt: null },
-      },
+  const purchasedSet = await purchasedMaterialIdSet(quoteIds);
+  const purchasedIds = [...purchasedSet];
+
+  const where = {
+    quoteItem: {
+      status: "ACTIVE",
+      quote: { id: { in: quoteIds }, status: "IN_PRODUCTION", deletedAt: null },
     },
-    include: {
-      purchaseDecision: true,
-      quoteItem: {
-        select: {
-          id: true,
-          position: true,
-          description: true,
-          quote: {
-            select: {
-              id: true,
-              folio: true,
-              productionOrders: {
-                where: { status: { not: "CANCELLED" } },
-                orderBy: { createdAt: "desc" },
-                take: 1,
-                select: { id: true, folio: true },
+    NOT: { purchaseDecision: { willPurchase: false } },
+    ...(purchasedIds.length ? { id: { notIn: purchasedIds } } : {}),
+  };
+
+  const [total, materials] = await Promise.all([
+    prisma.quoteItemMaterial.count({ where }),
+    prisma.quoteItemMaterial.findMany({
+      where,
+      include: {
+        purchaseDecision: true,
+        quoteItem: {
+          select: {
+            id: true,
+            position: true,
+            description: true,
+            quote: {
+              select: {
+                id: true,
+                folio: true,
+                productionOrders: {
+                  where: { status: { not: "CANCELLED" } },
+                  orderBy: { createdAt: "desc" },
+                  take: 1,
+                  select: { id: true, folio: true },
+                },
               },
             },
           },
         },
       },
-    },
-    orderBy: { createdAt: "asc" },
-  });
+      orderBy: { createdAt: "asc" },
+      skip: params.skip,
+      take: params.take,
+    }),
+  ]);
 
-  const materialIds = materials.map((m) => m.id);
-  const purchased = await prisma.purchaseOrderItem.findMany({
-    where: {
-      sourceType: "QUOTE_MATERIAL",
-      sourceMaterialId: { in: materialIds },
-      purchaseOrder: { deletedAt: null, status: { not: "CANCELLED" } },
-    },
-    select: { sourceMaterialId: true },
-  });
-  const purchasedSet = new Set(purchased.map((p) => p.sourceMaterialId));
+  const data = materials.map((m) => ({
+    id: m.id,
+    material: m.descriptionSnapshot,
+    dimensions: m.dimensions,
+    quantity: toNumber(m.quantity),
+    unit: m.unit,
+    willPurchase: m.purchaseDecision?.willPurchase ?? null,
+    skipReason: m.purchaseDecision?.skipReason || null,
+    observations: m.purchaseDecision?.observations || null,
+    quoteItemId: m.quoteItem.id,
+    quoteItemDescription: m.quoteItem.description,
+    quoteItemPosition: m.quoteItem.position,
+    quoteId: m.quoteItem.quote.id,
+    quoteFolio: m.quoteItem.quote.folio,
+    productionOrderId: m.quoteItem.quote.productionOrders[0]?.id || null,
+    productionFolio: m.quoteItem.quote.productionOrders[0]?.folio || null,
+  }));
 
-  const data = materials
-    .filter((m) => !purchasedSet.has(m.id))
-    .filter((m) => !(m.purchaseDecision && m.purchaseDecision.willPurchase === false))
-    .map((m) => ({
-      id: m.id,
-      material: m.descriptionSnapshot,
-      dimensions: m.dimensions,
-      quantity: toNumber(m.quantity),
-      unit: m.unit,
-      willPurchase: m.purchaseDecision?.willPurchase ?? null,
-      skipReason: m.purchaseDecision?.skipReason || null,
-      observations: m.purchaseDecision?.observations || null,
-      quoteItemId: m.quoteItem.id,
-      quoteItemDescription: m.quoteItem.description,
-      quoteItemPosition: m.quoteItem.position,
-      quoteId: m.quoteItem.quote.id,
-      quoteFolio: m.quoteItem.quote.folio,
-      productionOrderId: m.quoteItem.quote.productionOrders[0]?.id || null,
-      productionFolio: m.quoteItem.quote.productionOrders[0]?.folio || null,
-    }));
-
-  return jsonOk({ data, count: data.length });
+  return jsonOk(paginated(data, total, params));
 }
 
 export async function listPendingReceiptMaterials(request) {
   await requirePermission("sales.view");
   const url = new URL(request.url);
+  const params = parseMaterialsPage(request);
   const scope = await resolveSalesScope(request, {
     sellerIdParam: url.searchParams.get("sellerId"),
   });
   const quoteIds = await sellerQuoteIds(scope);
-  if (!quoteIds.length) return jsonOk({ data: [], count: 0 });
+  if (!quoteIds.length) {
+    return jsonOk(paginated([], 0, params));
+  }
 
   const rows = await prisma.purchaseOrderItem.findMany({
     where: {
@@ -425,9 +440,10 @@ export async function listPendingReceiptMaterials(request) {
         },
       },
     },
+    orderBy: { createdAt: "asc" },
   });
 
-  const data = rows
+  const filtered = rows
     .filter((r) => toNumber(r.receivedQuantity) < toNumber(r.quantity))
     .map((r) => ({
       id: r.id,
@@ -443,56 +459,67 @@ export async function listPendingReceiptMaterials(request) {
       quoteFolio: r.purchaseOrder.quote?.folio || null,
     }));
 
-  return jsonOk({ data, count: data.length });
+  const total = filtered.length;
+  const data = filtered.slice(params.skip, params.skip + params.take);
+  return jsonOk(paginated(data, total, params));
 }
 
 export async function listReceivedMaterials(request) {
   await requirePermission("sales.view");
   const url = new URL(request.url);
+  const params = parseMaterialsPage(request);
   const scope = await resolveSalesScope(request, {
     sellerIdParam: url.searchParams.get("sellerId"),
   });
   const quoteIds = await sellerQuoteIds(scope);
-  if (!quoteIds.length) return jsonOk({ data: [], count: 0 });
+  if (!quoteIds.length) {
+    return jsonOk(paginated([], 0, params));
+  }
 
-  const rows = await prisma.purchaseReceiptItem.findMany({
-    where: {
-      purchaseOrderItem: {
-        purchaseOrder: {
-          deletedAt: null,
-          OR: [
-            { quoteId: { in: quoteIds } },
-            { productionOrder: { quoteId: { in: quoteIds } } },
-          ],
-        },
+  const where = {
+    purchaseOrderItem: {
+      purchaseOrder: {
+        deletedAt: null,
+        OR: [
+          { quoteId: { in: quoteIds } },
+          { productionOrder: { quoteId: { in: quoteIds } } },
+        ],
       },
     },
-    include: {
-      purchaseReceipt: {
-        select: {
-          folio: true,
-          receiptDate: true,
-          createdAt: true,
-          receivedByUser: { select: { id: true, name: true } },
+  };
+
+  const [total, rows] = await Promise.all([
+    prisma.purchaseReceiptItem.count({ where }),
+    prisma.purchaseReceiptItem.findMany({
+      where,
+      include: {
+        purchaseReceipt: {
+          select: {
+            folio: true,
+            receiptDate: true,
+            createdAt: true,
+            receivedByUser: { select: { id: true, name: true } },
+          },
         },
-      },
-      purchaseOrderItem: {
-        select: {
-          descriptionSnapshot: true,
-          purchaseOrder: {
-            select: {
-              folio: true,
-              productionOrder: { select: { folio: true } },
-              quote: { select: { folio: true } },
+        purchaseOrderItem: {
+          select: {
+            descriptionSnapshot: true,
+            purchaseOrder: {
+              select: {
+                folio: true,
+                productionOrder: { select: { folio: true } },
+                quote: { select: { folio: true } },
+              },
             },
           },
         },
+        item: { select: { name: true, sku: true } },
       },
-      item: { select: { name: true, sku: true } },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 100,
-  });
+      orderBy: { createdAt: "desc" },
+      skip: params.skip,
+      take: params.take,
+    }),
+  ]);
 
   const data = rows.map((r) => ({
     id: r.id,
@@ -507,7 +534,7 @@ export async function listReceivedMaterials(request) {
     receivedBy: r.purchaseReceipt.receivedByUser,
   }));
 
-  return jsonOk({ data, count: data.length });
+  return jsonOk(paginated(data, total, params));
 }
 
 export async function upsertMaterialDecision(request) {

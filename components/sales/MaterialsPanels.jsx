@@ -7,10 +7,13 @@ import { api, toQuery } from "@/lib/api/client";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { Pagination } from "@/components/tables/Pagination";
 import { formatDate, formatDateTime } from "@/lib/utils/format";
 import { SkipPurchaseModal } from "@/components/sales/SkipPurchaseModal";
 import { Alert } from "@/components/feedback/Alert";
 import { Skeleton } from "@/components/feedback/Skeleton";
+
+const PAGE_SIZE = 10;
 
 const TABS = [
   { key: "pendingPurchase", label: "Pendientes de compra", icon: ShoppingCart },
@@ -18,9 +21,18 @@ const TABS = [
   { key: "received", label: "Recibidos", icon: PackageCheck },
 ];
 
+const EMPTY_PAGINATION = {
+  page: 1,
+  pageSize: PAGE_SIZE,
+  total: 0,
+  totalPages: 1,
+};
+
 export function MaterialsPanels({ counts, sellerId, onChanged }) {
   const [tab, setTab] = useState("pendingPurchase");
+  const [page, setPage] = useState(1);
   const [rows, setRows] = useState([]);
+  const [pagination, setPagination] = useState(EMPTY_PAGINATION);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [skipTarget, setSkipTarget] = useState(null);
@@ -36,20 +48,39 @@ export function MaterialsPanels({ counts, sellerId, onChanged }) {
           : tab === "pendingReceipt"
             ? "/api/ventas/materiales/pendientes-recepcion"
             : "/api/ventas/materiales/recibidos";
-      const data = await api.get(path + toQuery({ sellerId: sellerId || undefined }));
+      const data = await api.get(
+        path +
+          toQuery({
+            sellerId: sellerId || undefined,
+            page,
+            pageSize: PAGE_SIZE,
+          })
+      );
       setRows(data?.data || []);
+      setPagination(data?.pagination || { ...EMPTY_PAGINATION, page });
     } catch (err) {
       setError(err.message || "No se pudieron cargar los materiales");
       setRows([]);
+      setPagination({ ...EMPTY_PAGINATION, page });
     } finally {
       setLoading(false);
     }
-  }, [tab, sellerId]);
+  }, [tab, sellerId, page]);
+
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setPage(1);
+  }, [sellerId]);
 
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect */
     load();
   }, [load]);
+
+  function changeTab(nextTab) {
+    setTab(nextTab);
+    setPage(1);
+  }
 
   async function markWillPurchase(row) {
     setSaving(true);
@@ -58,7 +89,11 @@ export function MaterialsPanels({ counts, sellerId, onChanged }) {
         quoteItemMaterialId: row.id,
         willPurchase: true,
       });
-      await load();
+      if (rows.length === 1 && page > 1) {
+        setPage((p) => p - 1);
+      } else {
+        await load();
+      }
       onChanged?.();
     } catch (err) {
       setError(err.message || "No se pudo guardar la decisión");
@@ -78,7 +113,11 @@ export function MaterialsPanels({ counts, sellerId, onChanged }) {
         observations,
       });
       setSkipTarget(null);
-      await load();
+      if (rows.length === 1 && page > 1) {
+        setPage((p) => p - 1);
+      } else {
+        await load();
+      }
       onChanged?.();
     } catch (err) {
       setError(err.message || "No se pudo guardar la decisión");
@@ -88,9 +127,13 @@ export function MaterialsPanels({ counts, sellerId, onChanged }) {
   }
 
   const countFor = (key) => {
-    if (key === "pendingPurchase") return counts?.pendingPurchase ?? 0;
-    if (key === "pendingReceipt") return counts?.pendingReceipt ?? 0;
-    return counts?.received ?? 0;
+    if (key === "pendingPurchase") {
+      return counts?.pendingPurchase ?? pagination.total ?? 0;
+    }
+    if (key === "pendingReceipt") {
+      return counts?.pendingReceipt ?? pagination.total ?? 0;
+    }
+    return counts?.received ?? pagination.total ?? 0;
   };
 
   return (
@@ -107,7 +150,7 @@ export function MaterialsPanels({ counts, sellerId, onChanged }) {
               <button
                 key={t.key}
                 type="button"
-                onClick={() => setTab(t.key)}
+                onClick={() => changeTab(t.key)}
                 className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
                   active
                     ? "bg-brand-600 text-white"
@@ -278,6 +321,14 @@ export function MaterialsPanels({ counts, sellerId, onChanged }) {
               </tbody>
             </table>
           </div>
+        )}
+
+        {!loading && pagination.total > 0 && (
+          <Pagination
+            pagination={pagination}
+            onPageChange={setPage}
+            loading={loading}
+          />
         )}
       </CardBody>
       <SkipPurchaseModal
