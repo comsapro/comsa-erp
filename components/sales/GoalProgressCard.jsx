@@ -21,6 +21,8 @@ export function GoalProgressCard({ goal }) {
   }
 
   const sellers = (goal.sellers || []).map((s) => s.name).join(", ");
+  const teams = (goal.teams || []).map((t) => t.name).join(", ");
+  const assignees = [teams, sellers].filter(Boolean).join(" · ");
 
   return (
     <Card>
@@ -30,7 +32,7 @@ export function GoalProgressCard({ goal }) {
             <h2 className="text-base font-semibold text-content">Meta de ventas</h2>
             <p className="mt-0.5 text-sm text-content-muted">
               {SALES_GOAL_PERIOD_LABELS[goal.period] || goal.period} · {goal.periodKey}
-              {sellers ? ` · Equipo: ${sellers}` : ""}
+              {assignees ? ` · ${assignees}` : ""}
             </p>
           </div>
           <p className="text-2xl font-semibold text-brand-700">{goal.percent}%</p>

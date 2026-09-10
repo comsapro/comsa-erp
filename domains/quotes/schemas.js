@@ -63,6 +63,9 @@ export const quoteUpdateSchema = z
 
 export const sendToProductionSchema = z.object({
   purchaseOrder: requiredString("El numero de orden de compra es requerido"),
+  estimatedDeliveryDate: z.coerce.date({
+    message: "La fecha de entrega aproximada es requerida",
+  }),
 });
 
 export const manufacturingLineSchema = z.object({

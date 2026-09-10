@@ -9,10 +9,12 @@ import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/forms/Field";
 import { TextField, SelectField, CheckboxField } from "@/components/forms/fields";
 import { STATUS_FORM_OPTIONS } from "@/lib/constants/ui";
+import { Badge } from "@/components/ui/Badge";
 
 export default function UserForm({ initial, onSubmit, saving }) {
   const isEdit = Boolean(initial);
   const [roles, setRoles] = useState([]);
+  const teamRoles = initial?.teamRoles || [];
 
   const {
     register,
@@ -25,7 +27,7 @@ export default function UserForm({ initial, onSubmit, saving }) {
       name: initial?.name || "",
       email: initial?.email || "",
       password: "",
-      roleIds: initial?.roles?.map((r) => r.id) || [],
+      roleIds: (initial?.directRoles || initial?.roles || []).map((r) => r.id),
       mustChangePassword: initial?.mustChangePassword ?? !isEdit,
       status: initial?.status || "ACTIVE",
     },
@@ -64,7 +66,7 @@ export default function UserForm({ initial, onSubmit, saving }) {
         hint={isEdit ? "Dejar en blanco para no cambiarla." : "Minimo 8 caracteres, con letras y numeros."}
       />
 
-      <Field label="Roles" error={errors.roleIds?.message}>
+      <Field label="Roles individuales" error={errors.roleIds?.message}>
         <div className="grid gap-1.5 rounded-[var(--radius-sm)] border border-border p-3 sm:grid-cols-2">
           {roles.length === 0 && (
             <p className="text-sm text-content-muted">Cargando roles...</p>
@@ -82,6 +84,31 @@ export default function UserForm({ initial, onSubmit, saving }) {
           ))}
         </div>
       </Field>
+
+      {isEdit && (
+        <Field
+          label="Roles vía equipo"
+          hint="Solo lectura. Se administran en Equipos."
+        >
+          {teamRoles.length === 0 ? (
+            <p className="text-sm text-content-muted">
+              Este usuario no hereda roles por equipo.
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {teamRoles.map((role) => (
+                <Badge key={`${role.teamId}-${role.id}`} tone="brand">
+                  {role.name}
+                  <span className="font-normal text-brand-600/80">
+                    {" "}
+                    · {role.teamName}
+                  </span>
+                </Badge>
+              ))}
+            </div>
+          )}
+        </Field>
+      )}
 
       <div className="grid gap-4 sm:grid-cols-2">
         <SelectField label="Estatus" name="status" register={register} error={errors.status?.message}>

@@ -8,6 +8,7 @@ import { jsonOk, jsonCreated } from "@/lib/api/http";
 import { createIncidentSchema, updateIncidentSchema } from "./schemas";
 import { recordProductionActivity } from "./activity";
 import { getDetailInclude } from "./recalc";
+import { assertActiveUser } from "@/domains/users/assert-active";
 
 async function findOrderOrThrow(id) {
   const order = await prisma.productionOrder.findFirst({
@@ -47,6 +48,9 @@ export async function createIncident(request, orderId) {
   if (data.productionItemId) {
     const item = (order.items || []).find((i) => i.id === data.productionItemId);
     if (!item) throw new ValidationError("Partida invalida");
+  }
+  if (data.assignedToUserId) {
+    await assertActiveUser(data.assignedToUserId, "Responsable");
   }
 
   const created = await prisma.$transaction(async (tx) => {
@@ -106,6 +110,9 @@ export async function updateIncident(request, orderId, incidentId) {
   if (data.actionTaken !== undefined) patch.actionTaken = data.actionTaken;
   if (data.blocking !== undefined) patch.blocking = data.blocking;
   if (data.assignedToUserId !== undefined) {
+    if (data.assignedToUserId) {
+      await assertActiveUser(data.assignedToUserId, "Responsable");
+    }
     patch.assignedToUserId = data.assignedToUserId;
   }
   if (data.description !== undefined) patch.description = data.description;

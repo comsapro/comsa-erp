@@ -77,9 +77,11 @@ export default function QuoteDetailClient({ quoteId }) {
   const [reason, setReason] = useState("");
   const [productionModalOpen, setProductionModalOpen] = useState(false);
   const [purchaseOrderInput, setPurchaseOrderInput] = useState("");
+  const [estimatedDeliveryInput, setEstimatedDeliveryInput] = useState("");
 
   const openSendToProduction = useCallback(() => {
     setPurchaseOrderInput(quote?.purchaseOrder || "");
+    setEstimatedDeliveryInput("");
     setProductionModalOpen(true);
   }, [quote?.purchaseOrder]);
 
@@ -161,6 +163,7 @@ export default function QuoteDetailClient({ quoteId }) {
       if (canSend) {
         /* eslint-disable react-hooks/set-state-in-effect */
         setPurchaseOrderInput(quote.purchaseOrder || "");
+        setEstimatedDeliveryInput("");
         setProductionModalOpen(true);
         /* eslint-enable react-hooks/set-state-in-effect */
       }
@@ -942,14 +945,15 @@ export default function QuoteDetailClient({ quoteId }) {
           if (actionBusy) return;
           setProductionModalOpen(false);
           setPurchaseOrderInput("");
+          setEstimatedDeliveryInput("");
         }}
         title="Enviar a produccion"
         size="sm"
       >
         <div className="space-y-4">
           <p className="text-sm text-content-muted">
-            Indica el numero de orden de compra del cliente para registrar el
-            envio a produccion.
+            Indica el numero de orden de compra del cliente y la fecha de entrega
+            aproximada para registrar el envio a produccion.
           </p>
           <Field
             label="Numero de orden de compra"
@@ -964,6 +968,18 @@ export default function QuoteDetailClient({ quoteId }) {
               autoFocus
             />
           </Field>
+          <Field
+            label="Fecha de entrega aproximada"
+            htmlFor="estimated-delivery-production"
+            required
+          >
+            <Input
+              id="estimated-delivery-production"
+              type="date"
+              value={estimatedDeliveryInput}
+              onChange={(e) => setEstimatedDeliveryInput(e.target.value)}
+            />
+          </Field>
           <div className="flex justify-end gap-2">
             <Button
               variant="secondary"
@@ -971,20 +987,26 @@ export default function QuoteDetailClient({ quoteId }) {
               onClick={() => {
                 setProductionModalOpen(false);
                 setPurchaseOrderInput("");
+                setEstimatedDeliveryInput("");
               }}
             >
               Cerrar
             </Button>
             <Button
               loading={actionBusy}
-              disabled={purchaseOrderInput.trim().length < 1}
+              disabled={
+                purchaseOrderInput.trim().length < 1 ||
+                !estimatedDeliveryInput
+              }
               onClick={async () => {
                 const ok = await runAction("send-production", {
                   purchaseOrder: purchaseOrderInput.trim(),
+                  estimatedDeliveryDate: estimatedDeliveryInput,
                 });
                 if (ok) {
                   setProductionModalOpen(false);
                   setPurchaseOrderInput("");
+                  setEstimatedDeliveryInput("");
                 }
               }}
             >

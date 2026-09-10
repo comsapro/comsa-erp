@@ -1,22 +1,33 @@
 import { z } from "zod";
 import { MATERIAL_SKIP_REASONS, SALES_GOAL_PERIODS } from "./constants";
 
-export const salesGoalSchema = z.object({
-  period: z.enum([
-    SALES_GOAL_PERIODS.MONTHLY,
-    SALES_GOAL_PERIODS.QUARTERLY,
-    SALES_GOAL_PERIODS.SEMIANNUAL,
-    SALES_GOAL_PERIODS.ANNUAL,
-  ]),
-  periodKey: z.string().trim().min(4),
-  amount: z.coerce.number().positive("La meta debe ser mayor a 0"),
-  label: z.string().trim().optional().nullable(),
-  sellerIds: z.array(z.string().min(1)).min(1, "Selecciona al menos un vendedor"),
-});
+export const salesGoalSchema = z
+  .object({
+    period: z.enum([
+      SALES_GOAL_PERIODS.MONTHLY,
+      SALES_GOAL_PERIODS.QUARTERLY,
+      SALES_GOAL_PERIODS.SEMIANNUAL,
+      SALES_GOAL_PERIODS.ANNUAL,
+    ]),
+    periodKey: z.string().trim().min(4),
+    amount: z.coerce.number().positive("La meta debe ser mayor a 0"),
+    label: z.string().trim().optional().nullable(),
+    sellerIds: z.array(z.string().min(1)).default([]),
+    teamIds: z.array(z.string().min(1)).default([]),
+  })
+  .superRefine((data, ctx) => {
+    if (!data.sellerIds.length && !data.teamIds.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Selecciona al menos un equipo o un vendedor",
+        path: ["teamIds"],
+      });
+    }
+  });
 
 const invoiceQuoteSchema = z.object({
   quoteId: z.string().min(1),
-  quoteItemIds: z.array(z.string().min(1)).min(1),
+  quoteItemIds: z.array(z.string().min(1)).min(1, "Selecciona al menos una partida"),
 });
 
 export const salesInvoiceSchema = z
@@ -29,7 +40,8 @@ export const salesInvoiceSchema = z
     receivedByClient: z.boolean(),
     receptionDate: z.coerce.date().optional().nullable(),
     notes: z.string().optional().nullable(),
-    quotes: z.array(invoiceQuoteSchema).min(1, "Relaciona al menos una cotización"),
+    // Vacío solo permitido para Administrador (validado en servicio).
+    quotes: z.array(invoiceQuoteSchema).default([]),
   })
   .superRefine((data, ctx) => {
     if (data.receivedByClient && !data.receptionDate) {

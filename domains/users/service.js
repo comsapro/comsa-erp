@@ -22,11 +22,54 @@ const USER_SELECT = {
   createdAt: true,
   updatedAt: true,
   roles: { select: { role: { select: { id: true, name: true } } } },
+  teamMemberships: {
+    where: {
+      team: { deletedAt: null, status: "ACTIVE" },
+    },
+    select: {
+      team: {
+        select: {
+          id: true,
+          name: true,
+          roles: {
+            where: { role: { deletedAt: null, status: "ACTIVE" } },
+            select: {
+              role: { select: { id: true, name: true } },
+            },
+          },
+        },
+      },
+    },
+  },
 };
 
 function toDTO(user) {
   if (!user) return user;
-  return { ...user, roles: user.roles.map((ur) => ur.role) };
+  const directRoles = user.roles.map((ur) => ur.role);
+  const teamRoles = [];
+  const teams = [];
+  for (const membership of user.teamMemberships || []) {
+    const team = membership.team;
+    if (!team) continue;
+    teams.push({ id: team.id, name: team.name });
+    for (const tr of team.roles || []) {
+      if (!tr.role) continue;
+      teamRoles.push({
+        id: tr.role.id,
+        name: tr.role.name,
+        teamId: team.id,
+        teamName: team.name,
+      });
+    }
+  }
+  const { teamMemberships, roles, ...rest } = user;
+  return {
+    ...rest,
+    roles: directRoles,
+    directRoles,
+    teamRoles,
+    teams,
+  };
 }
 
 export async function listUsers(request) {

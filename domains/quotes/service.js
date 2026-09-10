@@ -33,6 +33,12 @@ import {
   nextAvailableLetter,
   parseFolioVersion,
 } from "./versions";
+import { getCurrentUser } from "@/lib/auth/session";
+import {
+  isSellerScopedUser,
+  resolveSalesScope,
+  sellerWhere,
+} from "@/domains/sales/scope";
 
 const SORTABLE = [
   "folio",
@@ -323,7 +329,15 @@ export async function listQuotes(request) {
   if (clientId) where.clientId = clientId;
 
   const sellerId = params.searchParams.get("sellerId");
-  if (sellerId) where.sellerId = sellerId;
+  const user = await getCurrentUser();
+  if (isSellerScopedUser(user)) {
+    const scope = await resolveSalesScope(request, {
+      sellerIdParam: sellerId || undefined,
+    });
+    Object.assign(where, sellerWhere(scope));
+  } else if (sellerId) {
+    where.sellerId = sellerId;
+  }
 
   if (params.q) {
     where.OR = [
@@ -1512,7 +1526,8 @@ export async function sendToProduction(request, id) {
   await requirePermission("quotes.send_to_production");
   const actor = await getActor(request);
   const body = await request.json().catch(() => ({}));
-  const { purchaseOrder } = sendToProductionSchema.parse(body);
+  const { purchaseOrder, estimatedDeliveryDate } =
+    sendToProductionSchema.parse(body);
 
   const existing = await findQuoteOrThrow(id, {
     ...DETAIL_INCLUDE,
@@ -1595,6 +1610,7 @@ export async function sendToProduction(request, id) {
         clientId: existing.clientId,
         quoteId: existing.id,
         approvalDate: existing.approvedAt || new Date(),
+        estimatedDeliveryDate,
         status: "PENDING",
         totalItems: itemsToSend.length,
         completedItems: 0,

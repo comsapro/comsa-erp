@@ -1,12 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { api, toQuery } from "@/lib/api/client";
 import {
   categoryCreateSchema,
+  itemCreateSchema,
+  ITEM_TYPES,
+  ITEM_TYPE_LABELS,
   issuingCompanyCreateSchema,
   manufacturingProcessCreateSchema,
   installationConceptCreateSchema,
@@ -20,10 +23,16 @@ import {
 } from "@/lib/validations/common";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { TextField, TextareaField, SelectField } from "@/components/forms/fields";
+import {
+  TextField,
+  TextareaField,
+  SelectField,
+  CheckboxField,
+} from "@/components/forms/fields";
 import { useToast } from "@/components/feedback/ToastProvider";
 import { CatalogCombobox } from "@/components/forms/CatalogCombobox";
 import { usePermissions } from "@/components/permissions/PermissionsProvider";
+import { STATUS_FORM_OPTIONS } from "@/lib/constants/ui";
 
 function codeFromName(name) {
   const base = String(name || "")
@@ -949,6 +958,257 @@ export function CategoryCatalogSelect({
         onClose={() => setCreateOpen(false)}
         onCreated={(created) => {
           onOptionsChange?.([...(options || []), created]);
+          onChange?.(created.id);
+        }}
+      />
+    </>
+  );
+}
+
+export function QuickCreateItemModal({
+  open,
+  initialName = "",
+  initialUnit = "",
+  initialDescription = "",
+  initialItemType = "RAW_MATERIAL",
+  onClose,
+  onCreated,
+}) {
+  const { toast } = useToast();
+  const [saving, setSaving] = useState(false);
+  const [categories, setCategories] = useState([]);
+  const {
+    register,
+    handleSubmit,
+    reset,
+    setError,
+    setValue,
+    control,
+    formState: { errors },
+  } = useForm({
+    resolver: zodResolver(itemCreateSchema),
+    defaultValues: {
+      sku: "",
+      name: initialName,
+      description: initialDescription,
+      itemType: initialItemType,
+      categoryId: "",
+      unitOfMeasure: initialUnit,
+      minimumStock: 0,
+      isInventoryControlled: true,
+      status: "ACTIVE",
+    },
+  });
+
+  const categoryId = useWatch({ control, name: "categoryId" });
+
+  useEffect(() => {
+    if (!open) return;
+    api
+      .get("/api/categorias?pageSize=100&status=ACTIVE&sort=name&order=asc")
+      .then((res) => setCategories(res?.data || []))
+      .catch(() => setCategories([]));
+  }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      const suggestedSku = codeFromName(initialName).slice(0, 60);
+      reset({
+        sku: suggestedSku || "",
+        name: initialName || "",
+        description: initialDescription || "",
+        itemType: initialItemType || "RAW_MATERIAL",
+        categoryId: "",
+        unitOfMeasure: initialUnit || "",
+        minimumStock: 0,
+        isInventoryControlled: true,
+        status: "ACTIVE",
+      });
+    }
+  }, [open, initialName, initialUnit, initialDescription, initialItemType, reset]);
+
+  const onSubmit = handleSubmit(async (values) => {
+    setSaving(true);
+    try {
+      const created = await api.post("/api/items", {
+        ...values,
+        categoryId: values.categoryId || null,
+      });
+      toast({ variant: "success", title: "Item creado" });
+      onCreated?.(created);
+      onClose?.();
+    } catch (error) {
+      if (error.fieldErrors) {
+        for (const [field, messages] of Object.entries(error.fieldErrors)) {
+          setError(field, { message: messages[0] });
+        }
+      } else {
+        toast({
+          variant: "error",
+          title: "No se pudo crear",
+          description: error.message,
+        });
+      }
+    } finally {
+      setSaving(false);
+    }
+  });
+
+  return (
+    <Modal open={open} onClose={saving ? undefined : onClose} title="Nuevo item" size="lg">
+      <form onSubmit={isolateModalSubmit(onSubmit)} className="flex flex-col gap-4" noValidate>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TextField
+            label="SKU"
+            name="sku"
+            register={register}
+            error={errors.sku?.message}
+            required
+          />
+          <TextField
+            label="Nombre"
+            name="name"
+            register={register}
+            error={errors.name?.message}
+            required
+          />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <SelectField
+            label="Tipo"
+            name="itemType"
+            register={register}
+            error={errors.itemType?.message}
+            required
+          >
+            {ITEM_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {ITEM_TYPE_LABELS[t]}
+              </option>
+            ))}
+          </SelectField>
+          <CategoryCatalogSelect
+            value={categoryId || ""}
+            onChange={(id) => setValue("categoryId", id || "")}
+            options={categories}
+            onOptionsChange={setCategories}
+            error={errors.categoryId?.message}
+          />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <TextField
+            label="Unidad de medida"
+            name="unitOfMeasure"
+            register={register}
+            error={errors.unitOfMeasure?.message}
+            placeholder="pza, kg, m..."
+          />
+          <TextField
+            label="Stock minimo"
+            name="minimumStock"
+            type="number"
+            step="0.001"
+            min="0"
+            register={register}
+            error={errors.minimumStock?.message}
+          />
+        </div>
+        <TextareaField
+          label="Descripcion"
+          name="description"
+          register={register}
+          error={errors.description?.message}
+        />
+        <CheckboxField
+          label="Controlar inventario"
+          name="isInventoryControlled"
+          register={register}
+          hint="Si se activa, el item se controla en almacen."
+        />
+        <SelectField
+          label="Estatus"
+          name="status"
+          register={register}
+          error={errors.status?.message}
+        >
+          {STATUS_FORM_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </SelectField>
+        <ModalFormFooter onCancel={onClose} saving={saving} />
+      </form>
+    </Modal>
+  );
+}
+
+export function ItemCatalogSelect({
+  value,
+  onChange,
+  options,
+  onOptionsChange,
+  onSearch,
+  error,
+  label = "Item",
+  placeholder = "Buscar item...",
+  required = false,
+  allowClear = true,
+  clearLabel = "Sin seleccion",
+  hint,
+  createDefaults = null,
+  allowCreate = true,
+}) {
+  const { has } = usePermissions();
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createSeed, setCreateSeed] = useState({
+    name: "",
+    unit: "",
+    description: "",
+    itemType: "RAW_MATERIAL",
+  });
+  const canCreate = allowCreate && has("items.create");
+
+  return (
+    <>
+      <CatalogCombobox
+        label={label}
+        value={value}
+        onChange={onChange}
+        options={(options || []).map((it) => ({
+          value: it.id,
+          label: `${it.sku || ""} ${it.name}`.trim(),
+          description: it.itemType || it.unitOfMeasure || "",
+        }))}
+        placeholder={placeholder}
+        required={required}
+        error={error}
+        hint={hint}
+        allowClear={allowClear}
+        clearLabel={clearLabel}
+        canCreate={canCreate}
+        createLabel="Agregar nuevo item"
+        onCreateRequest={(name) => {
+          setCreateSeed({
+            name: name || createDefaults?.name || "",
+            unit: createDefaults?.unit || "",
+            description: createDefaults?.description || "",
+            itemType: createDefaults?.itemType || "RAW_MATERIAL",
+          });
+          setCreateOpen(true);
+        }}
+        onSearch={onSearch}
+      />
+      <QuickCreateItemModal
+        open={createOpen}
+        initialName={createSeed.name}
+        initialUnit={createSeed.unit}
+        initialDescription={createSeed.description}
+        initialItemType={createSeed.itemType}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(created) => {
+          const next = [created, ...(options || []).filter((it) => it.id !== created.id)];
+          onOptionsChange?.(next);
           onChange?.(created.id);
         }}
       />

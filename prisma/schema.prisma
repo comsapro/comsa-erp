@@ -286,6 +286,7 @@ model User {
   deletedAt DateTime? @map("deleted_at")
 
   roles               UserRole[]
+  teamMemberships     TeamMember[]
   passwordResetTokens PasswordResetToken[]
   auditLogs           AuditLog[]
   quotesAsSeller      Quote[]              @relation("QuoteSeller")
@@ -347,6 +348,7 @@ model Role {
 
   permissions RolePermission[]
   users       UserRole[]
+  teams       TeamRole[]
 
   @@index([deletedAt])
   @@map("roles")
@@ -385,6 +387,51 @@ model UserRole {
 
   @@id([userId, roleId])
   @@map("user_roles")
+}
+
+model Team {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  description String?
+  status      RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+  deletedAt DateTime? @map("deleted_at")
+
+  members TeamMember[]
+  roles   TeamRole[]
+  salesGoals SalesGoalTeam[]
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("teams")
+}
+
+model TeamMember {
+  teamId String @map("team_id")
+  userId String @map("user_id")
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, userId])
+  @@index([userId])
+  @@map("team_members")
+}
+
+model TeamRole {
+  teamId String @map("team_id")
+  roleId String @map("role_id")
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([teamId, roleId])
+  @@index([roleId])
+  @@map("team_roles")
 }
 
 model PasswordResetToken {
@@ -1770,6 +1817,7 @@ model SalesGoal {
   createdByUser User @relation("SalesGoalCreatedBy", fields: [createdBy], references: [id])
   updatedByUser User @relation("SalesGoalUpdatedBy", fields: [updatedBy], references: [id])
   sellers       SalesGoalSeller[]
+  teams         SalesGoalTeam[]
 
   @@unique([period, periodKey])
   @@index([deletedAt])
@@ -1788,6 +1836,18 @@ model SalesGoalSeller {
   @@map("sales_goal_sellers")
 }
 
+model SalesGoalTeam {
+  salesGoalId String @map("sales_goal_id")
+  teamId      String @map("team_id")
+
+  salesGoal SalesGoal @relation(fields: [salesGoalId], references: [id], onDelete: Cascade)
+  team      Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([salesGoalId, teamId])
+  @@index([teamId])
+  @@map("sales_goal_teams")
+}
+
 model SalesInvoice {
   id               String   @id @default(cuid())
   invoiceNumber    String   @unique @map("invoice_number")
@@ -1798,6 +1858,17 @@ model SalesInvoice {
   receivedByClient Boolean  @default(false) @map("received_by_client")
   receptionDate    DateTime? @map("reception_date") @db.Date
   notes            String?
+
+  pdfPathname      String?  @map("pdf_pathname")
+  pdfFileName      String?  @map("pdf_file_name")
+  pdfUrl           String?  @map("pdf_url")
+  pdfContentType   String?  @map("pdf_content_type")
+  pdfSizeBytes     Int?     @map("pdf_size_bytes")
+  xmlPathname      String?  @map("xml_pathname")
+  xmlFileName      String?  @map("xml_file_name")
+  xmlUrl           String?  @map("xml_url")
+  xmlContentType   String?  @map("xml_content_type")
+  xmlSizeBytes     Int?     @map("xml_size_bytes")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")

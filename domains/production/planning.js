@@ -8,6 +8,7 @@ import { jsonOk } from "@/lib/api/http";
 import { updateItemPlanningSchema, assignProcessSchema, updateOrderPlanningSchema } from "./schemas";
 import { recordProductionActivity } from "./activity";
 import { getDetailInclude } from "./recalc";
+import { assertActiveUser } from "@/domains/users/assert-active";
 
 function asDate(value) {
   if (value == null) return null;
@@ -33,6 +34,9 @@ export async function updateItemPlanning(request, orderId, itemId) {
   }
 
   const data = updateItemPlanningSchema.parse(await request.json());
+  if (data.assignedToUserId) {
+    await assertActiveUser(data.assignedToUserId, "Responsable");
+  }
   const next = {
     updatedBy: actor.id,
   };
@@ -116,6 +120,9 @@ export async function assignProcessResponsible(request, orderId, itemId, process
   });
   if (!process) throw new NotFoundError("Proceso no encontrado");
   const data = assignProcessSchema.parse(await request.json());
+  if (data.assignedToUserId) {
+    await assertActiveUser(data.assignedToUserId, "Responsable");
+  }
   await prisma.productionItemProcess.update({
     where: { id: processId },
     data: { assignedToUserId: data.assignedToUserId || null, updatedBy: actor.id },

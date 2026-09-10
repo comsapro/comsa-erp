@@ -23,8 +23,10 @@ import {
   canViewTeamSales,
   resolveSalesScope,
   sellerWhere,
+  canAccessSellerId,
 } from "./scope";
-import { getCurrentUser, userHasPermission } from "@/lib/auth/session";
+import { getCurrentUser, userHasPermission, userIsAdmin } from "@/lib/auth/session";
+import { assertActiveUser, assertActiveUsers } from "@/domains/users/assert-active";
 
 function parseMaterialsPage(request) {
   return parseListParams(request, {
@@ -85,6 +87,47 @@ function rangeForQuotePeriod(period) {
   return periodRange("ANNUAL", periodKeyFor(SALES_GOAL_PERIODS.ANNUAL, now));
 }
 
+async function assertActiveTeams(teamIds = []) {
+  if (!teamIds.length) return [];
+  const teams = await prisma.team.findMany({
+    where: { id: { in: teamIds }, deletedAt: null, status: "ACTIVE" },
+    select: { id: true },
+  });
+  if (teams.length !== teamIds.length) {
+    throw new ValidationError("Solo se pueden asignar equipos activos");
+  }
+  return teams.map((t) => t.id);
+}
+
+async function sellerIdsForGoal(goal) {
+  const ids = new Set((goal.sellers || []).map((s) => s.sellerId));
+  for (const link of goal.teams || []) {
+    const members = link.team?.members || [];
+    for (const m of members) {
+      if (m.userId) ids.add(m.userId);
+      else if (m.user?.id) ids.add(m.user.id);
+    }
+  }
+  return [...ids];
+}
+
+const GOAL_INCLUDE = {
+  sellers: { include: { seller: { select: { id: true, name: true, email: true } } } },
+  teams: {
+    include: {
+      team: {
+        select: {
+          id: true,
+          name: true,
+          members: { select: { userId: true } },
+        },
+      },
+    },
+  },
+  createdByUser: { select: { id: true, name: true } },
+  updatedByUser: { select: { id: true, name: true } },
+};
+
 async function activeGoalForScope(scope, date = new Date()) {
   const candidates = [
     SALES_GOAL_PERIODS.MONTHLY,
@@ -95,20 +138,44 @@ async function activeGoalForScope(scope, date = new Date()) {
 
   for (const period of candidates) {
     const key = periodKeyFor(period, date);
+    const scopeFilter = scope.sellerIds?.length
+      ? {
+          OR: [
+            { sellers: { some: { sellerId: { in: scope.sellerIds } } } },
+            {
+              teams: {
+                some: {
+                  team: {
+                    members: { some: { userId: { in: scope.sellerIds } } },
+                  },
+                },
+              },
+            },
+          ],
+        }
+      : scope.sellerId
+        ? {
+            OR: [
+              { sellers: { some: { sellerId: scope.sellerId } } },
+              {
+                teams: {
+                  some: {
+                    team: { members: { some: { userId: scope.sellerId } } },
+                  },
+                },
+              },
+            ],
+          }
+        : {};
+
     const goal = await prisma.salesGoal.findFirst({
       where: {
         deletedAt: null,
         period,
         periodKey: key,
-        ...(scope.sellerId
-          ? { sellers: { some: { sellerId: scope.sellerId } } }
-          : {}),
+        ...scopeFilter,
       },
-      include: {
-        sellers: { include: { seller: { select: { id: true, name: true } } } },
-        createdByUser: { select: { id: true, name: true } },
-        updatedByUser: { select: { id: true, name: true } },
-      },
+      include: GOAL_INCLUDE,
     });
     if (goal) return goal;
   }
@@ -181,11 +248,11 @@ export async function getSalesDashboard(request) {
   let goalMeta = null;
   if (goal) {
     const range = periodRange(goal.period, goal.periodKey);
-    const sellerIds = goal.sellers.map((s) => s.sellerId);
+    const sellerIds = await sellerIdsForGoal(goal);
     const invoices = await prisma.salesInvoice.aggregate({
       where: {
         deletedAt: null,
-        sellerId: { in: sellerIds },
+        ...(sellerIds.length ? { sellerId: { in: sellerIds } } : { sellerId: "__none__" }),
         invoiceDate: { gte: range.from, lte: range.to },
       },
       _sum: { netAmount: true },
@@ -201,7 +268,11 @@ export async function getSalesDashboard(request) {
       soldAmount,
       remaining: Math.max(0, amount - soldAmount),
       percent: pct,
-      sellers: goal.sellers.map((s) => s.seller),
+      sellers: (goal.sellers || []).map((s) => s.seller),
+      teams: (goal.teams || []).map((t) => ({
+        id: t.team.id,
+        name: t.team.name,
+      })),
       createdAt: goal.createdAt,
       createdBy: goal.createdByUser,
       updatedAt: goal.updatedAt,
@@ -557,10 +628,8 @@ export async function upsertMaterialDecision(request) {
   if (!material || material.quoteItem.quote.deletedAt) {
     throw new NotFoundError("Material no encontrado");
   }
-  if (
-    !canViewTeamSales(user) &&
-    material.quoteItem.quote.sellerId !== user.id
-  ) {
+  const scope = await resolveSalesScope(request, {});
+  if (!canAccessSellerId(scope, material.quoteItem.quote.sellerId)) {
     throw new ForbiddenError("No puedes decidir sobre materiales de otro vendedor");
   }
 
@@ -601,11 +670,7 @@ export async function listSalesGoals(request) {
   await requirePermission("sales.manage_goals");
   const rows = await prisma.salesGoal.findMany({
     where: { deletedAt: null },
-    include: {
-      sellers: { include: { seller: { select: { id: true, name: true, email: true } } } },
-      createdByUser: { select: { id: true, name: true } },
-      updatedByUser: { select: { id: true, name: true } },
-    },
+    include: GOAL_INCLUDE,
     orderBy: [{ periodKey: "desc" }, { createdAt: "desc" }],
   });
   return jsonOk({ data: rows });
@@ -628,6 +693,9 @@ export async function createSalesGoal(request) {
     throw new ConflictError("Ya existe una meta para ese periodo");
   }
 
+  const sellerIds = await assertActiveUsers(data.sellerIds || [], "Vendedor");
+  const teamIds = await assertActiveTeams(data.teamIds || []);
+
   const record = await prisma.salesGoal.create({
     data: {
       period: data.period,
@@ -637,12 +705,13 @@ export async function createSalesGoal(request) {
       createdBy: actor.id,
       updatedBy: actor.id,
       sellers: {
-        create: data.sellerIds.map((sellerId) => ({ sellerId })),
+        create: sellerIds.map((sellerId) => ({ sellerId })),
+      },
+      teams: {
+        create: teamIds.map((teamId) => ({ teamId })),
       },
     },
-    include: {
-      sellers: { include: { seller: { select: { id: true, name: true } } } },
-    },
+    include: GOAL_INCLUDE,
   });
 
   await recordAudit({
@@ -668,8 +737,12 @@ export async function updateSalesGoal(request, id) {
   });
   if (!existing) throw new NotFoundError("Meta no encontrada");
 
+  const sellerIds = await assertActiveUsers(data.sellerIds || [], "Vendedor");
+  const teamIds = await assertActiveTeams(data.teamIds || []);
+
   const record = await prisma.$transaction(async (tx) => {
     await tx.salesGoalSeller.deleteMany({ where: { salesGoalId: id } });
+    await tx.salesGoalTeam.deleteMany({ where: { salesGoalId: id } });
     return tx.salesGoal.update({
       where: { id },
       data: {
@@ -679,12 +752,13 @@ export async function updateSalesGoal(request, id) {
         label: data.label || null,
         updatedBy: actor.id,
         sellers: {
-          create: data.sellerIds.map((sellerId) => ({ sellerId })),
+          create: sellerIds.map((sellerId) => ({ sellerId })),
+        },
+        teams: {
+          create: teamIds.map((teamId) => ({ teamId })),
         },
       },
-      include: {
-        sellers: { include: { seller: { select: { id: true, name: true } } } },
-      },
+      include: GOAL_INCLUDE,
     });
   });
 
@@ -744,6 +818,7 @@ export async function createSalesInvoice(request) {
 
   const sellerId =
     canViewTeamSales(user) && data.sellerId ? data.sellerId : user.id;
+  await assertActiveUser(sellerId, "Vendedor");
 
   const duplicate = await prisma.salesInvoice.findFirst({
     where: {
@@ -755,19 +830,29 @@ export async function createSalesInvoice(request) {
     throw new ConflictError("Ya existe una factura con ese número");
   }
 
-  for (const link of data.quotes) {
-    const quote = await prisma.quote.findFirst({
-      where: { id: link.quoteId, deletedAt: null },
-      include: { items: { where: { status: "ACTIVE" }, select: { id: true } } },
-    });
-    if (!quote) throw new NotFoundError(`Cotización no encontrada: ${link.quoteId}`);
-    if (!canViewTeamSales(user) && quote.sellerId !== user.id) {
-      throw new ForbiddenError("No puedes facturar cotizaciones de otro vendedor");
+  const quoteLinks = data.quotes || [];
+  if (!quoteLinks.length) {
+    if (!userIsAdmin(user)) {
+      throw new ForbiddenError(
+        "Solo administradores pueden registrar facturas sin cotización ni partidas"
+      );
     }
-    const allowed = new Set(quote.items.map((i) => i.id));
-    for (const itemId of link.quoteItemIds) {
-      if (!allowed.has(itemId)) {
-        throw new ValidationError("Partida no pertenece a la cotización seleccionada");
+  } else {
+    const invoiceScope = await resolveSalesScope(request, {});
+    for (const link of quoteLinks) {
+      const quote = await prisma.quote.findFirst({
+        where: { id: link.quoteId, deletedAt: null },
+        include: { items: { where: { status: "ACTIVE" }, select: { id: true } } },
+      });
+      if (!quote) throw new NotFoundError(`Cotización no encontrada: ${link.quoteId}`);
+      if (!canAccessSellerId(invoiceScope, quote.sellerId)) {
+        throw new ForbiddenError("No puedes facturar cotizaciones de otro vendedor");
+      }
+      const allowed = new Set(quote.items.map((i) => i.id));
+      for (const itemId of link.quoteItemIds) {
+        if (!allowed.has(itemId)) {
+          throw new ValidationError("Partida no pertenece a la cotización seleccionada");
+        }
       }
     }
   }
@@ -784,14 +869,16 @@ export async function createSalesInvoice(request) {
       notes: data.notes || null,
       createdBy: actor.id,
       updatedBy: actor.id,
-      quotes: {
-        create: data.quotes.map((link) => ({
-          quoteId: link.quoteId,
-          items: {
-            create: link.quoteItemIds.map((quoteItemId) => ({ quoteItemId })),
-          },
-        })),
-      },
+      quotes: quoteLinks.length
+        ? {
+            create: quoteLinks.map((link) => ({
+              quoteId: link.quoteId,
+              items: {
+                create: link.quoteItemIds.map((quoteItemId) => ({ quoteItemId })),
+              },
+            })),
+          }
+        : undefined,
     },
     include: {
       seller: { select: { id: true, name: true } },
@@ -892,10 +979,8 @@ export async function updateCommitmentDate(request, productionItemId) {
     },
   });
   if (!item) throw new NotFoundError("Partida de producción no encontrada");
-  if (
-    !canViewTeamSales(user) &&
-    item.productionOrder.quote?.sellerId !== user.id
-  ) {
+  const commitmentScope = await resolveSalesScope(request, {});
+  if (!canAccessSellerId(commitmentScope, item.productionOrder.quote?.sellerId)) {
     throw new ForbiddenError("No puedes editar compromisos de otro vendedor");
   }
 

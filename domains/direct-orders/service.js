@@ -20,6 +20,12 @@ import {
   directOrderRejectSchema,
   directOrderCancelSchema,
 } from "./schemas";
+import { getCurrentUser } from "@/lib/auth/session";
+import {
+  isSellerScopedUser,
+  resolveSalesScope,
+  sellerWhere,
+} from "@/domains/sales/scope";
 
 const SORTABLE = ["folio", "status", "requestDate", "createdAt"];
 
@@ -116,7 +122,15 @@ export async function listDirectOrders(request) {
   if (clientId) where.clientId = clientId;
 
   const sellerId = params.searchParams.get("sellerId");
-  if (sellerId) where.sellerId = sellerId;
+  const user = await getCurrentUser();
+  if (isSellerScopedUser(user)) {
+    const scope = await resolveSalesScope(request, {
+      sellerIdParam: sellerId || undefined,
+    });
+    Object.assign(where, sellerWhere(scope));
+  } else if (sellerId) {
+    where.sellerId = sellerId;
+  }
 
   if (params.q) {
     where.OR = [

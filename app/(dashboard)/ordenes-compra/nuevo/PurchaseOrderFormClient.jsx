@@ -6,6 +6,7 @@ import Link from "next/link";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { CatalogCombobox } from "@/components/forms/CatalogCombobox";
+import { ItemCatalogSelect } from "@/components/forms/catalog-selects";
 import { api, toQuery } from "@/lib/api/client";
 import { MaterialPreload } from "@/components/purchase-orders/MaterialPreload";
 
@@ -154,15 +155,6 @@ export default function PurchaseOrderFormClient({
           : p.status || "",
       })),
     [linkedProductions]
-  );
-  const itemOptions = useMemo(
-    () =>
-      items.map((it) => ({
-        value: it.id,
-        label: `${it.sku || ""} ${it.name}`.trim(),
-        description: it.itemType || "",
-      })),
-    [items]
   );
 
   async function onSubmit(e) {
@@ -323,6 +315,8 @@ export default function PurchaseOrderFormClient({
           productionOrderId={prodId}
           quoteId={qId}
           catalogItems={items}
+          onCatalogItemsChange={setItems}
+          onSearchItems={searchItems}
           onApply={(mapped, meta) => {
             if (meta?.quoteId) setQId(meta.quoteId);
             if (meta?.productionOrderId) setProdId(meta.productionOrderId);
@@ -365,13 +359,13 @@ export default function PurchaseOrderFormClient({
         <div className="space-y-3">
           <p className="text-sm font-medium">Partidas</p>
           <p className="text-xs text-content-muted">
-            Puedes precargar materiales de la cotizacion o agregar items del
-            catalogo que no hayan sido cotizados.
+            Puedes precargar materiales de la cotizacion, mapear o crear items
+            nuevos, o agregar partidas del catalogo.
           </p>
           {lines.map((line, idx) => (
             <div key={idx} className="grid gap-2 sm:grid-cols-4">
               <div className="sm:col-span-2">
-                <CatalogCombobox
+                <ItemCatalogSelect
                   label={idx === 0 ? "Item" : undefined}
                   value={line.itemId}
                   onChange={(v) => {
@@ -383,9 +377,10 @@ export default function PurchaseOrderFormClient({
                     };
                     setLines(next);
                   }}
-                  options={itemOptions}
-                  placeholder="Buscar item..."
+                  options={items}
+                  onOptionsChange={setItems}
                   onSearch={searchItems}
+                  placeholder="Buscar o agregar item..."
                 />
               </div>
               <label className="block text-sm">

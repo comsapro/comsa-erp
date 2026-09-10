@@ -37,16 +37,27 @@ export default function UsersClient() {
     {
       key: "roles",
       header: "Roles",
-      render: (r) =>
-        r.roles?.length ? (
+      render: (r) => {
+        const direct = r.directRoles || r.roles || [];
+        const viaTeam = r.teamRoles || [];
+        if (!direct.length && !viaTeam.length) {
+          return <span className="text-content-muted">Sin roles</span>;
+        }
+        return (
           <div className="flex flex-wrap gap-1">
-            {r.roles.map((role) => (
-              <Badge key={role.id} tone="brand">{role.name}</Badge>
+            {direct.map((role) => (
+              <Badge key={`d-${role.id}`} tone="brand">
+                {role.name}
+              </Badge>
+            ))}
+            {viaTeam.map((role) => (
+              <Badge key={`t-${role.teamId}-${role.id}`} tone="neutral">
+                {role.name} · {role.teamName}
+              </Badge>
             ))}
           </div>
-        ) : (
-          <span className="text-content-muted">Sin roles</span>
-        ),
+        );
+      },
     },
     { key: "status", header: "Estatus", sortable: true, sortKey: "status", render: (r) => <StatusBadge status={r.status} /> },
     { key: "lastLoginAt", header: "Ultimo acceso", sortable: true, sortKey: "lastLoginAt", render: (r) => formatDateTime(r.lastLoginAt) },
@@ -86,7 +97,7 @@ export default function UsersClient() {
         searchPlaceholder="Buscar por nombre o correo..."
         initialSort="createdAt"
         initialOrder="desc"
-        filters={[{ key: "status", label: "Estatus", options: STATUS_FILTER_OPTIONS, defaultValue: "" }]}
+        filters={[{ key: "status", label: "Estatus", options: STATUS_FILTER_OPTIONS, defaultValue: "ACTIVE" }]}
         emptyTitle="Sin usuarios"
         emptyDescription="Aun no se registran usuarios."
       />

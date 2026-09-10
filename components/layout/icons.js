@@ -26,6 +26,7 @@ import {
   Banknote,
   Receipt,
   Target,
+  UsersRound,
 } from "lucide-react";
 
 export const ICONS = {
@@ -56,6 +57,7 @@ export const ICONS = {
   Banknote,
   Receipt,
   Target,
+  UsersRound,
 };
 
 export function getIcon(name) {

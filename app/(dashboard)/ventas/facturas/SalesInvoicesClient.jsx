@@ -91,6 +91,7 @@ export default function SalesInvoicesClient() {
                     <th className="px-2 py-2 font-medium">Vendedor</th>
                     <th className="px-2 py-2 font-medium">PO cliente</th>
                     <th className="px-2 py-2 font-medium">Cotizaciones</th>
+                    <th className="px-2 py-2 font-medium">Archivos</th>
                     <th className="px-2 py-2 font-medium">Recepción</th>
                   </tr>
                 </thead>
@@ -103,10 +104,37 @@ export default function SalesInvoicesClient() {
                       <td className="px-2 py-2">{r.seller?.name}</td>
                       <td className="px-2 py-2">{r.clientPoNumber}</td>
                       <td className="px-2 py-2">
-                        {(r.quotes || [])
-                          .map((q) => q.quote?.folio)
-                          .filter(Boolean)
-                          .join(", ")}
+                        {(r.quotes || []).length
+                          ? (r.quotes || [])
+                              .map((q) => q.quote?.folio)
+                              .filter(Boolean)
+                              .join(", ")
+                          : "—"}
+                      </td>
+                      <td className="px-2 py-2">
+                        <span className="flex flex-wrap gap-2">
+                          {r.pdfPathname ? (
+                            <a
+                              className="text-brand-700 underline"
+                              href={`/api/blob?pathname=${encodeURIComponent(r.pdfPathname)}`}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              PDF
+                            </a>
+                          ) : null}
+                          {r.xmlPathname ? (
+                            <a
+                              className="text-brand-700 underline"
+                              href={`/api/blob?pathname=${encodeURIComponent(r.xmlPathname)}`}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              XML
+                            </a>
+                          ) : null}
+                          {!r.pdfPathname && !r.xmlPathname ? "—" : null}
+                        </span>
                       </td>
                       <td className="px-2 py-2">
                         {r.receivedByClient ? (
