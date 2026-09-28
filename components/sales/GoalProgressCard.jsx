@@ -41,7 +41,7 @@ export function GoalProgressCard({ goal }) {
       <CardBody className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-3">
           <div>
-            <p className="text-xs text-content-muted">Meta establecida</p>
+            <p className="text-xs text-content-muted">Meta establecida (+ IVA)</p>
             <p className="text-lg font-semibold text-content">{formatMoney(goal.amount)}</p>
           </div>
           <div>

@@ -27,6 +27,10 @@ import {
   Receipt,
   Target,
   UsersRound,
+  ClipboardCheck,
+  Ruler,
+  Bell,
+  History,
 } from "lucide-react";
 
 export const ICONS = {
@@ -58,6 +62,10 @@ export const ICONS = {
   Receipt,
   Target,
   UsersRound,
+  ClipboardCheck,
+  Ruler,
+  Bell,
+  History,
 };
 
 export function getIcon(name) {

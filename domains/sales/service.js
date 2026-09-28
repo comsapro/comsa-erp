@@ -18,6 +18,7 @@ import {
   periodRange,
   SALES_GOAL_PERIODS,
 } from "./constants";
+import { goalAssignmentsOverlap } from "./goal-overlap";
 import {
   canManageSalesGoals,
   canViewTeamSales,
@@ -97,6 +98,35 @@ async function assertActiveTeams(teamIds = []) {
     throw new ValidationError("Solo se pueden asignar equipos activos");
   }
   return teams.map((t) => t.id);
+}
+
+async function assertNoOverlappingGoal({
+  period,
+  periodKey,
+  teamIds,
+  sellerIds,
+  excludeId = null,
+}) {
+  const candidates = await prisma.salesGoal.findMany({
+    where: {
+      deletedAt: null,
+      period,
+      periodKey,
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+    },
+    include: {
+      teams: { select: { teamId: true } },
+      sellers: { select: { sellerId: true } },
+    },
+  });
+
+  for (const goal of candidates) {
+    if (goalAssignmentsOverlap(goal, teamIds, sellerIds)) {
+      throw new ConflictError(
+        "Ya existe una meta para ese equipo o vendedor en el periodo"
+      );
+    }
+  }
 }
 
 async function sellerIdsForGoal(goal) {
@@ -682,19 +712,15 @@ export async function createSalesGoal(request) {
   const body = await request.json();
   const data = salesGoalSchema.parse(body);
 
-  const existing = await prisma.salesGoal.findFirst({
-    where: {
-      deletedAt: null,
-      period: data.period,
-      periodKey: data.periodKey,
-    },
-  });
-  if (existing) {
-    throw new ConflictError("Ya existe una meta para ese periodo");
-  }
-
   const sellerIds = await assertActiveUsers(data.sellerIds || [], "Vendedor");
   const teamIds = await assertActiveTeams(data.teamIds || []);
+
+  await assertNoOverlappingGoal({
+    period: data.period,
+    periodKey: data.periodKey,
+    teamIds,
+    sellerIds,
+  });
 
   const record = await prisma.salesGoal.create({
     data: {
@@ -739,6 +765,14 @@ export async function updateSalesGoal(request, id) {
 
   const sellerIds = await assertActiveUsers(data.sellerIds || [], "Vendedor");
   const teamIds = await assertActiveTeams(data.teamIds || []);
+
+  await assertNoOverlappingGoal({
+    period: data.period,
+    periodKey: data.periodKey,
+    teamIds,
+    sellerIds,
+    excludeId: id,
+  });
 
   const record = await prisma.$transaction(async (tx) => {
     await tx.salesGoalSeller.deleteMany({ where: { salesGoalId: id } });

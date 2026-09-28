@@ -17,6 +17,10 @@ import {
   buildPermissionList,
 } from "../lib/permissions/catalog.js";
 import { buildMenu } from "../lib/navigation/menu.js";
+import { goalAssignmentsOverlap } from "../domains/sales/goal-overlap.js";
+import { parseMoneyInput, formatMoneyInput } from "../lib/utils/format.js";
+import { salesInvoiceSchema } from "../domains/sales/schemas.js";
+import { poCreateSchema } from "../domains/purchase-orders/schemas.js";
 
 test("addBusinessDays salta fines de semana", () => {
   // Viernes 2026-09-04 + 1 día hábil = lunes 2026-09-07
@@ -89,4 +93,59 @@ test("menu muestra dashboard de ventas con permiso", () => {
 
 test("ALL_PERMISSION_CODES incluye sales", () => {
   assert.ok(ALL_PERMISSION_CODES.includes("sales.view"));
+});
+
+test("goalAssignmentsOverlap permite equipos distintos mismo periodo", () => {
+  const existing = {
+    teams: [{ teamId: "team-a" }],
+    sellers: [],
+  };
+  assert.equal(goalAssignmentsOverlap(existing, ["team-b"], []), false);
+  assert.equal(goalAssignmentsOverlap(existing, ["team-a"], []), true);
+});
+
+test("goalAssignmentsOverlap detecta vendedor compartido", () => {
+  const existing = {
+    teams: [],
+    sellers: [{ sellerId: "u1" }],
+  };
+  assert.equal(goalAssignmentsOverlap(existing, [], ["u1"]), true);
+  assert.equal(goalAssignmentsOverlap(existing, [], ["u2"]), false);
+});
+
+test("parseMoneyInput y formatMoneyInput", () => {
+  assert.equal(parseMoneyInput("$850,000.5"), 850000.5);
+  assert.equal(formatMoneyInput(850000.5), "$850,000.50");
+});
+
+test("salesInvoiceSchema acepta receptionDate vacia", () => {
+  const parsed = salesInvoiceSchema.parse({
+    invoiceNumber: "F-1",
+    netAmount: 100,
+    invoiceDate: "2026-09-18",
+    clientPoNumber: "PO-1",
+    receivedByClient: false,
+    receptionDate: "",
+    quotes: [],
+  });
+  assert.equal(parsed.receptionDate, null);
+});
+
+test("poCreateSchema permite partida manual sin itemId", () => {
+  const parsed = poCreateSchema.parse({
+    supplierId: "sup1",
+    productionOrderId: "op1",
+    quoteId: "q1",
+    requestDate: "2026-09-18",
+    items: [
+      {
+        descriptionSnapshot: "Placa acero 1/2",
+        quantity: 2,
+        unitPrice: 150,
+        sourceType: "MANUAL",
+      },
+    ],
+  });
+  assert.equal(parsed.items[0].itemId ?? null, null);
+  assert.equal(parsed.items[0].descriptionSnapshot, "Placa acero 1/2");
 });

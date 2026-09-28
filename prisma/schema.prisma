@@ -200,6 +200,7 @@ enum FolioScope {
   WAREHOUSE_TRANSFER
   PURCHASE_ORDER
   PURCHASE_RECEIPT
+  QUALITY_REWORK
 
   @@map("folio_scope")
 }
@@ -329,6 +330,12 @@ model User {
   salesInvoicesCreated SalesInvoice[] @relation("SalesInvoiceCreatedBy")
   salesInvoicesUpdated SalesInvoice[] @relation("SalesInvoiceUpdatedBy")
   materialPurchaseDecisions MaterialPurchaseDecision[] @relation("MaterialPurchaseDecisionBy")
+  qualityInspectionsAsInspector QualityInspection[] @relation("QualityInspectionInspector")
+  qualityReworkOrdersCreated QualityReworkOrder[] @relation("QualityReworkOrderCreatedBy")
+  qualityReworkOrdersResponsible QualityReworkOrder[] @relation("QualityReworkOrderResponsible")
+  qualityReworkSimplesCreated QualityReworkSimple[] @relation("QualityReworkSimpleCreatedBy")
+  qualityAlertsAssigned QualityAlert[] @relation("QualityAlertAssignee")
+  measuringInstrumentsCreated MeasuringInstrument[] @relation("MeasuringInstrumentCreatedBy")
 
   @@index([status])
   @@index([deletedAt])
@@ -1255,6 +1262,12 @@ model ProductionOrder {
   incidents            ProductionIncident[]
   extraMaterials       ProductionExtraMaterial[]
   timeSessions         ProductionTimeSession[]
+  qualityItemConfigs   QualityItemConfig[]
+  qualityAlerts        QualityAlert[]
+  qualityReworkOrders  QualityReworkOrder[]
+  qualityReworkSimples QualityReworkSimple[]
+  qualityEvidences     QualityEvidence[]
+  qualityExternalShares QualityExternalShare[]
 
   @@index([status, approvalDate])
   @@index([clientId])
@@ -1335,6 +1348,11 @@ model ProductionItem {
   attachments     ProductionAttachment[]
   timeSessions    ProductionTimeSession[]
   scheduleChanges ProductionScheduleChange[]
+  qualityConfig   QualityItemConfig?
+  qualityPieces   QualityPiece[]
+  qualityReworkOrders QualityReworkOrder[]
+  qualityReworkSimples QualityReworkSimple[]
+  qualityEvidences QualityEvidence[]
 
   @@index([productionOrderId, position])
   @@index([sourceItemId])
@@ -1697,7 +1715,7 @@ model PurchaseOrder {
 model PurchaseOrderItem {
   id                   String                  @id @default(cuid())
   purchaseOrderId      String                  @map("purchase_order_id")
-  itemId               String                  @map("item_id")
+  itemId               String?                 @map("item_id")
   descriptionSnapshot  String                  @map("description_snapshot")
   quantity             Decimal                 @db.Decimal(14, 3)
   receivedQuantity     Decimal                 @default(0) @map("received_quantity") @db.Decimal(14, 3)
@@ -1715,7 +1733,7 @@ model PurchaseOrderItem {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  item          Item          @relation(fields: [itemId], references: [id])
+  item          Item?         @relation(fields: [itemId], references: [id], onDelete: SetNull)
   warehouse     Warehouse?    @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
   receiptItems  PurchaseReceiptItem[]
 
@@ -1819,7 +1837,7 @@ model SalesGoal {
   sellers       SalesGoalSeller[]
   teams         SalesGoalTeam[]
 
-  @@unique([period, periodKey])
+  @@index([period, periodKey])
   @@index([deletedAt])
   @@map("sales_goals")
 }
@@ -1933,5 +1951,552 @@ model MaterialPurchaseDecision {
 
   @@index([willPurchase])
   @@map("material_purchase_decisions")
+}
+
+// -----------------------------------------------------------------------------
+// Fase 2 — Calidad
+// -----------------------------------------------------------------------------
+
+enum QualityInspectionMode {
+  FULL
+  SAMPLE
+
+  @@map("quality_inspection_mode")
+}
+
+enum QualityItemInspectionStatus {
+  PENDING
+  IN_PROGRESS
+  FIRST_PIECE_PENDING
+  WAITING_PRODUCTION
+  CLOSED
+
+  @@map("quality_item_inspection_status")
+}
+
+enum QualityPieceStatus {
+  PENDING
+  IN_INSPECTION
+  CONFORMING
+  NON_CONFORMING
+  REWORK
+  RELEASED
+
+  @@map("quality_piece_status")
+}
+
+enum QualityInspectionType {
+  FIRST_PIECE
+  PIECE
+  SAMPLE
+  SPECIAL
+
+  @@map("quality_inspection_type")
+}
+
+enum QualityInspectionStatus {
+  DRAFT
+  IN_PROGRESS
+  CLOSED
+  CANCELLED
+
+  @@map("quality_inspection_status")
+}
+
+enum QualityResult {
+  PENDING
+  CONFORMING
+  NON_CONFORMING
+
+  @@map("quality_result")
+}
+
+enum QualitySpecialCheckType {
+  DIMENSIONAL
+  VISUAL
+  LIQUID_PENETRANT
+  HARDNESS
+  OTHER
+
+  @@map("quality_special_check_type")
+}
+
+enum QualityReworkStatus {
+  REQUESTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+
+  @@map("quality_rework_status")
+}
+
+enum InstrumentStatus {
+  ACTIVE
+  DUE_SOON
+  EXPIRED
+  OUT_OF_SERVICE
+
+  @@map("instrument_status")
+}
+
+enum QualityAlertAudience {
+  PRODUCTION
+  SALES
+  MANAGEMENT
+  QUALITY
+
+  @@map("quality_alert_audience")
+}
+
+enum QualityAlertStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+  DISMISSED
+
+  @@map("quality_alert_status")
+}
+
+enum QualityEvidenceStage {
+  INSPECTION
+  DEFECT
+  BEFORE_REWORK
+  AFTER_REWORK
+  SPECIAL
+  OTHER
+
+  @@map("quality_evidence_stage")
+}
+
+model QualityItemConfig {
+  id                    String                       @id @default(cuid())
+  productionOrderId     String                       @map("production_order_id")
+  productionItemId      String                       @unique @map("production_item_id")
+  requiresFirstPiece    Boolean                      @default(false) @map("requires_first_piece")
+  firstPieceReleased    Boolean                      @default(false) @map("first_piece_released")
+  firstPieceReleasedAt  DateTime?                    @map("first_piece_released_at")
+  inspectionMode        QualityInspectionMode        @default(FULL) @map("inspection_mode")
+  sampleEveryN          Int?                         @map("sample_every_n")
+  sampleCountRequired   Int?                         @map("sample_count_required")
+  requestedQty          Decimal                      @default(0) @map("requested_qty") @db.Decimal(14, 3)
+  fabricatedQty         Decimal                      @default(0) @map("fabricated_qty") @db.Decimal(14, 3)
+  inspectedQty          Decimal                      @default(0) @map("inspected_qty") @db.Decimal(14, 3)
+  releasedQty           Decimal                      @default(0) @map("released_qty") @db.Decimal(14, 3)
+  missingQty            Decimal                      @default(0) @map("missing_qty") @db.Decimal(14, 3)
+  inspectionStatus      QualityItemInspectionStatus  @default(PENDING) @map("inspection_status")
+  samplingConfiguredBy  String?                      @map("sampling_configured_by")
+  samplingConfiguredAt  DateTime?                    @map("sampling_configured_at")
+  notes                 String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  productionItem  ProductionItem  @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
+  pieces          QualityPiece[]
+  inspections     QualityInspection[]
+
+  @@index([productionOrderId])
+  @@index([inspectionStatus])
+  @@map("quality_item_configs")
+}
+
+model QualityPiece {
+  id                String             @id @default(cuid())
+  productionItemId  String             @map("production_item_id")
+  qualityConfigId   String             @map("quality_config_id")
+  pieceNumber       Int                @map("piece_number")
+  label             String
+  status            QualityPieceStatus @default(PENDING)
+  isFirstPiece      Boolean            @default(false) @map("is_first_piece")
+  isSample          Boolean            @default(false) @map("is_sample")
+  result            QualityResult      @default(PENDING)
+  releasedAt        DateTime?          @map("released_at")
+  releasedBy        String?            @map("released_by")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  productionItem ProductionItem      @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
+  qualityConfig  QualityItemConfig   @relation(fields: [qualityConfigId], references: [id], onDelete: Cascade)
+  inspections    QualityInspection[]
+  nonConformances QualityNonConformance[]
+  reworkOrders   QualityReworkOrderPiece[]
+  reworkSimples  QualityReworkSimple[]
+  evidences      QualityEvidence[]
+  externalShares QualityExternalShare[]
+
+  @@unique([productionItemId, pieceNumber])
+  @@index([qualityConfigId])
+  @@index([status])
+  @@map("quality_pieces")
+}
+
+model QualityInspection {
+  id               String                   @id @default(cuid())
+  qualityConfigId  String                   @map("quality_config_id")
+  qualityPieceId   String?                  @map("quality_piece_id")
+  type             QualityInspectionType
+  status           QualityInspectionStatus  @default(DRAFT)
+  result           QualityResult            @default(PENDING)
+  inspectorId      String                   @map("inspector_id")
+  startedAt        DateTime?                @map("started_at")
+  closedAt         DateTime?                @map("closed_at")
+  observations     String?
+  instrumentId     String?                  @map("instrument_id")
+  instrumentWarned Boolean                  @default(false) @map("instrument_warned")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  qualityConfig   QualityItemConfig      @relation(fields: [qualityConfigId], references: [id], onDelete: Cascade)
+  qualityPiece    QualityPiece?          @relation(fields: [qualityPieceId], references: [id], onDelete: SetNull)
+  inspector       User                   @relation("QualityInspectionInspector", fields: [inspectorId], references: [id])
+  instrument      MeasuringInstrument?   @relation(fields: [instrumentId], references: [id], onDelete: SetNull)
+  measurements    QualityMeasurement[]
+  specialChecks   QualitySpecialCheck[]
+  nonConformances QualityNonConformance[]
+  evidences       QualityEvidence[]
+  missingProcessRequests QualityMissingProcessRequest[]
+
+  @@index([qualityConfigId])
+  @@index([qualityPieceId])
+  @@index([inspectorId])
+  @@index([status])
+  @@map("quality_inspections")
+}
+
+model QualityMeasurement {
+  id                  String   @id @default(cuid())
+  qualityInspectionId String   @map("quality_inspection_id")
+  label               String
+  nominal             String?
+  tolerancePlus       String?  @map("tolerance_plus")
+  toleranceMinus      String?  @map("tolerance_minus")
+  measuredValue       String?  @map("measured_value")
+  unit                String?
+  result              QualityResult @default(PENDING)
+  sortOrder           Int      @default(0) @map("sort_order")
+  observations        String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  inspection QualityInspection @relation(fields: [qualityInspectionId], references: [id], onDelete: Cascade)
+
+  @@index([qualityInspectionId])
+  @@map("quality_measurements")
+}
+
+model QualitySpecialCheck {
+  id                  String                   @id @default(cuid())
+  qualityInspectionId String                   @map("quality_inspection_id")
+  checkType           QualitySpecialCheckType  @map("check_type")
+  required            Boolean                  @default(false)
+  method              String?
+  unit                String?
+  expectedValue       String?                  @map("expected_value")
+  obtainedValue       String?                  @map("obtained_value")
+  result              QualityResult            @default(PENDING)
+  reportPathname      String?                  @map("report_pathname")
+  reportFileName      String?                  @map("report_file_name")
+  instrumentId        String?                  @map("instrument_id")
+  observations        String?
+  completedAt         DateTime?                @map("completed_at")
+  completedBy         String?                  @map("completed_by")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  inspection QualityInspection    @relation(fields: [qualityInspectionId], references: [id], onDelete: Cascade)
+  instrument MeasuringInstrument? @relation(fields: [instrumentId], references: [id], onDelete: SetNull)
+  evidences  QualityEvidence[]
+
+  @@index([qualityInspectionId])
+  @@map("quality_special_checks")
+}
+
+model QualityNonConformance {
+  id                  String        @id @default(cuid())
+  qualityInspectionId String        @map("quality_inspection_id")
+  qualityPieceId      String?       @map("quality_piece_id")
+  result              QualityResult
+  description         String
+  area                String?
+  processName         String?       @map("process_name")
+  operatorId          String?       @map("operator_id")
+  productionIncidentId String?      @map("production_incident_id")
+  reworkOrderId       String?       @map("rework_order_id")
+  reworkSimpleId      String?       @map("rework_simple_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  inspection   QualityInspection  @relation(fields: [qualityInspectionId], references: [id], onDelete: Cascade)
+  qualityPiece QualityPiece?      @relation(fields: [qualityPieceId], references: [id], onDelete: SetNull)
+  reworkOrder  QualityReworkOrder? @relation(fields: [reworkOrderId], references: [id], onDelete: SetNull)
+  reworkSimple QualityReworkSimple? @relation(fields: [reworkSimpleId], references: [id], onDelete: SetNull)
+  evidences    QualityEvidence[]
+
+  @@index([qualityInspectionId])
+  @@index([qualityPieceId])
+  @@map("quality_non_conformances")
+}
+
+model QualityMissingProcessRequest {
+  id                  String   @id @default(cuid())
+  qualityInspectionId String   @map("quality_inspection_id")
+  productionOrderId   String   @map("production_order_id")
+  productionItemId    String   @map("production_item_id")
+  processName         String   @map("process_name")
+  manufacturingProcessId String? @map("manufacturing_process_id")
+  notes               String?
+  productionProcessId String?  @map("production_process_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  createdBy String?  @map("created_by")
+
+  inspection QualityInspection @relation(fields: [qualityInspectionId], references: [id], onDelete: Cascade)
+
+  @@index([qualityInspectionId])
+  @@index([productionItemId])
+  @@map("quality_missing_process_requests")
+}
+
+model QualityReworkOrder {
+  id                String              @id @default(cuid())
+  folio             String              @unique
+  productionOrderId String              @map("production_order_id")
+  productionItemId  String              @map("production_item_id")
+  status            QualityReworkStatus @default(REQUESTED)
+  cause             String
+  instructions      String?
+  area              String?
+  processName       String?             @map("process_name")
+  operatorName      String?             @map("operator_name")
+  materialUsed      String?             @map("material_used")
+  requestedAt       DateTime            @default(now()) @map("requested_at")
+  startedAt         DateTime?           @map("started_at")
+  expectedEndAt     DateTime?           @map("expected_end_at") @db.Date
+  completedAt       DateTime?           @map("completed_at")
+  totalHours        Decimal             @default(0) @map("total_hours") @db.Decimal(14, 3)
+  finalResult       QualityResult       @default(PENDING) @map("final_result")
+  responsibleId     String?             @map("responsible_id")
+  createdById       String              @map("created_by_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  updatedBy String?  @map("updated_by")
+
+  productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  productionItem  ProductionItem  @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
+  responsible     User?           @relation("QualityReworkOrderResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
+  createdByUser   User            @relation("QualityReworkOrderCreatedBy", fields: [createdById], references: [id])
+  pieces          QualityReworkOrderPiece[]
+  hours           QualityReworkHour[]
+  nonConformances QualityNonConformance[]
+  evidences       QualityEvidence[]
+
+  @@index([productionOrderId])
+  @@index([productionItemId])
+  @@index([status])
+  @@map("quality_rework_orders")
+}
+
+model QualityReworkOrderPiece {
+  id               String @id @default(cuid())
+  reworkOrderId    String @map("rework_order_id")
+  qualityPieceId   String @map("quality_piece_id")
+
+  reworkOrder  QualityReworkOrder @relation(fields: [reworkOrderId], references: [id], onDelete: Cascade)
+  qualityPiece QualityPiece       @relation(fields: [qualityPieceId], references: [id], onDelete: Cascade)
+
+  @@unique([reworkOrderId, qualityPieceId])
+  @@map("quality_rework_order_pieces")
+}
+
+model QualityReworkSimple {
+  id                String   @id @default(cuid())
+  productionOrderId String   @map("production_order_id")
+  productionItemId  String   @map("production_item_id")
+  qualityPieceId    String?  @map("quality_piece_id")
+  area              String?
+  processName       String?  @map("process_name")
+  operatorName      String?  @map("operator_name")
+  errorDescription  String   @map("error_description")
+  hoursUsed         Decimal  @default(0) @map("hours_used") @db.Decimal(14, 3)
+  createdById       String   @map("created_by_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  productionItem  ProductionItem  @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
+  qualityPiece    QualityPiece?   @relation(fields: [qualityPieceId], references: [id], onDelete: SetNull)
+  createdByUser   User            @relation("QualityReworkSimpleCreatedBy", fields: [createdById], references: [id])
+  nonConformances QualityNonConformance[]
+  evidences       QualityEvidence[]
+
+  @@index([productionOrderId])
+  @@index([productionItemId])
+  @@map("quality_rework_simples")
+}
+
+model QualityReworkHour {
+  id            String  @id @default(cuid())
+  reworkOrderId String  @map("rework_order_id")
+  processName   String  @map("process_name")
+  hours         Decimal @db.Decimal(14, 3)
+  notes         String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  createdBy String?  @map("created_by")
+
+  reworkOrder QualityReworkOrder @relation(fields: [reworkOrderId], references: [id], onDelete: Cascade)
+
+  @@index([reworkOrderId])
+  @@map("quality_rework_hours")
+}
+
+model MeasuringInstrument {
+  id                 String           @id @default(cuid())
+  code               String           @unique
+  type               String
+  brand              String?
+  model              String?
+  serialNumber       String?          @map("serial_number")
+  range              String?
+  resolution         String?
+  unit               String?
+  acquiredAt         DateTime?        @map("acquired_at") @db.Date
+  lastCalibrationAt  DateTime?        @map("last_calibration_at") @db.Date
+  calibrationPeriodDays Int?          @map("calibration_period_days")
+  nextCalibrationAt  DateTime?        @map("next_calibration_at") @db.Date
+  status             InstrumentStatus @default(ACTIVE)
+  notes              String?
+  deletedAt          DateTime?        @map("deleted_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  createdByUser User? @relation("MeasuringInstrumentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  calibrations  InstrumentCalibration[]
+  inspections   QualityInspection[]
+  specialChecks QualitySpecialCheck[]
+
+  @@index([status])
+  @@index([deletedAt])
+  @@map("measuring_instruments")
+}
+
+model InstrumentCalibration {
+  id             String   @id @default(cuid())
+  instrumentId   String   @map("instrument_id")
+  calibratedAt   DateTime @map("calibrated_at") @db.Date
+  nextDueAt      DateTime? @map("next_due_at") @db.Date
+  provider       String?
+  certificatePathname String? @map("certificate_pathname")
+  certificateFileName String? @map("certificate_file_name")
+  certificateUrl String?  @map("certificate_url")
+  notes          String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  createdBy String?  @map("created_by")
+
+  instrument MeasuringInstrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+
+  @@index([instrumentId, calibratedAt])
+  @@map("instrument_calibrations")
+}
+
+model QualityEvidence {
+  id                  String               @id @default(cuid())
+  productionOrderId   String?              @map("production_order_id")
+  productionItemId    String?              @map("production_item_id")
+  qualityPieceId      String?              @map("quality_piece_id")
+  qualityInspectionId String?              @map("quality_inspection_id")
+  specialCheckId      String?              @map("special_check_id")
+  nonConformanceId    String?              @map("non_conformance_id")
+  reworkOrderId       String?              @map("rework_order_id")
+  reworkSimpleId      String?              @map("rework_simple_id")
+  stage               QualityEvidenceStage @default(INSPECTION)
+  pathname            String
+  url                 String?
+  fileName            String               @map("file_name")
+  contentType         String               @map("content_type")
+  sizeBytes           Int                  @map("size_bytes")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  createdBy String?  @map("created_by")
+
+  productionOrder ProductionOrder?     @relation(fields: [productionOrderId], references: [id], onDelete: SetNull)
+  productionItem  ProductionItem?      @relation(fields: [productionItemId], references: [id], onDelete: SetNull)
+  qualityPiece    QualityPiece?        @relation(fields: [qualityPieceId], references: [id], onDelete: SetNull)
+  inspection      QualityInspection?   @relation(fields: [qualityInspectionId], references: [id], onDelete: SetNull)
+  specialCheck    QualitySpecialCheck? @relation(fields: [specialCheckId], references: [id], onDelete: SetNull)
+  nonConformance  QualityNonConformance? @relation(fields: [nonConformanceId], references: [id], onDelete: SetNull)
+  reworkOrder     QualityReworkOrder?  @relation(fields: [reworkOrderId], references: [id], onDelete: SetNull)
+  reworkSimple    QualityReworkSimple? @relation(fields: [reworkSimpleId], references: [id], onDelete: SetNull)
+
+  @@unique([pathname])
+  @@index([productionOrderId])
+  @@index([qualityInspectionId])
+  @@map("quality_evidences")
+}
+
+model QualityAlert {
+  id                String               @id @default(cuid())
+  productionOrderId String?              @map("production_order_id")
+  audience          QualityAlertAudience
+  status            QualityAlertStatus   @default(OPEN)
+  title             String
+  body              String
+  eventType         String               @map("event_type")
+  entityType        String?              @map("entity_type")
+  entityId          String?              @map("entity_id")
+  assigneeId        String?              @map("assignee_id")
+  acknowledgedAt    DateTime?            @map("acknowledged_at")
+  resolvedAt        DateTime?            @map("resolved_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  createdBy String?  @map("created_by")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  productionOrder ProductionOrder? @relation(fields: [productionOrderId], references: [id], onDelete: SetNull)
+  assignee        User?            @relation("QualityAlertAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  @@index([audience, status])
+  @@index([productionOrderId])
+  @@map("quality_alerts")
+}
+
+model QualityExternalShare {
+  id              String    @id @default(cuid())
+  token           String    @unique
+  qualityPieceId  String?   @map("quality_piece_id")
+  productionOrderId String? @map("production_order_id")
+  productionItemId  String? @map("production_item_id")
+  expiresAt       DateTime? @map("expires_at")
+  revokedAt       DateTime? @map("revoked_at")
+  showEvidences   Boolean   @default(true) @map("show_evidences")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  createdBy String?  @map("created_by")
+
+  qualityPiece    QualityPiece?    @relation(fields: [qualityPieceId], references: [id], onDelete: Cascade)
+  productionOrder ProductionOrder? @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@map("quality_external_shares")
 }
 

@@ -128,6 +128,11 @@ export async function createReceipt(request) {
       if (!poi) {
         throw new ValidationError("Item de orden no pertenece a esta OC");
       }
+      if (!poi.itemId) {
+        throw new ValidationError(
+          `La partida "${poi.descriptionSnapshot}" no tiene item de catalogo; vinculalo antes de recibir a inventario`
+        );
+      }
       const remaining = remainingQuantity(poi.quantity, poi.receivedQuantity);
       if (toNumberSafeLocal(line.receivedQuantity) > remaining + 1e-9) {
         throw new ValidationError(

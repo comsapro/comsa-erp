@@ -1,15 +1,29 @@
 import { z } from "zod";
 
-const poItemSchema = z.object({
-  itemId: z.string().min(1),
-  descriptionSnapshot: z.string().optional().nullable(),
-  quantity: z.coerce.number().positive(),
-  unit: z.string().optional().nullable(),
-  unitPrice: z.coerce.number().nonnegative(),
-  warehouseId: z.string().optional().nullable(),
-  sourceType: z.enum(["QUOTE_MATERIAL", "MANUAL"]).optional(),
-  sourceMaterialId: z.string().optional().nullable(),
-});
+const poItemSchema = z
+  .object({
+    itemId: z.preprocess(
+      (v) => (v === "" || v == null ? null : v),
+      z.string().min(1).nullable().optional()
+    ),
+    descriptionSnapshot: z.string().optional().nullable(),
+    quantity: z.coerce.number().positive(),
+    unit: z.string().optional().nullable(),
+    unitPrice: z.coerce.number().nonnegative(),
+    warehouseId: z.string().optional().nullable(),
+    sourceType: z.enum(["QUOTE_MATERIAL", "MANUAL"]).optional(),
+    sourceMaterialId: z.string().optional().nullable(),
+  })
+  .superRefine((data, ctx) => {
+    const desc = String(data.descriptionSnapshot || "").trim();
+    if (!data.itemId && !desc) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Indica un item de catalogo o una descripcion",
+        path: ["descriptionSnapshot"],
+      });
+    }
+  });
 
 export const poCreateSchema = z.object({
   supplierId: z.string().min(1),
