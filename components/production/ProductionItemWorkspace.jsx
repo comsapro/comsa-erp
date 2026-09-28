@@ -13,6 +13,7 @@ import { ProductionProcessesPanel } from "@/components/production/ProductionProc
 import { ProductionItemQr } from "@/components/production/ProductionItemQr";
 import { ProductionActivityFeed } from "@/components/production/ProductionActivityFeed";
 import { ProductionDocuments } from "@/components/production/ProductionDocuments";
+import { ProductionQualityTab } from "@/components/quality/ProductionQualityTab";
 import {
   PRODUCTION_INCIDENT_STATUS_LABELS,
   PRODUCTION_INCIDENT_TYPE_LABELS,
@@ -31,6 +32,7 @@ const TABS = [
   { id: "evidencias", label: "Evidencias" },
   { id: "materiales", label: "Materiales" },
   { id: "documentos", label: "Documentos" },
+  { id: "calidad", label: "Calidad" },
   { id: "planeacion", label: "Planeacion" },
 ];
 
@@ -425,6 +427,19 @@ export function ProductionItemWorkspace({
               )}
             </div>
           </div>
+        )}
+
+        {tab === "calidad" && (
+          <Can
+            permission="quality.view"
+            fallback={
+              <p className="text-sm text-content-muted">
+                No tienes permiso para ver calidad.
+              </p>
+            }
+          >
+            <ProductionQualityTab productionId={productionId} item={item} />
+          </Can>
         )}
 
         {tab === "planeacion" && (

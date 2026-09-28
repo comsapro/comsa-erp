@@ -186,6 +186,9 @@ export default function QualityOrderClient({ orderId }) {
                   {QUALITY_INSPECTION_MODE_LABELS[cfg?.inspectionMode] ||
                     "Sin modalidad"}
                 </Badge>
+                <Button as={Link} href={`/calidad/partida/${item.id}`} size="sm" variant="secondary">
+                  Revisar plano
+                </Button>
               </div>
             </CardHeader>
             <CardBody className="space-y-4">

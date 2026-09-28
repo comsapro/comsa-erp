@@ -420,6 +420,11 @@ export async function deleteItemAttachment(
   });
   if (!attachment) throw new NotFoundError("Adjunto no encontrado");
 
+  const { assertBlobNotUsedByQuality } = await import(
+    "@/domains/quality/documents"
+  );
+  await assertBlobNotUsedByQuality(attachment.pathname);
+
   try {
     await del(attachment.pathname, { token: process.env.BLOB_READ_WRITE_TOKEN });
   } catch {
@@ -455,6 +460,25 @@ export async function servePrivateBlob(request) {
   const pathname = searchParams.get("pathname");
   if (!pathname) {
     throw new ValidationError("Missing pathname");
+  }
+
+  const qualityVersion = await prisma.qualityDocumentVersion.findFirst({
+    where: { pathname },
+    select: {
+      originalFilename: true,
+      contentType: true,
+    },
+  });
+  if (qualityVersion) {
+    await requireAnyPermission([
+      "quality.view",
+      "quotes.view",
+      "production.view",
+    ]);
+    return streamBlob(pathname, {
+      fileName: qualityVersion.originalFilename,
+      contentType: qualityVersion.contentType,
+    });
   }
 
   const quoteAttachment = await prisma.quoteItemAttachment.findFirst({
