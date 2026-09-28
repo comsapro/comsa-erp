@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "next dev",
-    "postinstall": "prisma generate && node scripts/copy-pdf-worker.mjs",
-    "build": "prisma migrate deploy && next build",
+    "postinstall": "node scripts/prisma-generate.mjs && node scripts/copy-pdf-worker.mjs",
+    "build": "node scripts/build.mjs",
     "start": "next start",
     "lint": "eslint",
     "test": "node --test tests/permissions.test.js tests/etapa2.test.js tests/etapa3.test.js tests/quote-versions.test.js tests/produccion-feedback.test.js tests/produccion-ops.test.js tests/produccion-formatos.test.js tests/purchase-order-pdf.test.js tests/sales-dashboard.test.js tests/teams.test.js tests/quality.test.js tests/calidad.test.js",
