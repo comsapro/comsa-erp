@@ -201,6 +201,7 @@ enum FolioScope {
   PURCHASE_ORDER
   PURCHASE_RECEIPT
   QUALITY_REWORK
+  QUALITY_INSPECTION
 
   @@map("folio_scope")
 }
@@ -331,6 +332,14 @@ model User {
   salesInvoicesUpdated SalesInvoice[] @relation("SalesInvoiceUpdatedBy")
   materialPurchaseDecisions MaterialPurchaseDecision[] @relation("MaterialPurchaseDecisionBy")
   qualityInspectionsAsInspector QualityInspection[] @relation("QualityInspectionInspector")
+  qualityDrawingInspectionsCreated QualityDrawingInspection[] @relation("QualityDrawingInspectionCreatedBy")
+  qualityDrawingInspectionsUpdated QualityDrawingInspection[] @relation("QualityDrawingInspectionUpdatedBy")
+  qualityDrawingInspectionsInspected QualityDrawingInspection[] @relation("QualityDrawingInspectionInspectedBy")
+  qualityDocumentsCreated QualityDocument[] @relation("QualityDocumentCreatedBy")
+  qualityDocumentsUpdated QualityDocument[] @relation("QualityDocumentUpdatedBy")
+  qualityVersionsCreated QualityDocumentVersion[] @relation("QualityDocumentVersionCreatedBy")
+  qualityAnnotationsCreated QualityAnnotation[] @relation("QualityAnnotationCreatedBy")
+  qualityAnnotationsUpdated QualityAnnotation[] @relation("QualityAnnotationUpdatedBy")
   qualityReworkOrdersCreated QualityReworkOrder[] @relation("QualityReworkOrderCreatedBy")
   qualityReworkOrdersResponsible QualityReworkOrder[] @relation("QualityReworkOrderResponsible")
   qualityReworkSimplesCreated QualityReworkSimple[] @relation("QualityReworkSimpleCreatedBy")
@@ -963,6 +972,7 @@ model Quote {
   items          QuoteItem[]
   purchaseOrders PurchaseOrder[]
   salesInvoiceQuotes SalesInvoiceQuote[]
+  qualityDocuments QualityDocument[]
 
   @@index([status, elaborationDate])
   @@index([clientId])
@@ -1039,6 +1049,7 @@ model QuoteItemAttachment {
 
   quoteItem     QuoteItem @relation(fields: [quoteItemId], references: [id], onDelete: Cascade)
   createdByUser User?     @relation("QuoteItemAttachmentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  qualityDocuments QualityDocument[]
 
   @@index([quoteItemId])
   @@index([audience])
@@ -1268,6 +1279,8 @@ model ProductionOrder {
   qualityReworkSimples QualityReworkSimple[]
   qualityEvidences     QualityEvidence[]
   qualityExternalShares QualityExternalShare[]
+  qualityDocuments QualityDocument[]
+  drawingInspections QualityDrawingInspection[]
 
   @@index([status, approvalDate])
   @@index([clientId])
@@ -1301,6 +1314,7 @@ model ProductionAttachment {
   incident        ProductionIncident?    @relation(fields: [incidentId], references: [id], onDelete: SetNull)
   activity        ProductionActivity?    @relation(fields: [activityId], references: [id], onDelete: SetNull)
   createdByUser   User?                  @relation("ProductionAttachmentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  qualityDocuments QualityDocument[]
 
   @@index([productionOrderId])
   @@index([productionItemId])
@@ -1353,6 +1367,8 @@ model ProductionItem {
   qualityReworkOrders QualityReworkOrder[]
   qualityReworkSimples QualityReworkSimple[]
   qualityEvidences QualityEvidence[]
+  qualityDocuments QualityDocument[]
+  drawingInspections QualityDrawingInspection[]
 
   @@index([productionOrderId, position])
   @@index([sourceItemId])
@@ -2499,4 +2515,197 @@ model QualityExternalShare {
   @@index([token])
   @@map("quality_external_shares")
 }
+
+// Revision de planos PDF (rama quality), separada de QualityInspection operativa.
+enum QualityDocumentType {
+  DRAWING
+  SPECIFICATION
+  QUALITY_PLAN
+  OTHER
+
+  @@map("quality_document_type")
+}
+
+enum QualityDocumentSourceKind {
+  QUOTE_ATTACHMENT
+  PRODUCTION_ATTACHMENT
+  QUALITY_UPLOAD
+
+  @@map("quality_document_source_kind")
+}
+
+enum QualityDrawingStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  REJECTED
+
+  @@map("quality_drawing_status")
+}
+
+enum QualityAnnotationType {
+  MEASUREMENT
+  COMMENT
+  OBSERVATION
+
+  @@map("quality_annotation_type")
+}
+
+enum QualityAnnotationStatus {
+  OPEN
+  PASS
+  FAIL
+  NOT_APPLICABLE
+
+  @@map("quality_annotation_status")
+}
+
+enum QualityDrawingMeasurementResult {
+  PASS
+  FAIL
+
+  @@map("quality_drawing_measurement_result")
+}
+
+model QualityDocument {
+  id                     String                    @id @default(cuid())
+  productionOrderId      String                    @map("production_order_id")
+  productionItemId       String                    @map("production_item_id")
+  quoteId                String?                   @map("quote_id")
+  sourceKind             QualityDocumentSourceKind @map("source_kind")
+  quoteItemAttachmentId  String?                   @map("quote_item_attachment_id")
+  productionAttachmentId String?                   @map("production_attachment_id")
+  documentType           QualityDocumentType       @default(DRAWING) @map("document_type")
+  currentVersionNumber   Int                       @default(1) @map("current_version_number")
+  status                 RecordStatus              @default(ACTIVE)
+  originalFilename       String                    @map("original_filename")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+  deletedAt DateTime? @map("deleted_at")
+
+  productionOrder      ProductionOrder       @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  productionItem       ProductionItem        @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
+  quote                Quote?                @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  quoteItemAttachment  QuoteItemAttachment?  @relation(fields: [quoteItemAttachmentId], references: [id], onDelete: Restrict)
+  productionAttachment ProductionAttachment? @relation(fields: [productionAttachmentId], references: [id], onDelete: Restrict)
+  createdByUser        User?                 @relation("QualityDocumentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser        User?                 @relation("QualityDocumentUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  versions             QualityDocumentVersion[]
+
+  @@index([productionItemId])
+  @@index([productionOrderId])
+  @@index([quoteItemAttachmentId])
+  @@index([productionAttachmentId])
+  @@index([deletedAt])
+  @@map("quality_documents")
+}
+
+model QualityDocumentVersion {
+  id                String @id @default(cuid())
+  qualityDocumentId String @map("quality_document_id")
+  versionNumber     Int    @map("version_number")
+  pathname          String
+  originalFilename  String @map("original_filename")
+  contentType       String @map("content_type")
+  fileHash          String @map("file_hash")
+  pageCount         Int?   @map("page_count")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  createdBy String?  @map("created_by")
+
+  qualityDocument QualityDocument           @relation(fields: [qualityDocumentId], references: [id], onDelete: Cascade)
+  createdByUser   User?                     @relation("QualityDocumentVersionCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  inspections     QualityDrawingInspection[]
+  annotations     QualityAnnotation[]
+
+  @@unique([qualityDocumentId, versionNumber])
+  @@index([pathname])
+  @@map("quality_document_versions")
+}
+
+model QualityDrawingInspection {
+  id                       String               @id @default(cuid())
+  inspectionNumber         String               @unique @map("inspection_number")
+  productionOrderId        String               @map("production_order_id")
+  productionItemId         String               @map("production_item_id")
+  qualityDocumentVersionId String               @map("quality_document_version_id")
+  status                   QualityDrawingStatus @default(DRAFT)
+  inspectedBy              String?              @map("inspected_by")
+  startedAt                DateTime?            @map("started_at")
+  completedAt              DateTime?            @map("completed_at")
+  generalComments          String?              @map("general_comments")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  createdBy String?  @map("created_by")
+  updatedBy String?  @map("updated_by")
+
+  productionOrder        ProductionOrder        @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  productionItem         ProductionItem         @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
+  qualityDocumentVersion QualityDocumentVersion @relation(fields: [qualityDocumentVersionId], references: [id], onDelete: Restrict)
+  inspectedByUser        User?                  @relation("QualityDrawingInspectionInspectedBy", fields: [inspectedBy], references: [id], onDelete: SetNull)
+  createdByUser          User?                  @relation("QualityDrawingInspectionCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser          User?                  @relation("QualityDrawingInspectionUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  annotations            QualityAnnotation[]
+
+  @@index([productionItemId, status])
+  @@index([productionOrderId])
+  @@index([qualityDocumentVersionId])
+  @@map("quality_drawing_inspections")
+}
+
+model QualityAnnotation {
+  id                       String                  @id @default(cuid())
+  inspectionId             String                  @map("inspection_id")
+  qualityDocumentVersionId String                  @map("quality_document_version_id")
+  pageNumber               Int                     @map("page_number")
+  label                    String
+  xPosition                Decimal                 @map("x_position") @db.Decimal(10, 8)
+  yPosition                Decimal                 @map("y_position") @db.Decimal(10, 8)
+  annotationType           QualityAnnotationType   @map("annotation_type")
+  title                    String?
+  comment                  String?
+  status                   QualityAnnotationStatus @default(OPEN)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+  deletedAt DateTime? @map("deleted_at")
+
+  inspection             QualityDrawingInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  qualityDocumentVersion QualityDocumentVersion   @relation(fields: [qualityDocumentVersionId], references: [id], onDelete: Restrict)
+  createdByUser          User?                    @relation("QualityAnnotationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser          User?                    @relation("QualityAnnotationUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  measurement            QualityDrawingMeasurement?
+
+  @@index([inspectionId, pageNumber])
+  @@index([qualityDocumentVersionId])
+  @@index([deletedAt])
+  @@map("quality_annotations")
+}
+
+model QualityDrawingMeasurement {
+  id             String                         @id @default(cuid())
+  annotationId   String                         @unique @map("annotation_id")
+  nominalValue   Decimal                        @map("nominal_value") @db.Decimal(14, 4)
+  measuredValue  Decimal                        @map("measured_value") @db.Decimal(14, 4)
+  upperTolerance Decimal                        @map("upper_tolerance") @db.Decimal(14, 4)
+  lowerTolerance Decimal                        @map("lower_tolerance") @db.Decimal(14, 4)
+  unit           String
+  result         QualityDrawingMeasurementResult
+  comments       String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  annotation QualityAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+
+  @@index([annotationId])
+  @@map("quality_drawing_measurements")
+}
+
 
