@@ -56,6 +56,15 @@ export const itemsResource = createResource({
     if (type && ITEM_TYPES.includes(type)) extra.itemType = type;
     const categoryId = params.searchParams.get("categoryId");
     if (categoryId) extra.categoryId = categoryId;
+    const excludeLegacy = params.searchParams.get("excludeLegacy");
+    if (excludeLegacy === "1" || excludeLegacy === "true") {
+      extra.NOT = {
+        OR: [
+          { sku: { startsWith: "LEGACY-", mode: "insensitive" } },
+          { sku: { startsWith: "LEGACY_", mode: "insensitive" } },
+        ],
+      };
+    }
     return extra;
   },
 });

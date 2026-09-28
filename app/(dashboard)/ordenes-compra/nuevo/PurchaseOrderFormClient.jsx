@@ -30,7 +30,14 @@ export default function PurchaseOrderFormClient({
   const [expectedDate, setExpectedDate] = useState("");
   const [comments, setComments] = useState("");
   const [lines, setLines] = useState([
-    { itemId: itemId || "", quantity: 1, unitPrice: 0, unit: "" },
+    {
+      itemId: itemId || "",
+      descriptionSnapshot: "",
+      quantity: 1,
+      unitPrice: 0,
+      unit: "",
+      manual: !itemId,
+    },
   ]);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -56,6 +63,7 @@ export default function PurchaseOrderFormClient({
         pageSize: 50,
         sort: "name",
         order: "asc",
+        excludeLegacy: "1",
       })}`
     );
     setItems(res?.data || []);
@@ -174,9 +182,12 @@ export default function PurchaseOrderFormClient({
         expectedDate: expectedDate || null,
         comments,
         items: lines
-          .filter((l) => l.itemId)
+          .filter(
+            (l) =>
+              l.itemId || String(l.descriptionSnapshot || "").trim()
+          )
           .map((l) => ({
-            itemId: l.itemId,
+            itemId: l.itemId || null,
             descriptionSnapshot: l.descriptionSnapshot || null,
             quantity: Number(l.quantity),
             unitPrice: Number(l.unitPrice),
@@ -327,18 +338,21 @@ export default function PurchaseOrderFormClient({
               });
             }
             const next = mapped
-              .filter((row) => row.itemId)
+              .filter((row) => row.itemId || row.descriptionSnapshot)
               .map((row) => ({
-                itemId: row.itemId,
+                itemId: row.itemId || "",
                 quantity: row.quantity,
                 unitPrice: 0,
                 unit: row.unit || "",
                 descriptionSnapshot: row.descriptionSnapshot,
                 sourceMaterialId: row.sourceMaterialId,
+                manual: !row.itemId,
               }));
             if (!next.length) return;
             setLines((prev) => {
-              const remaining = prev.filter((l) => l.itemId);
+              const remaining = prev.filter(
+                (l) => l.itemId || String(l.descriptionSnapshot || "").trim()
+              );
               const existingSources = new Set(
                 remaining.map((l) => l.sourceMaterialId).filter(Boolean)
               );
@@ -360,28 +374,66 @@ export default function PurchaseOrderFormClient({
           <p className="text-sm font-medium">Partidas</p>
           <p className="text-xs text-content-muted">
             Puedes precargar materiales de la cotizacion, mapear o crear items
-            nuevos, o agregar partidas del catalogo.
+            nuevos, agregar desde catalogo, o capturar una partida manual solo
+            con descripcion (sin inventario hasta vincular item).
           </p>
           {lines.map((line, idx) => (
-            <div key={idx} className="grid gap-2 sm:grid-cols-4">
-              <div className="sm:col-span-2">
-                <ItemCatalogSelect
-                  label={idx === 0 ? "Item" : undefined}
-                  value={line.itemId}
-                  onChange={(v) => {
-                    const next = [...lines];
-                    next[idx] = {
-                      ...next[idx],
-                      itemId: v,
-                      sourceMaterialId: null,
-                    };
-                    setLines(next);
-                  }}
-                  options={items}
-                  onOptionsChange={setItems}
-                  onSearch={searchItems}
-                  placeholder="Buscar o agregar item..."
-                />
+            <div
+              key={idx}
+              className="grid gap-2 rounded border border-border p-3 sm:grid-cols-4"
+            >
+              <div className="sm:col-span-2 space-y-2">
+                {line.manual && !line.itemId ? (
+                  <label className="block text-sm">
+                    {idx === 0 && (
+                      <span className="mb-1 block text-content-muted">
+                        Descripcion (manual)
+                      </span>
+                    )}
+                    <input
+                      className="w-full rounded-md border border-border px-3 py-2"
+                      value={line.descriptionSnapshot || ""}
+                      placeholder="Descripcion del material"
+                      onChange={(e) => {
+                        const next = [...lines];
+                        next[idx] = {
+                          ...next[idx],
+                          descriptionSnapshot: e.target.value,
+                          manual: true,
+                        };
+                        setLines(next);
+                      }}
+                    />
+                  </label>
+                ) : (
+                  <ItemCatalogSelect
+                    label={idx === 0 ? "Item" : undefined}
+                    value={line.itemId}
+                    onChange={(v) => {
+                      const next = [...lines];
+                      const selected = items.find((i) => i.id === v);
+                      next[idx] = {
+                        ...next[idx],
+                        itemId: v,
+                        manual: false,
+                        descriptionSnapshot:
+                          selected?.name || next[idx].descriptionSnapshot || "",
+                        unit: selected?.unitOfMeasure || next[idx].unit || "",
+                        sourceMaterialId: null,
+                      };
+                      setLines(next);
+                    }}
+                    options={items}
+                    onOptionsChange={setItems}
+                    onSearch={searchItems}
+                    placeholder="Buscar o agregar item..."
+                  />
+                )}
+                {line.descriptionSnapshot && line.itemId ? (
+                  <p className="text-xs text-content-muted">
+                    {line.descriptionSnapshot}
+                  </p>
+                ) : null}
               </div>
               <label className="block text-sm">
                 {idx === 0 && (
@@ -417,21 +469,75 @@ export default function PurchaseOrderFormClient({
                   }}
                 />
               </label>
+              <div className="sm:col-span-4 flex flex-wrap gap-2">
+                <label className="block text-sm">
+                  <span className="sr-only">Unidad</span>
+                  <input
+                    className="w-28 rounded-md border border-border px-3 py-2 text-sm"
+                    placeholder="Unidad"
+                    value={line.unit || ""}
+                    onChange={(e) => {
+                      const next = [...lines];
+                      next[idx] = { ...next[idx], unit: e.target.value };
+                      setLines(next);
+                    }}
+                  />
+                </label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="subtle"
+                  onClick={() =>
+                    setLines((prev) => prev.filter((_, i) => i !== idx))
+                  }
+                >
+                  Quitar
+                </Button>
+              </div>
             </div>
           ))}
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            onClick={() =>
-              setLines((prev) => [
-                ...prev,
-                { itemId: "", quantity: 1, unitPrice: 0, unit: "" },
-              ])
-            }
-          >
-            Agregar partida
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() =>
+                setLines((prev) => [
+                  ...prev,
+                  {
+                    itemId: "",
+                    descriptionSnapshot: "",
+                    quantity: 1,
+                    unitPrice: 0,
+                    unit: "",
+                    manual: false,
+                  },
+                ])
+              }
+            >
+              Agregar desde catalogo
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              onClick={() =>
+                setLines((prev) => [
+                  ...prev,
+                  {
+                    itemId: "",
+                    descriptionSnapshot: "",
+                    quantity: 1,
+                    unitPrice: 0,
+                    unit: "",
+                    manual: true,
+                  },
+                ])
+              }
+            >
+              Agregar partida manual
+            </Button>
+          </div>
         </div>
 
         <div className="flex justify-end gap-2 pt-2">

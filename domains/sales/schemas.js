@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MATERIAL_SKIP_REASONS, SALES_GOAL_PERIODS } from "./constants";
+import { MATERIAL_SKIP_REASONS, SALES_GOAL_PERIODS } from "./constants.js";
 
 export const salesGoalSchema = z
   .object({
@@ -10,7 +10,16 @@ export const salesGoalSchema = z
       SALES_GOAL_PERIODS.ANNUAL,
     ]),
     periodKey: z.string().trim().min(4),
-    amount: z.coerce.number().positive("La meta debe ser mayor a 0"),
+    amount: z.preprocess(
+      (v) => {
+        if (typeof v === "string") {
+          const cleaned = v.replace(/\$/g, "").replace(/,/g, "").trim();
+          return cleaned === "" ? v : cleaned;
+        }
+        return v;
+      },
+      z.coerce.number().positive("La meta debe ser mayor a 0")
+    ),
     label: z.string().trim().optional().nullable(),
     sellerIds: z.array(z.string().min(1)).default([]),
     teamIds: z.array(z.string().min(1)).default([]),
@@ -38,7 +47,10 @@ export const salesInvoiceSchema = z
     sellerId: z.string().optional().nullable(),
     clientPoNumber: z.string().trim().min(1, "Número de PO obligatorio"),
     receivedByClient: z.boolean(),
-    receptionDate: z.coerce.date().optional().nullable(),
+    receptionDate: z.preprocess(
+      (v) => (v === "" || v == null ? null : v),
+      z.coerce.date().nullable().optional()
+    ),
     notes: z.string().optional().nullable(),
     // Vacío solo permitido para Administrador (validado en servicio).
     quotes: z.array(invoiceQuoteSchema).default([]),

@@ -209,13 +209,19 @@ export default function SalesInvoiceFormClient({
       sellerId: currentUserId,
       clientPoNumber: "",
       receivedByClient: false,
-      receptionDate: "",
+      receptionDate: null,
       notes: "",
       quotes: [],
     },
   });
 
   const receivedByClient = watch("receivedByClient");
+
+  useEffect(() => {
+    if (!(receivedByClient === true || receivedByClient === "true")) {
+      setValue("receptionDate", null, { shouldValidate: true });
+    }
+  }, [receivedByClient, setValue]);
 
   useEffect(() => {
     if (!canViewTeam) return;
@@ -418,6 +424,14 @@ export default function SalesInvoiceFormClient({
     }
   }
 
+  function onInvalid() {
+    setError("Revisa los campos marcados. Hay datos incompletos o invalidos.");
+    const firstError = document.querySelector(
+      "[aria-invalid='true'], .text-danger-700, [data-field-error]"
+    );
+    firstError?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+  }
+
   const selectedCount = itemIds.length;
   const quoteError =
     !skipQuoteLink && errors.quotes?.message
@@ -439,7 +453,7 @@ export default function SalesInvoiceFormClient({
 
       {error && <Alert variant="danger">{error}</Alert>}
 
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={handleSubmit(onSubmit, onInvalid)} className="space-y-6">
         <Card>
           <CardHeader>
             <h2 className="text-base font-semibold text-content">Datos de la factura</h2>

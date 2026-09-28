@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 
 // Rutas publicas (no requieren sesion).
-const PUBLIC_PATHS = ["/login", "/recuperar-acceso"];
+const PUBLIC_PATHS = ["/login", "/recuperar-acceso", "/calidad/consulta"];
+const AUTH_ONLY_REDIRECT_PATHS = ["/login", "/recuperar-acceso"];
 
 // Chequeo optimista basado en la cookie de sesion (sin acceso a BD).
 // La autorizacion real se valida en cada Server Action / Route Handler.
@@ -12,9 +13,12 @@ export default auth((req) => {
   const isPublic = PUBLIC_PATHS.some(
     (p) => pathname === p || pathname.startsWith(`${p}/`)
   );
+  const isAuthLanding = AUTH_ONLY_REDIRECT_PATHS.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`)
+  );
 
   // Usuario autenticado que visita login/recuperar -> al inicio.
-  if (isLoggedIn && isPublic) {
+  if (isLoggedIn && isAuthLanding) {
     return NextResponse.redirect(new URL("/", req.nextUrl));
   }
 

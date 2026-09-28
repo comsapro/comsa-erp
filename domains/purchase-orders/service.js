@@ -73,26 +73,39 @@ async function buildItemRows(items) {
   const unique = dedupeBySourceMaterial(items);
   const rows = [];
   for (const it of unique) {
-    const catalog = await prisma.item.findFirst({
-      where: { id: it.itemId, deletedAt: null },
-    });
-    if (!catalog) {
-      throw new ValidationError(`Item no encontrado: ${it.itemId}`);
+    const itemId = it.itemId || null;
+    let catalog = null;
+    if (itemId) {
+      catalog = await prisma.item.findFirst({
+        where: { id: itemId, deletedAt: null },
+      });
+      if (!catalog) {
+        throw new ValidationError(`Item no encontrado: ${itemId}`);
+      }
+    }
+    const description = String(
+      it.descriptionSnapshot || catalog?.name || ""
+    ).trim();
+    if (!description) {
+      throw new ValidationError(
+        "Cada partida requiere item de catalogo o descripcion"
+      );
     }
     const totals = calculatePurchaseLineTotals(it.quantity, it.unitPrice);
     rows.push({
-      itemId: it.itemId,
-      descriptionSnapshot:
-        it.descriptionSnapshot || catalog.name,
+      itemId,
+      descriptionSnapshot: description,
       quantity: new Prisma.Decimal(it.quantity),
-      unit: it.unit || catalog.unitOfMeasure,
+      unit: it.unit || catalog?.unitOfMeasure || null,
       unitPrice: new Prisma.Decimal(it.unitPrice),
       subtotal: new Prisma.Decimal(totals.subtotal),
       taxAmount: new Prisma.Decimal(totals.taxAmount),
       total: new Prisma.Decimal(totals.total),
       warehouseId: it.warehouseId || null,
       status: "PENDING",
-      sourceType: it.sourceMaterialId ? "QUOTE_MATERIAL" : it.sourceType || "MANUAL",
+      sourceType: it.sourceMaterialId
+        ? "QUOTE_MATERIAL"
+        : it.sourceType || "MANUAL",
       sourceMaterialId: it.sourceMaterialId || null,
     });
   }

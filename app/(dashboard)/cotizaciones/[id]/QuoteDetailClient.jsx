@@ -616,14 +616,21 @@ export default function QuoteDetailClient({ quoteId }) {
                 <p className="text-content-muted">Ordenes de produccion</p>
                 <div className="mt-1 flex flex-wrap gap-2">
                   {quote.productionOrders.map((op) => (
-                    <Link
-                      key={op.id}
-                      href={`/produccion/${op.id}`}
-                      className="rounded-full bg-surface-muted px-2.5 py-1 text-xs hover:bg-brand-50"
-                    >
-                      {op.folio}
-                      {op.materialsReadyAt ? " · material listo" : ""}
-                    </Link>
+                    <span key={op.id} className="inline-flex flex-wrap gap-1">
+                      <Link
+                        href={`/produccion/${op.id}`}
+                        className="rounded-full bg-surface-muted px-2.5 py-1 text-xs hover:bg-brand-50"
+                      >
+                        {op.folio}
+                        {op.materialsReadyAt ? " · material listo" : ""}
+                      </Link>
+                      <Link
+                        href={`/calidad/${op.id}`}
+                        className="rounded-full bg-brand-50 px-2.5 py-1 text-xs text-brand-700 hover:bg-brand-100"
+                      >
+                        Calidad
+                      </Link>
+                    </span>
                   ))}
                 </div>
               </div>
