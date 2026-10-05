@@ -3,6 +3,9 @@ import Link from "next/link";
 import { requirePagePermission } from "@/lib/auth/guard";
 import { prisma } from "@/lib/db";
 import { buildQuotePrintModel } from "@/domains/quotes/quote-print";
+import { quoteCanPrint } from "@/domains/quotes/constants";
+import { assertQuoteInScope } from "@/domains/quotes/access";
+import { NotFoundError } from "@/lib/permissions/errors";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/feedback/Alert";
 import PrintButton from "./PrintButton";
@@ -36,8 +39,14 @@ export default async function ImprimirCotizacionPage({ params }) {
   const { id } = await params;
   const quote = await getQuoteForPrint(id);
   if (!quote) notFound();
+  try {
+    await assertQuoteInScope(quote);
+  } catch (error) {
+    if (error instanceof NotFoundError) notFound();
+    throw error;
+  }
 
-  if (!["APPROVED", "IN_PRODUCTION"].includes(quote.status)) {
+  if (!quoteCanPrint(quote)) {
     return (
       <div className="mx-auto max-w-lg p-8">
         <Alert variant="warning" title="No disponible para imprimir">

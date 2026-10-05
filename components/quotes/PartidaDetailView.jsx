@@ -52,6 +52,24 @@ function Section({ title, children }) {
   );
 }
 
+function sectionSum(rows) {
+  return (rows || []).reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+}
+
+function SectionSum({ rows, currency }) {
+  return (
+    <p className="text-sm font-medium text-content">
+      Suma de conceptos: {formatMoney(sectionSum(rows), currency)}{" "}
+      <span className="font-normal text-content-muted">antes de IVA</span>
+    </p>
+  );
+}
+
+function benefitOf(amount, percentage) {
+  const n = ((Number(amount) || 0) * (Number(percentage) || 0)) / 100;
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
 /**
  * Vista de solo lectura del detalle de una partida (item de cotización).
  */
@@ -119,7 +137,16 @@ export function PartidaDetailView({
             {
               key: "name",
               header: "Proceso",
-              render: (r) => r.processNameSnapshot || "-",
+              render: (r) => (
+                <span>
+                  <span className="block">{r.processNameSnapshot || "-"}</span>
+                  {r.observations ? (
+                    <span className="mt-0.5 block text-content-muted">
+                      {r.observations}
+                    </span>
+                  ) : null}
+                </span>
+              ),
             },
             {
               key: "qty",
@@ -148,6 +175,7 @@ export function PartidaDetailView({
               : []),
           ]}
         />
+        {canViewCost && <SectionSum rows={manufacturing} currency={currency} />}
       </Section>
 
       <Section title="Materiales">
@@ -193,6 +221,7 @@ export function PartidaDetailView({
               : []),
           ]}
         />
+        {canViewCost && <SectionSum rows={materials} currency={currency} />}
       </Section>
 
       <Section title="Extras">
@@ -226,6 +255,7 @@ export function PartidaDetailView({
               : []),
           ]}
         />
+        {canViewCost && <SectionSum rows={extras} currency={currency} />}
       </Section>
 
       <Section title="Instalaciones">
@@ -265,6 +295,7 @@ export function PartidaDetailView({
               : []),
           ]}
         />
+        {canViewCost && <SectionSum rows={installations} currency={currency} />}
       </Section>
 
       {(item.clientObservations || item.internalObservations) && (
@@ -299,56 +330,81 @@ export function PartidaDetailView({
       )}
 
       <Section title="Resumen">
-        <dl className="grid gap-2 text-sm sm:grid-cols-2">
-          {canViewCost && (
-            <>
-              <div className="flex justify-between gap-3 rounded-[var(--radius-sm)] bg-surface-muted/50 px-3 py-2">
-                <dt className="text-content-muted">Costo</dt>
-                <dd className="font-medium">{formatMoney(item.costTotal, currency)}</dd>
-              </div>
-              <div className="flex justify-between gap-3 rounded-[var(--radius-sm)] bg-surface-muted/50 px-3 py-2">
-                <dt className="text-content-muted">Manufactura</dt>
-                <dd>{formatMoney(item.manufacturingTotal, currency)}</dd>
-              </div>
-              <div className="flex justify-between gap-3 rounded-[var(--radius-sm)] bg-surface-muted/50 px-3 py-2">
-                <dt className="text-content-muted">Materiales</dt>
-                <dd>{formatMoney(item.materialsTotal, currency)}</dd>
-              </div>
-              <div className="flex justify-between gap-3 rounded-[var(--radius-sm)] bg-surface-muted/50 px-3 py-2">
-                <dt className="text-content-muted">Extras</dt>
-                <dd>{formatMoney(item.extrasTotal, currency)}</dd>
-              </div>
-              <div className="flex justify-between gap-3 rounded-[var(--radius-sm)] bg-surface-muted/50 px-3 py-2">
-                <dt className="text-content-muted">Instalaciones</dt>
-                <dd>{formatMoney(item.installationsTotal, currency)}</dd>
-              </div>
-            </>
-          )}
-          {canViewBenefit && (
-            <div className="flex justify-between gap-3 rounded-[var(--radius-sm)] bg-surface-muted/50 px-3 py-2">
-              <dt className="text-content-muted">Beneficio</dt>
-              <dd>{Number(item.benefitPercentage) || 0}%</dd>
-            </div>
-          )}
-          <div className="flex justify-between gap-3 rounded-[var(--radius-sm)] bg-surface-muted/50 px-3 py-2">
-            <dt className="text-content-muted">Descuento</dt>
-            <dd>
-              {Number(item.discountPercentage)
-                ? `${Number(item.discountPercentage)}%`
-                : formatMoney(item.discountAmount, currency)}
-            </dd>
-          </div>
-          <div className="flex justify-between gap-3 rounded-[var(--radius-sm)] bg-surface-muted/50 px-3 py-2">
-            <dt className="text-content-muted">IVA</dt>
-            <dd>{formatMoney(item.taxAmount, currency)}</dd>
-          </div>
-          <div className="flex justify-between gap-3 rounded-[var(--radius-sm)] border border-border bg-white px-3 py-2 font-semibold sm:col-span-2">
-            <dt>Total partida</dt>
-            <dd>{formatMoney(item.total, currency)}</dd>
-          </div>
-        </dl>
+        <CostBreakdown item={item} currency={currency} canViewCost={canViewCost} canViewBenefit={canViewBenefit} />
       </Section>
     </div>
+  );
+}
+
+function SummaryRow({ label, value, strong = false }) {
+  return (
+    <div
+      className={`flex justify-between gap-3 rounded-[var(--radius-sm)] px-3 py-2 ${
+        strong ? "border border-border bg-white font-semibold sm:col-span-2" : "bg-surface-muted/50"
+      }`}
+    >
+      <dt className={strong ? "" : "text-content-muted"}>{label}</dt>
+      <dd className={strong ? "" : "font-medium"}>{value}</dd>
+    </div>
+  );
+}
+
+function CostBreakdown({ item, currency, canViewCost, canViewBenefit }) {
+  const installationTotal = item.installationsTotal ?? item.installationTotal;
+  const materialsBenefit =
+    item.materialsBenefitAmount != null
+      ? Number(item.materialsBenefitAmount)
+      : benefitOf(item.materialsTotal, item.benefitPercentage);
+  const extrasBenefit =
+    item.extrasBenefitAmount != null
+      ? Number(item.extrasBenefitAmount)
+      : benefitOf(item.extrasTotal, item.benefitPercentage);
+  const beforeTax =
+    (Number(item.manufacturingTotal) || 0) +
+    (Number(item.materialsTotal) || 0) +
+    materialsBenefit +
+    (Number(item.extrasTotal) || 0) +
+    extrasBenefit +
+    (Number(installationTotal) || 0);
+
+  return (
+    <dl className="grid gap-2 text-sm sm:grid-cols-2">
+      {canViewCost && (
+        <>
+          <SummaryRow label="Manufactura" value={formatMoney(item.manufacturingTotal, currency)} />
+          <SummaryRow label="Materiales" value={formatMoney(item.materialsTotal, currency)} />
+          {canViewBenefit && (
+            <SummaryRow
+              label={`% beneficio del costo de materiales (${Number(item.benefitPercentage) || 0}%)`}
+              value={formatMoney(materialsBenefit, currency)}
+            />
+          )}
+          <SummaryRow label="Extras" value={formatMoney(item.extrasTotal, currency)} />
+          {canViewBenefit && (
+            <SummaryRow
+              label={`% beneficio del costo de extras (${Number(item.benefitPercentage) || 0}%)`}
+              value={formatMoney(extrasBenefit, currency)}
+            />
+          )}
+          <SummaryRow label="Instalaciones" value={formatMoney(installationTotal, currency)} />
+          <SummaryRow
+            label="Total por pieza antes de IVA"
+            value={formatMoney(beforeTax, currency)}
+            strong
+          />
+        </>
+      )}
+      <SummaryRow
+        label="Descuento"
+        value={
+          Number(item.discountPercentage)
+            ? `${Number(item.discountPercentage)}%`
+            : formatMoney(item.discountAmount, currency)
+        }
+      />
+      <SummaryRow label="IVA" value={formatMoney(item.taxAmount, currency)} />
+      <SummaryRow label="Total partida" value={formatMoney(item.total, currency)} strong />
+    </dl>
   );
 }
 

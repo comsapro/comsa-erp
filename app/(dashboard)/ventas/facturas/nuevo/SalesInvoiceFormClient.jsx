@@ -257,7 +257,7 @@ export default function SalesInvoiceFormClient({
           pageSize: 20,
           sort: "createdAt",
           order: "desc",
-          sellerId: canViewTeam ? undefined : currentUserId,
+          forLink: "1",
         })}`
       );
       setQuoteResults(res?.data || []);

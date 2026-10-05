@@ -159,6 +159,8 @@ test("Roles Compras y Almacen tienen permisos etapa 3", () => {
   const compras = SYSTEM_ROLES.find((r) => r.name === "Compras");
   const almacen = SYSTEM_ROLES.find((r) => r.name === "Almacen");
   assert.ok(compras.permissions.includes("purchase_orders.create"));
+  assert.ok(!compras.permissions.includes("inventory.view"));
+  assert.ok(!compras.permissions.includes("warehouses.view"));
   assert.ok(almacen.permissions.includes("inventory.create_entry"));
   assert.ok(almacen.permissions.includes("inventory.transfer"));
 });
@@ -197,6 +199,13 @@ test("OC exige orden de produccion y cotizacion", async () => {
   const ok = poCreateSchema.parse({
     ...base,
     productionOrderId: "op1",
+    items: [
+      {
+        descriptionSnapshot: "Placa",
+        quantity: 1,
+        unitPrice: 0,
+      },
+    ],
   });
   assert.equal(ok.productionOrderId, "op1");
   assert.equal(ok.quoteId, "quote1");

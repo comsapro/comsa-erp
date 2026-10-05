@@ -97,6 +97,9 @@ async function buildItemRows(items) {
       descriptionSnapshot: description,
       quantity: new Prisma.Decimal(it.quantity),
       unit: it.unit || catalog?.unitOfMeasure || null,
+      dimensions: it.dimensions || null,
+      presentation: it.presentation || null,
+      supplierName: it.supplierName || null,
       unitPrice: new Prisma.Decimal(it.unitPrice),
       subtotal: new Prisma.Decimal(totals.subtotal),
       taxAmount: new Prisma.Decimal(totals.taxAmount),
@@ -180,7 +183,7 @@ export async function createPurchaseOrder(request) {
   if (!supplier) throw new ValidationError("Proveedor inactivo o inexistente");
 
   const productionOrder = await prisma.productionOrder.findFirst({
-    where: { id: body.productionOrderId, deletedAt: null },
+    where: { id: body.productionOrderId },
     select: { id: true, folio: true, quoteId: true },
   });
   if (!productionOrder) {

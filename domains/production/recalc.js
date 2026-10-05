@@ -135,9 +135,18 @@ export async function recalculateProductionState(tx, productionOrderId, actorId 
     patch.completedAt = existing.completedAt;
   }
 
-  return tx.productionOrder.update({
+  const updated = await tx.productionOrder.update({
     where: { id: productionOrderId },
     data: patch,
     include: PRODUCTION_DETAIL_INCLUDE,
   });
+
+  if (nextStatus === "COMPLETED" && existing?.status !== "COMPLETED") {
+    const { handbackPriceAfterProduction } = await import(
+      "@/domains/quotes/after-production"
+    );
+    await handbackPriceAfterProduction(tx, updated, actorId);
+  }
+
+  return updated;
 }

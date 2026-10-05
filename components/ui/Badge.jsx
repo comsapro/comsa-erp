@@ -43,6 +43,7 @@ const QUOTE_STATUS_TONES = {
   PENDING_APPROVAL: "warning",
   APPROVED: "success",
   IN_PRODUCTION: "brand",
+  SELLER_REVIEW: "warning",
   REJECTED: "danger",
   CANCELLED: "neutral",
 };

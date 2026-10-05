@@ -3,6 +3,7 @@ export const QUOTE_STATUSES = [
   "PENDING_APPROVAL",
   "APPROVED",
   "IN_PRODUCTION",
+  "SELLER_REVIEW",
   "REJECTED",
   "CANCELLED",
 ];
@@ -12,6 +13,7 @@ export const QUOTE_STATUS_LABELS = {
   PENDING_APPROVAL: "En revision",
   APPROVED: "Aprobada",
   IN_PRODUCTION: "En produccion",
+  SELLER_REVIEW: "Revision del vendedor",
   REJECTED: "Rechazada",
   CANCELLED: "Cancelada",
 };
@@ -79,5 +81,12 @@ export const VALID_TRANSITIONS = {
   APPROVED: ["IN_PRODUCTION"],
   REJECTED: ["DRAFT"],
   CANCELLED: [],
-  IN_PRODUCTION: [],
+  IN_PRODUCTION: ["SELLER_REVIEW"],
+  SELLER_REVIEW: ["PENDING_APPROVAL"],
 };
+
+export function quoteCanPrint(quote) {
+  if (!quote) return false;
+  if (quote.priceAfterProduction) return quote.status === "APPROVED";
+  return quote.status === "APPROVED" || quote.status === "IN_PRODUCTION";
+}

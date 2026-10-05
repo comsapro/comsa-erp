@@ -205,6 +205,7 @@ export default function DirectOrderForm({
               onOptionsChange={setClients}
               error={errors.clientId?.message}
               required
+              remoteSearch
             />
             <ContactCatalogSelect
               value={clientContactId || ""}

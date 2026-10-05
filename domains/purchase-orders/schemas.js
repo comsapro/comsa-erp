@@ -7,6 +7,9 @@ const poItemSchema = z
       z.string().min(1).nullable().optional()
     ),
     descriptionSnapshot: z.string().optional().nullable(),
+    dimensions: z.string().optional().nullable(),
+    presentation: z.string().optional().nullable(),
+    supplierName: z.string().optional().nullable(),
     quantity: z.coerce.number().positive(),
     unit: z.string().optional().nullable(),
     unitPrice: z.coerce.number().nonnegative(),
@@ -32,7 +35,7 @@ export const poCreateSchema = z.object({
   requestDate: z.coerce.date(),
   expectedDate: z.coerce.date().optional().nullable(),
   comments: z.string().optional().nullable(),
-  items: z.array(poItemSchema).default([]),
+  items: z.array(poItemSchema).min(1, "Agrega al menos una partida"),
 });
 
 export const poUpdateSchema = z.object({

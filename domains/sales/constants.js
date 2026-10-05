@@ -5,6 +5,18 @@ export const SALES_GOAL_PERIODS = {
   ANNUAL: "ANNUAL",
 };
 
+export const SALES_CALENDAR_EVENT_TYPES = {
+  DELIVERY: "DELIVERY",
+  VACATION: "VACATION",
+  OTHER: "OTHER",
+};
+
+export const SALES_CALENDAR_EVENT_LABELS = {
+  DELIVERY: "Entrega",
+  VACATION: "Vacaciones",
+  OTHER: "Otro",
+};
+
 export const SALES_GOAL_PERIOD_LABELS = {
   MONTHLY: "Mensual",
   QUARTERLY: "Trimestral",

@@ -34,7 +34,7 @@ const emptyDefaults = () => ({
   teamIds: [],
 });
 
-export default function SalesGoalsClient() {
+export default function SalesGoalsClient({ canManage = false }) {
   const [rows, setRows] = useState([]);
   const [sellers, setSellers] = useState([]);
   const [teams, setTeams] = useState([]);
@@ -73,19 +73,23 @@ export default function SalesGoalsClient() {
     try {
       const [goals, sellersRes, teamsRes] = await Promise.all([
         api.get("/api/ventas/metas"),
-        api.get(
-          `/api/vendedores${toQuery({ pageSize: 100, sort: "name", order: "asc" })}`
-        ),
-        api
-          .get(
-            `/api/equipos${toQuery({
-              pageSize: 100,
-              status: "ACTIVE",
-              sort: "name",
-              order: "asc",
-            })}`
-          )
-          .catch(() => ({ data: [] })),
+        canManage
+          ? api.get(
+              `/api/vendedores${toQuery({ pageSize: 100, sort: "name", order: "asc" })}`
+            )
+          : Promise.resolve({ data: [] }),
+        canManage
+          ? api
+              .get(
+                `/api/equipos${toQuery({
+                  pageSize: 100,
+                  status: "ACTIVE",
+                  sort: "name",
+                  order: "asc",
+                })}`
+              )
+              .catch(() => ({ data: [] }))
+          : Promise.resolve({ data: [] }),
       ]);
       setRows(goals?.data || []);
       setSellers(sellersRes?.data || []);
@@ -95,7 +99,7 @@ export default function SalesGoalsClient() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [canManage]);
 
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect */
@@ -181,12 +185,17 @@ export default function SalesGoalsClient() {
     <div className="space-y-6">
       <PageHeader
         title="Metas de ventas"
-        description="Asigna la meta a uno o más equipos y/o vendedores individuales. Cada equipo puede tener su propia meta en el mismo periodo."
+        description={
+          canManage
+            ? "Asigna la meta a uno o más equipos y/o vendedores individuales. Cada equipo puede tener su propia meta en el mismo periodo."
+            : "Consulta la meta de tu equipo. Solo un supervisor puede cambiarla."
+        }
       />
 
       {error && <Alert variant="danger">{error}</Alert>}
       {success && <Alert variant="success">{success}</Alert>}
 
+      {canManage && (
       <Card>
         <CardHeader>
           <h2 className="text-base font-semibold text-content">
@@ -303,10 +312,13 @@ export default function SalesGoalsClient() {
           </form>
         </CardBody>
       </Card>
+      )}
 
       <Card>
         <CardHeader>
-          <h2 className="text-base font-semibold text-content">Historial de metas</h2>
+          <h2 className="text-base font-semibold text-content">
+            {canManage ? "Historial de metas" : "Meta de tu equipo"}
+          </h2>
         </CardHeader>
         <CardBody>
           {loading ? (
@@ -323,7 +335,7 @@ export default function SalesGoalsClient() {
                     <th className="px-2 py-2 font-medium">Asignación</th>
                     <th className="px-2 py-2 font-medium">Creada</th>
                     <th className="px-2 py-2 font-medium">Modificada</th>
-                    <th className="px-2 py-2 font-medium">Acciones</th>
+                    {canManage && <th className="px-2 py-2 font-medium">Acciones</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -364,6 +376,7 @@ export default function SalesGoalsClient() {
                             {g.updatedByUser?.name}
                           </div>
                         </td>
+                        {canManage && (
                         <td className="px-2 py-2">
                           <Button
                             type="button"
@@ -374,6 +387,7 @@ export default function SalesGoalsClient() {
                             Editar
                           </Button>
                         </td>
+                        )}
                       </tr>
                     );
                   })}

@@ -19,13 +19,15 @@ test("ALL_PERMISSION_CODES incluye teams", () => {
   assert.ok(ALL_PERMISSION_CODES.includes("teams.view"));
 });
 
-test("Direccion y Administracion tienen teams", () => {
+test("Solo el administrador administra equipos", () => {
   const direccion = SYSTEM_ROLES.find((r) => r.name === "Direccion");
   const adminOps = SYSTEM_ROLES.find((r) => r.name === "Administracion");
-  assert.ok(direccion.permissions.includes("teams.view"));
-  assert.ok(direccion.permissions.includes("teams.edit"));
-  assert.ok(adminOps.permissions.includes("teams.view"));
-  assert.ok(adminOps.permissions.includes("teams.create"));
+  const admin = SYSTEM_ROLES.find((r) => r.name === "Administrador");
+  assert.equal(admin.permissions, "ALL");
+  assert.ok(!direccion.permissions.includes("teams.view"));
+  assert.ok(!adminOps.permissions.includes("teams.view"));
+  assert.ok(!direccion.permissions.includes("users.view"));
+  assert.ok(!adminOps.permissions.includes("users.view"));
 });
 
 test("menu muestra Equipos con permiso", () => {

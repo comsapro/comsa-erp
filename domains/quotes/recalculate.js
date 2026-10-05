@@ -2,6 +2,7 @@ import "server-only";
 import {
   calculateQuoteItemTotals,
   calculateQuoteHeaderTotals,
+  persistedQuoteItemTotals,
   lineAmount,
 } from "@/lib/quotes/calculations";
 
@@ -71,7 +72,7 @@ export async function recalculateQuote(tx, quoteId) {
 
     const updated = await tx.quoteItem.update({
       where: { id: item.id },
-      data: totals,
+      data: persistedQuoteItemTotals(totals),
     });
     itemTotals.push({ ...updated, ...totals, status: item.status });
   }

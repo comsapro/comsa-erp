@@ -35,9 +35,26 @@ test("Totales de item con IVA 16% y beneficio 30%", () => {
     discountPercentage: 0,
   });
   assert.equal(totals.costTotal, 200);
-  assert.equal(totals.saleSubtotal, 260);
-  assert.equal(totals.taxAmount, money(260 * TAX_RATE));
-  assert.equal(totals.total, money(260 + 260 * TAX_RATE));
+  assert.equal(totals.materialsBenefitAmount, 15);
+  assert.equal(totals.extrasBenefitAmount, 15);
+  assert.equal(totals.benefitAmount, 30);
+  assert.equal(totals.saleSubtotal, 230);
+  assert.equal(totals.taxAmount, money(230 * TAX_RATE));
+  assert.equal(totals.total, money(230 + 230 * TAX_RATE));
+});
+
+test("Beneficio solo sobre materiales y extras, ejemplo del 28.09", () => {
+  const totals = calculateQuoteItemTotals({
+    manufacturing: [{ amount: 12005 }],
+    materials: [{ amount: 1550 }],
+    extras: [{ amount: 750 }],
+    installations: [{ amount: 0 }],
+    benefitPercentage: 30,
+    discountPercentage: 0,
+  });
+  assert.equal(totals.materialsBenefitAmount, 465);
+  assert.equal(totals.extrasBenefitAmount, 225);
+  assert.equal(totals.saleSubtotal, 14995);
 });
 
 test("Descuento reduce base gravable", () => {

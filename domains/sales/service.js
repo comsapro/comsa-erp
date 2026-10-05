@@ -697,9 +697,26 @@ export async function upsertMaterialDecision(request) {
 }
 
 export async function listSalesGoals(request) {
-  await requirePermission("sales.manage_goals");
+  const user = await getCurrentUser();
+  if (!userHasPermission(user, "sales.view") && !canManageSalesGoals(user)) {
+    await requirePermission("sales.view");
+  }
+  const where = { deletedAt: null };
+  if (!canManageSalesGoals(user) && !userIsAdmin(user)) {
+    const memberships = await prisma.teamMember.findMany({
+      where: { userId: user.id },
+      select: { teamId: true },
+    });
+    const teamIds = memberships.map((row) => row.teamId);
+    where.OR = [
+      { sellers: { some: { sellerId: user.id } } },
+      ...(teamIds.length
+        ? [{ teams: { some: { teamId: { in: teamIds } } } }]
+        : []),
+    ];
+  }
   const rows = await prisma.salesGoal.findMany({
-    where: { deletedAt: null },
+    where,
     include: GOAL_INCLUDE,
     orderBy: [{ periodKey: "desc" }, { createdAt: "desc" }],
   });

@@ -301,6 +301,11 @@ export async function completeOrder(request, id) {
     createdBy: actor.id,
   });
 
+  const { handbackPriceAfterProduction } = await import(
+    "@/domains/quotes/after-production"
+  );
+  await handbackPriceAfterProduction(prisma, record, actor.id);
+
   return jsonOk(record);
 }
 

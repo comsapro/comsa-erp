@@ -23,7 +23,7 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import { QUOTE_STATUS_LABELS, ORDER_TYPE_LABELS } from "@/domains/quotes/constants";
+import { QUOTE_STATUS_LABELS, ORDER_TYPE_LABELS, quoteCanPrint } from "@/domains/quotes/constants";
 import { api, toQuery } from "@/lib/api/client";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
@@ -88,6 +88,8 @@ export default function QuoteDetailClient({ quoteId }) {
   const canViewCost = has("quotes.view_cost");
   const canViewBenefit = has("quotes.view_benefit");
   const isDraft = quote?.status === "DRAFT";
+  const isSellerReview = quote?.status === "SELLER_REVIEW";
+  const canEditLines = (isDraft || isSellerReview) && has("quotes.edit");
   const currency = quote?.currency || "MXN";
 
   const loadQuote = useCallback(async () => {
@@ -172,7 +174,9 @@ export default function QuoteDetailClient({ quoteId }) {
     }
 
     const allowed = {
-      submit: quote.status === "DRAFT" && has("quotes.submit"),
+      submit:
+        (quote.status === "DRAFT" || quote.status === "SELLER_REVIEW") &&
+        has("quotes.submit"),
       approve: quote.status === "PENDING_APPROVAL" && has("quotes.approve"),
       return:
         ["PENDING_APPROVAL", "REJECTED"].includes(quote.status) &&
@@ -373,7 +377,7 @@ export default function QuoteDetailClient({ quoteId }) {
     <div>
       <PageHeader
         title={quote.folio}
-        description={`${quote.client?.commercialName || "Sin cliente"} · ${
+        description={`${quote.priceAfterProduction ? "Orden directa · " : ""}${quote.client?.commercialName || "Sin cliente"} · ${
           ORDER_TYPE_LABELS[quote.orderType] || quote.orderType
         }`}
         actions={
@@ -381,8 +385,7 @@ export default function QuoteDetailClient({ quoteId }) {
             <Button as={Link} href="/cotizaciones" variant="secondary">
               <ArrowLeft className="h-4 w-4" /> Volver
             </Button>
-            {has("quotes.print") &&
-              ["APPROVED", "IN_PRODUCTION"].includes(quote.status) && (
+            {has("quotes.print") && quoteCanPrint(quote) && (
               <>
                 <Button
                   as={Link}
@@ -443,8 +446,7 @@ export default function QuoteDetailClient({ quoteId }) {
                 </Button>
               </>
             )}
-            {has("quotes.print") &&
-              !["APPROVED", "IN_PRODUCTION"].includes(quote.status) && (
+            {has("quotes.print") && !quoteCanPrint(quote) && (
                 <Button
                   variant="secondary"
                   disabled
@@ -453,13 +455,15 @@ export default function QuoteDetailClient({ quoteId }) {
                   <Printer className="h-4 w-4" /> Imprimir / PDF
                 </Button>
               )}
-            {quote.status === "DRAFT" && has("quotes.submit") && (
+            {(quote.status === "DRAFT" || quote.status === "SELLER_REVIEW") &&
+              has("quotes.submit") && (
               <Button
                 variant="subtle"
                 loading={actionBusy}
                 onClick={() => runAction("submit")}
               >
-                <Send className="h-4 w-4" /> Enviar
+                <Send className="h-4 w-4" />{" "}
+                {quote.status === "SELLER_REVIEW" ? "Enviar a aprobacion" : "Enviar"}
               </Button>
             )}
             {quote.status === "PENDING_APPROVAL" && has("quotes.approve") && (
@@ -468,7 +472,10 @@ export default function QuoteDetailClient({ quoteId }) {
                 loading={actionBusy}
                 onClick={() => runAction("approve")}
               >
-                <CheckCircle2 className="h-4 w-4" /> Aprobar
+                <CheckCircle2 className="h-4 w-4" />{" "}
+                {quote.priceAfterProduction && !quote.productionOrderId
+                  ? "Autorizar produccion"
+                  : "Aprobar"}
               </Button>
             )}
             {quote.status === "PENDING_APPROVAL" && has("quotes.reject") && (
@@ -510,6 +517,7 @@ export default function QuoteDetailClient({ quoteId }) {
               </Button>
             )}
             {quote.status === "APPROVED" &&
+              !quote.priceAfterProduction &&
               has("quotes.send_to_production") && (
                 <Button
                   loading={actionBusy}
@@ -803,7 +811,7 @@ export default function QuoteDetailClient({ quoteId }) {
                             >
                               <Eye className="h-4 w-4" />
                             </Button>
-                            {isDraft && has("quotes.edit") && (
+                            {canEditLines && (
                               <Button
                                 size="icon"
                                 variant="ghost"
@@ -888,6 +896,9 @@ export default function QuoteDetailClient({ quoteId }) {
           currency={currency}
           onSubmit={saveItem}
           onSavedToLibrary={loadQuote}
+          captureWithoutHours={Boolean(quote.priceAfterProduction) && isDraft}
+          sellerReview={isSellerReview}
+          sellerReviewStartedAt={quote.sellerReviewStartedAt}
         />
       </Modal>
 

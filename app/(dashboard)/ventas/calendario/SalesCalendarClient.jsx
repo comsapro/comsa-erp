@@ -17,12 +17,22 @@ import {
   PRODUCTION_STATUS_LABELS,
   PRODUCTION_STATUS_TONES,
 } from "@/domains/production/constants";
+import { SALES_CALENDAR_EVENT_LABELS } from "@/domains/sales/constants";
 
-export default function SalesCalendarClient({ canEditCommitment }) {
+export default function SalesCalendarClient({ canEditCommitment, currentUserId }) {
   const [rows, setRows] = useState([]);
+  const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(null);
+  const [eventForm, setEventForm] = useState({
+    id: "",
+    title: "",
+    eventDate: "",
+    type: "DELIVERY",
+    notes: "",
+  });
+  const [savingEvent, setSavingEvent] = useState(false);
   const [commitmentDate, setCommitmentDate] = useState("");
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
@@ -34,16 +44,20 @@ export default function SalesCalendarClient({ canEditCommitment }) {
       const now = new Date();
       const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const to = new Date(now.getFullYear(), now.getMonth() + 2, 0);
-      const res = await api.get(
-        `/api/ventas/compromisos${toQuery({
-          from: from.toISOString().slice(0, 10),
-          to: to.toISOString().slice(0, 10),
-        })}`
-      );
+      const query = toQuery({
+        from: from.toISOString().slice(0, 10),
+        to: to.toISOString().slice(0, 10),
+      });
+      const [res, eventRes] = await Promise.all([
+        api.get(`/api/ventas/compromisos${query}`),
+        api.get(`/api/ventas/eventos${query}`),
+      ]);
       setRows(res?.data || []);
+      setEvents(eventRes?.data || []);
     } catch (err) {
       setError(err.message || "No se pudo cargar el calendario");
       setRows([]);
+      setEvents([]);
     } finally {
       setLoading(false);
     }
@@ -79,26 +93,191 @@ export default function SalesCalendarClient({ canEditCommitment }) {
     }
   }
 
+  const calendarRows = [
+    ...rows.map((row) => ({
+      ...row,
+      kind: "commitment",
+      calendarDate: row.commitmentDate,
+    })),
+    ...events.map((event) => ({
+      ...event,
+      kind: "event",
+      calendarDate: event.eventDate,
+    })),
+  ];
+
+  function resetEventForm() {
+    setEventForm({ id: "", title: "", eventDate: "", type: "DELIVERY", notes: "" });
+  }
+
+  function editEvent(event) {
+    setEventForm({
+      id: event.id,
+      title: event.title || "",
+      eventDate: toDateInputValue(event.eventDate),
+      type: event.type || "OTHER",
+      notes: event.notes || "",
+    });
+  }
+
+  async function saveEvent(e) {
+    e.preventDefault();
+    setSavingEvent(true);
+    setError("");
+    try {
+      const payload = {
+        title: eventForm.title,
+        eventDate: eventForm.eventDate,
+        type: eventForm.type,
+        notes: eventForm.notes || null,
+      };
+      if (eventForm.id) {
+        await api.patch(`/api/ventas/eventos/${eventForm.id}`, payload);
+      } else {
+        await api.post("/api/ventas/eventos", payload);
+      }
+      resetEventForm();
+      await load();
+    } catch (err) {
+      setError(err.message || "No se pudo guardar el evento");
+    } finally {
+      setSavingEvent(false);
+    }
+  }
+
+  async function removeEvent(id) {
+    setSavingEvent(true);
+    setError("");
+    try {
+      await api.del(`/api/ventas/eventos/${id}`);
+      if (eventForm.id === id) resetEventForm();
+      await load();
+    } catch (err) {
+      setError(err.message || "No se pudo eliminar el evento");
+    } finally {
+      setSavingEvent(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Calendario de compromisos"
-        description="Fechas compromiso de partidas en producción de tus proyectos. No es el Gantt de planta."
+        description="Fechas compromiso de producción y eventos manuales: entregas, vacaciones y otros."
       />
 
       {error && <Alert variant="danger">{error}</Alert>}
 
       <MonthCalendar
-        rows={rows}
+        rows={calendarRows}
         loading={loading}
         error={null}
-        getDate={(r) => r.commitmentDate}
-        getHref={(r) => `/produccion/${r.productionOrderId}`}
-        getTitle={(r) => `${r.productionFolio} · ${r.client}`}
-        getSubtitle={(r) => `P${r.position}: ${r.description}`}
-        emptyTitle="Sin compromisos"
-        emptyDescription="Las fechas aparecen al enviar cotizaciones a producción."
+        getDate={(r) => r.calendarDate}
+        getHref={(r) =>
+          r.kind === "commitment" ? `/produccion/${r.productionOrderId}` : ""
+        }
+        getTitle={(r) =>
+          r.kind === "event"
+            ? r.title
+            : `${r.productionFolio} · ${r.client}`
+        }
+        getSubtitle={(r) =>
+          r.kind === "event"
+            ? SALES_CALENDAR_EVENT_LABELS[r.type] || "Evento"
+            : `Compromiso · P${r.position}: ${r.description}`
+        }
+        getTone={(r) => (r.kind === "event" ? "event" : "commitment")}
+        emptyTitle="Sin fechas"
+        emptyDescription="Los compromisos aparecen al enviar cotizaciones a producción. También puedes agregar un evento."
       />
+
+      <Card>
+        <CardHeader>
+          <h2 className="text-base font-semibold text-content">
+            {eventForm.id ? "Editar evento" : "Nuevo evento"}
+          </h2>
+        </CardHeader>
+        <CardBody>
+          <form onSubmit={saveEvent} className="grid gap-3 sm:grid-cols-2">
+            <Field label="Titulo" required>
+              <Input
+                value={eventForm.title}
+                onChange={(e) => setEventForm((prev) => ({ ...prev, title: e.target.value }))}
+                required
+              />
+            </Field>
+            <Field label="Fecha" required>
+              <Input
+                type="date"
+                value={eventForm.eventDate}
+                onChange={(e) =>
+                  setEventForm((prev) => ({ ...prev, eventDate: e.target.value }))
+                }
+                required
+              />
+            </Field>
+            <Field label="Tipo">
+              <select
+                className="h-10 w-full rounded-[var(--radius-sm)] border border-border bg-white px-3 text-sm"
+                value={eventForm.type}
+                onChange={(e) => setEventForm((prev) => ({ ...prev, type: e.target.value }))}
+              >
+                {Object.entries(SALES_CALENDAR_EVENT_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Nota">
+              <Input
+                value={eventForm.notes}
+                onChange={(e) => setEventForm((prev) => ({ ...prev, notes: e.target.value }))}
+              />
+            </Field>
+            <div className="flex flex-wrap gap-2 sm:col-span-2">
+              <Button type="submit" loading={savingEvent}>
+                {eventForm.id ? "Actualizar evento" : "Agregar evento"}
+              </Button>
+              {eventForm.id && (
+                <Button type="button" variant="secondary" onClick={resetEventForm}>
+                  Cancelar
+                </Button>
+              )}
+            </div>
+          </form>
+          {events.length > 0 && (
+            <ul className="mt-4 divide-y divide-border text-sm">
+              {events.map((event) => (
+                <li key={event.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                  <span>
+                    {formatDate(event.eventDate)} · {event.title}
+                    <span className="text-content-muted">
+                      {" "}
+                      · {SALES_CALENDAR_EVENT_LABELS[event.type] || event.type}
+                    </span>
+                  </span>
+                  {event.userId === currentUserId && (
+                    <span className="flex gap-2">
+                      <Button type="button" size="sm" variant="subtle" onClick={() => editEvent(event)}>
+                        Editar
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="subtle"
+                        onClick={() => removeEvent(event.id)}
+                      >
+                        Eliminar
+                      </Button>
+                    </span>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardBody>
+      </Card>
 
       <Card>
         <CardHeader>

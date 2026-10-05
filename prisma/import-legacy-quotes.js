@@ -2,6 +2,7 @@ import { phpUnserialize } from "../scripts/php-unserialize.js";
 import {
   calculateQuoteHeaderTotals,
   calculateQuoteItemTotals,
+  persistedQuoteItemTotals,
   lineAmount,
   money,
   toNumber,
@@ -428,7 +429,7 @@ export async function importQuotesAndProduction(prisma, {
         discountPercentage,
         isUrgent: String(partida.flagUrgente) === "1",
         status: "ACTIVE",
-        ...totals,
+        ...persistedQuoteItemTotals(totals),
         manufacturing: { create: children.manufacturing },
         materials: { create: children.materials },
         extras: { create: children.extras },

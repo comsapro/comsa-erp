@@ -394,7 +394,7 @@ export function ProductionItemWorkspace({
                 size="sm"
                 variant="subtle"
                 as="a"
-                href={`/api/produccion/${productionId}/pdf/orden-trabajo?itemId=${item.id}`}
+                href={`/produccion/${productionId}/orden-trabajo?itemId=${item.id}`}
                 target="_blank"
               >
                 <FileText className="h-4 w-4" /> Orden de trabajo
