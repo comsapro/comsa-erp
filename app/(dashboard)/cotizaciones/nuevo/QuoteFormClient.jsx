@@ -112,7 +112,7 @@ export default function QuoteFormClient({ currentUser }) {
         setClients(clientsRes?.data || []);
         setCompanies(companiesRes?.data || []);
 
-        if (has("quotes.create") || has("quotes.edit") || has("users.view")) {
+        if (has("quotes.approve")) {
           const usersRes = await api.get(
             `/api/vendedores${toQuery({ pageSize: 100, sort: "name", order: "asc" })}`
           );
@@ -171,7 +171,9 @@ export default function QuoteFormClient({ currentUser }) {
       const payload = {
         ...values,
         clientContactId: values.clientContactId || null,
-        sellerId: values.sellerId || currentUser?.id || null,
+        sellerId: has("quotes.approve")
+          ? values.sellerId || currentUser?.id || null
+          : currentUser?.id || null,
         requestDate: values.requestDate || null,
         purchaseOrder: null,
         requisition: values.requisition || null,
@@ -247,12 +249,21 @@ export default function QuoteFormClient({ currentUser }) {
                   error={errors.issuingCompanyId?.message}
                   required
                 />
-                <SellerCatalogSelect
-                  value={sellerId || ""}
-                  onChange={(id) => setValue("sellerId", id)}
-                  options={sellers}
-                  error={errors.sellerId?.message}
-                />
+                {has("quotes.approve") ? (
+                  <SellerCatalogSelect
+                    value={sellerId || ""}
+                    onChange={(id) => setValue("sellerId", id)}
+                    options={sellers}
+                    error={errors.sellerId?.message}
+                  />
+                ) : (
+                  <div>
+                    <p className="mb-1 text-sm font-medium text-content">Vendedor</p>
+                    <p className="flex h-10 items-center rounded-[var(--radius-sm)] border border-border bg-surface-muted px-3 text-sm text-content">
+                      {currentUser?.name || "Tu usuario"}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="grid gap-4 sm:grid-cols-3">

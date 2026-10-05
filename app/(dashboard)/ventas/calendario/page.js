@@ -9,6 +9,7 @@ export default async function CalendarioVentasPage() {
   return (
     <SalesCalendarClient
       canEditCommitment={userHasPermission(user, "sales.edit_commitment")}
+      currentUserId={user.id}
     />
   );
 }

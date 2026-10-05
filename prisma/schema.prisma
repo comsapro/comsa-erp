@@ -71,6 +71,7 @@ enum QuoteStatus {
   PENDING_APPROVAL
   APPROVED
   IN_PRODUCTION
+  SELLER_REVIEW
   REJECTED
   CANCELLED
 
@@ -326,6 +327,9 @@ model User {
   productionSettingsUpdated ProductionSetting[] @relation("ProductionSettingUpdatedBy")
   salesGoalsCreated SalesGoal[] @relation("SalesGoalCreatedBy")
   salesGoalsUpdated SalesGoal[] @relation("SalesGoalUpdatedBy")
+  salesCalendarEventsOwned SalesCalendarEvent[] @relation("SalesCalendarEventOwner")
+  salesCalendarEventsCreated SalesCalendarEvent[] @relation("SalesCalendarEventCreatedBy")
+  salesCalendarEventsUpdated SalesCalendarEvent[] @relation("SalesCalendarEventUpdatedBy")
   salesGoalMemberships SalesGoalSeller[]
   salesInvoicesAsSeller SalesInvoice[] @relation("SalesInvoiceSeller")
   salesInvoicesCreated SalesInvoice[] @relation("SalesInvoiceCreatedBy")
@@ -420,6 +424,7 @@ model Team {
   members TeamMember[]
   roles   TeamRole[]
   salesGoals SalesGoalTeam[]
+  salesCalendarEvents SalesCalendarEvent[]
 
   @@index([status])
   @@index([deletedAt])
@@ -950,6 +955,8 @@ model Quote {
   productionOrderId  String?   @unique @map("production_order_id")
   directOrderId      String?   @unique @map("direct_order_id")
   parentQuoteId      String?   @map("parent_quote_id")
+  priceAfterProduction Boolean @default(false) @map("price_after_production")
+  sellerReviewStartedAt DateTime? @map("seller_review_started_at")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -1736,6 +1743,9 @@ model PurchaseOrderItem {
   quantity             Decimal                 @db.Decimal(14, 3)
   receivedQuantity     Decimal                 @default(0) @map("received_quantity") @db.Decimal(14, 3)
   unit                 String?
+  dimensions           String?
+  presentation         String?
+  supplierName         String?                 @map("supplier_name")
   unitPrice            Decimal                 @default(0) @map("unit_price") @db.Decimal(14, 2)
   subtotal             Decimal                 @default(0) @db.Decimal(14, 2)
   taxAmount            Decimal                 @default(0) @map("tax_amount") @db.Decimal(14, 2)
@@ -1880,6 +1890,41 @@ model SalesGoalTeam {
   @@id([salesGoalId, teamId])
   @@index([teamId])
   @@map("sales_goal_teams")
+}
+
+enum SalesCalendarEventType {
+  DELIVERY
+  VACATION
+  OTHER
+
+  @@map("sales_calendar_event_type")
+}
+
+model SalesCalendarEvent {
+  id        String                 @id @default(cuid())
+  title     String
+  eventDate DateTime               @map("event_date") @db.Date
+  type      SalesCalendarEventType @default(OTHER)
+  notes     String?
+  userId    String                 @map("user_id")
+  teamId    String?                @map("team_id")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String    @map("created_by")
+  updatedBy String    @map("updated_by")
+  deletedAt DateTime? @map("deleted_at")
+
+  user          User  @relation("SalesCalendarEventOwner", fields: [userId], references: [id])
+  team          Team? @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  createdByUser User  @relation("SalesCalendarEventCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User  @relation("SalesCalendarEventUpdatedBy", fields: [updatedBy], references: [id])
+
+  @@index([eventDate])
+  @@index([userId])
+  @@index([teamId])
+  @@index([deletedAt])
+  @@map("sales_calendar_events")
 }
 
 model SalesInvoice {

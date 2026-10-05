@@ -188,9 +188,18 @@ export default async function DashboardHome() {
     getDashboardStats(),
     needsStage2 ? getStage2DashboardStats() : Promise.resolve(null),
     needsStage3 ? getStage3DashboardStats() : Promise.resolve(null),
-    canAudit ? getRecentActivity(8) : Promise.resolve([]),
+    canAudit
+      ? getRecentActivity(8, {
+          excludeModules: canQuotes ? [] : ["quotes"],
+        })
+      : Promise.resolve([]),
     canQuotes || canDirectOrders
-      ? getRecentCommercialActivity(8)
+      ? getRecentCommercialActivity(
+          8,
+          [canQuotes ? "quotes" : null, canDirectOrders ? "direct_orders" : null].filter(
+            Boolean
+          )
+        )
       : Promise.resolve([]),
     canProduction ? getRecentProductionActivity(8) : Promise.resolve([]),
     canInventory || canPurchases

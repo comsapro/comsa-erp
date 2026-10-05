@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import { Plus } from "lucide-react";
 import { api, toQuery } from "@/lib/api/client";
 import { Button } from "@/components/ui/Button";
@@ -11,14 +11,18 @@ import {
 import { usePermissions } from "@/components/permissions/PermissionsProvider";
 import { mapSelectedMaterials } from "@/domains/purchase-orders/preload";
 
-export function MaterialPreload({
-  productionOrderId,
-  quoteId,
-  catalogItems = [],
-  onCatalogItemsChange,
-  onSearchItems,
-  onApply,
-}) {
+export const MaterialPreload = forwardRef(function MaterialPreload(
+  {
+    productionOrderId,
+    quoteId,
+    catalogItems = [],
+    onCatalogItemsChange,
+    onSearchItems,
+    onApply,
+    selectAllByDefault = false,
+  },
+  ref
+) {
   const { has } = usePermissions();
   const canCreateItem = has("items.create");
   const [loading, setLoading] = useState(false);
@@ -47,7 +51,7 @@ export function MaterialPreload({
         setPayload(data);
         const initial = {};
         for (const mat of data.materials || []) {
-          initial[mat.id] = false;
+          initial[mat.id] = selectAllByDefault;
         }
         setSelected(initial);
         setLinkExisting({});
@@ -63,42 +67,50 @@ export function MaterialPreload({
     return () => {
       cancelled = true;
     };
-  }, [productionOrderId, quoteId]);
-
-  if (!productionOrderId && !quoteId) return null;
+  }, [productionOrderId, quoteId, selectAllByDefault]);
 
   const materials = payload?.materials || [];
 
-  const apply = () => {
-    setApplyError(null);
+  const collectSelected = () => {
     const ids = Object.entries(selected)
       .filter(([, on]) => on)
       .map(([id]) => id);
-    if (!ids.length) {
-      setApplyError("Selecciona al menos un material.");
-      return;
-    }
+    if (!ids.length) return { rows: [], error: null };
     const mapped = mapSelectedMaterials(materials, ids).map((row) => ({
       ...row,
       itemId: row.itemId || mappedItemId[row.id] || "",
     }));
-    const missing = mapped.filter((row) => !row.itemId);
-    if (missing.length) {
-      const wantsLink = missing.some((row) => linkExisting[row.id]);
-      if (wantsLink) {
-        setApplyError("Selecciona el item de catalogo a vincular.");
-      } else if (canCreateItem) {
-        setApplyError(
-          "Hay materiales sin item. Crea un item nuevo o marca vincular a uno existente."
-        );
-      } else {
-        setApplyError(
-          "Hay materiales sin item de catalogo. Marca vincular y selecciona uno existente."
-        );
-      }
+    const linkMissing = mapped.filter((row) => linkExisting[row.id] && !row.itemId);
+    if (linkMissing.length) {
+      return {
+        rows: [],
+        error: "Selecciona el item de catalogo a vincular.",
+      };
+    }
+    return { rows: mapped, error: null };
+  };
+
+  useImperativeHandle(ref, () => ({ collectSelected }), [
+    selected,
+    materials,
+    mappedItemId,
+    linkExisting,
+  ]);
+
+  if (!productionOrderId && !quoteId) return null;
+
+  const apply = () => {
+    setApplyError(null);
+    const { rows, error: collectError } = collectSelected();
+    if (collectError) {
+      setApplyError(collectError);
       return;
     }
-    onApply?.(mapped, payload);
+    if (!rows.length) {
+      setApplyError("Selecciona al menos un material.");
+      return;
+    }
+    onApply?.(rows, payload);
   };
 
   return (
@@ -218,9 +230,9 @@ export function MaterialPreload({
                             </Button>
                           </>
                         ) : (
-                          <p className="text-xs text-danger-700">
-                            Marca vincular y selecciona un item, o pide permiso para crear
-                            items.
+                          <p className="text-xs text-content-muted">
+                            Se agrega con la descripcion de la cotizacion. La recepcion a
+                            inventario pide un item de catalogo.
                           </p>
                         )}
                       </div>
@@ -272,6 +284,6 @@ export function MaterialPreload({
       />
     </div>
   );
-}
+});
 
 export default MaterialPreload;

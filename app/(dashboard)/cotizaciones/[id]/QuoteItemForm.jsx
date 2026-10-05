@@ -30,20 +30,74 @@ function num(value, fallback = 0) {
   return Number.isNaN(n) ? fallback : n;
 }
 
-function mapLines(initial) {
+function lineIsLocked(row, startedAt) {
+  if (!row?.id) return false;
+  if (!startedAt || !row.createdAt) return true;
+  return new Date(row.createdAt).getTime() < new Date(startedAt).getTime();
+}
+
+function mergeCatalogRows(list, extras) {
+  const map = new Map();
+  for (const row of [...(extras || []), ...(list || [])]) {
+    if (!row?.id) continue;
+    const key = String(row.id);
+    map.set(key, { ...(map.get(key) || {}), ...row });
+  }
+  return [...map.values()];
+}
+
+function savedProcessOptions(item) {
+  return (item?.manufacturing || []).flatMap((line) => {
+    if (line?.process?.id) return [line.process];
+    if (!line?.manufacturingProcessId) return [];
+    return [
+      {
+        id: line.manufacturingProcessId,
+        code: "",
+        name: line.processNameSnapshot || "Proceso",
+        unit: line.unitSnapshot || "HOUR",
+        defaultRate: line.unitRate,
+      },
+    ];
+  });
+}
+
+function savedInstallationOptions(item) {
+  return (item?.installations || []).flatMap((line) => {
+    if (line?.concept?.id) return [line.concept];
+    if (!line?.installationConceptId) return [];
+    return [
+      {
+        id: line.installationConceptId,
+        code: "",
+        name: line.conceptNameSnapshot || "Concepto",
+        unit: line.unitSnapshot || "SERVICE",
+        defaultPrice: line.unitPrice,
+      },
+    ];
+  });
+}
+
+function mapLines(initial, { sellerReview = false, sellerReviewStartedAt = null } = {}) {
   return {
     manufacturing: (initial?.manufacturing || []).map((r, i) => ({
+      id: r.id || null,
       manufacturingProcessId: r.manufacturingProcessId || "",
+      processCode: r.process?.code || "",
+      processStatus: r.process?.status || "",
       processNameSnapshot: r.processNameSnapshot || "",
       unitSnapshot: r.unitSnapshot || "HOUR",
       quantity: num(r.quantity, 1),
       unitRate: num(r.unitRate, 0),
       observations: r.observations || "",
       sortOrder: r.sortOrder ?? i,
+      locked: sellerReview && lineIsLocked(r, sellerReviewStartedAt),
     })),
     materials: (initial?.materials || []).map((r) => ({
+      id: r.id || null,
       itemId: r.itemId || null,
       supplierId: r.supplierId || null,
+      supplierName: r.supplier?.name || r.supplierName || "",
       descriptionSnapshot: r.descriptionSnapshot || "",
       dimensions: r.dimensions || "",
       presentation: r.presentation || "",
@@ -51,22 +105,29 @@ function mapLines(initial) {
       quantity: num(r.quantity, 1),
       unitPrice: num(r.unitPrice, 0),
       observations: r.observations || "",
+      locked: sellerReview && Boolean(r.id),
     })),
     extras: (initial?.extras || []).map((r) => ({
+      id: r.id || null,
       description: r.description || "",
       quantity: num(r.quantity, 1),
       unit: r.unit || "",
       unitPrice: num(r.unitPrice, 0),
       supplierId: r.supplierId || null,
+      supplierName: r.supplier?.name || r.supplierName || "",
       observations: r.observations || "",
+      locked: sellerReview && lineIsLocked(r, sellerReviewStartedAt),
     })),
     installations: (initial?.installations || []).map((r) => ({
+      id: r.id || null,
       installationConceptId: r.installationConceptId || null,
+      conceptCode: r.concept?.code || "",
       conceptNameSnapshot: r.conceptNameSnapshot || "",
       unitSnapshot: r.unitSnapshot || "SERVICE",
       quantity: num(r.quantity, 1),
       unitPrice: num(r.unitPrice, 0),
       observations: r.observations || "",
+      locked: sellerReview && Boolean(r.id),
     })),
   };
 }
@@ -78,6 +139,9 @@ export default function QuoteItemForm({
   currency = "MXN",
   quoteId,
   onSavedToLibrary,
+  captureWithoutHours = false,
+  sellerReview = false,
+  sellerReviewStartedAt = null,
 }) {
   const { has } = usePermissions();
   const { toast } = useToast();
@@ -117,7 +181,7 @@ export default function QuoteItemForm({
       discountPercentage: num(initial?.discountPercentage, 0),
       isUrgent: Boolean(initial?.isUrgent),
       warehouseId: initial?.warehouseId || null,
-      ...mapLines(initial),
+      ...mapLines(initial, { sellerReview, sellerReviewStartedAt }),
     },
   });
 
@@ -167,6 +231,9 @@ export default function QuoteItemForm({
       extrasTotal: totals.extrasTotal,
       installationsTotal: totals.installationTotal,
       costTotal: totals.costTotal,
+      materialsBenefitAmount: totals.materialsBenefitAmount,
+      extrasBenefitAmount: totals.extrasBenefitAmount,
+      saleSubtotal: totals.saleSubtotal,
       taxAmount: totals.taxAmount,
       total: totals.total,
       manufacturing: (watched?.manufacturing || []).map((r, i) => ({
@@ -176,6 +243,7 @@ export default function QuoteItemForm({
         quantity: r.quantity,
         unitRate: r.unitRate,
         amount: lineAmount(r.quantity, r.unitRate),
+        observations: r.observations || "",
       })),
       materials: (watched?.materials || []).map((r, i) => ({
         id: `mat-${i}`,
@@ -212,13 +280,29 @@ export default function QuoteItemForm({
     setLoadingCatalogs(true);
     /* eslint-enable react-hooks/set-state-in-effect */
     Promise.all([
-      api.get(`/api/procesos${toQuery({ status: "ACTIVE", pageSize: 100 })}`),
-      api.get(`/api/instalaciones${toQuery({ status: "ACTIVE", pageSize: 100 })}`),
+      api.get(
+        `/api/procesos${toQuery({
+          status: "ACTIVE",
+          pageSize: 200,
+          sort: "name",
+          order: "asc",
+        })}`
+      ),
+      api.get(
+        `/api/instalaciones${toQuery({
+          status: "ACTIVE",
+          pageSize: 200,
+          sort: "name",
+          order: "asc",
+        })}`
+      ),
     ])
       .then(([procRes, instRes]) => {
         if (cancelled) return;
-        setProcesses(procRes?.data || []);
-        setInstallations(instRes?.data || []);
+        setProcesses(mergeCatalogRows(procRes?.data || [], savedProcessOptions(initial)));
+        setInstallations(
+          mergeCatalogRows(instRes?.data || [], savedInstallationOptions(initial))
+        );
       })
       .catch((error) => {
         if (!cancelled) {
@@ -253,24 +337,37 @@ export default function QuoteItemForm({
           ? null
           : Number(values.deliveryTimeMax),
       deliveryDaysType: values.deliveryDaysType || null,
-      manufacturing: (values.manufacturing || []).map((r, i) => ({
-        ...r,
-        manufacturingProcessId: r.manufacturingProcessId || null,
-        sortOrder: i,
-      })),
-      materials: (values.materials || []).map((r) => ({
-        ...r,
-        itemId: r.itemId || null,
-        supplierId: r.supplierId || null,
-      })),
-      extras: (values.extras || []).map((r) => ({
-        ...r,
-        supplierId: r.supplierId || null,
-      })),
-      installations: (values.installations || []).map((r) => ({
-        ...r,
-        installationConceptId: r.installationConceptId || null,
-      })),
+      manufacturing: (values.manufacturing || []).map((r, i) => {
+        const { locked, createdAt, processCode, processStatus, ...rest } = r;
+        return {
+          ...rest,
+          manufacturingProcessId: rest.manufacturingProcessId || null,
+          sortOrder: i,
+          quantity: captureWithoutHours ? 0 : rest.quantity,
+        };
+      }),
+      materials: (values.materials || []).map((r) => {
+        const { locked, createdAt, supplierName, ...rest } = r;
+        return {
+          ...rest,
+          itemId: rest.itemId || null,
+          supplierId: rest.supplierId || null,
+        };
+      }),
+      extras: (values.extras || []).map((r) => {
+        const { locked, createdAt, supplierName, ...rest } = r;
+        return {
+          ...rest,
+          supplierId: rest.supplierId || null,
+        };
+      }),
+      installations: (values.installations || []).map((r) => {
+        const { locked, createdAt, conceptCode, ...rest } = r;
+        return {
+          ...rest,
+          installationConceptId: rest.installationConceptId || null,
+        };
+      }),
     };
 
     if (!canApplyDiscount) {
@@ -409,6 +506,8 @@ export default function QuoteItemForm({
             installations={installations}
             onProcessesChange={setProcesses}
             onInstallationsChange={setInstallations}
+            hideProcessQuantity={captureWithoutHours}
+            sellerReview={sellerReview}
           />
         )}
       </section>

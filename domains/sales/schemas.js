@@ -1,6 +1,17 @@
 import { z } from "zod";
 import { MATERIAL_SKIP_REASONS, SALES_GOAL_PERIODS } from "./constants.js";
 
+export const salesCalendarEventSchema = z.object({
+  title: z.string().trim().min(1, "El titulo es requerido"),
+  eventDate: z.coerce.date(),
+  type: z.enum(["DELIVERY", "VACATION", "OTHER"]).default("OTHER"),
+  notes: z.string().trim().optional().nullable(),
+  teamId: z.preprocess(
+    (value) => (value === "" || value == null ? null : value),
+    z.string().min(1).nullable().optional()
+  ),
+});
+
 export const salesGoalSchema = z
   .object({
     period: z.enum([

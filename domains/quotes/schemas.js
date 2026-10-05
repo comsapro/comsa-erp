@@ -35,6 +35,7 @@ const quoteHeaderFields = {
   advancePercentage: z.coerce.number().min(0).max(100).default(0),
   settlementPercentage: z.coerce.number().min(0).max(100).default(100),
   paymentNotes: optionalString,
+  priceAfterProduction: z.coerce.boolean().optional().default(false),
 };
 
 function refineAdvanceSettlement(data, ctx) {
@@ -69,6 +70,7 @@ export const sendToProductionSchema = z.object({
 });
 
 export const manufacturingLineSchema = z.object({
+  id: optionalId,
   manufacturingProcessId: requiredString("Selecciona un proceso del catalogo"),
   processNameSnapshot: optionalString,
   unitSnapshot: z.enum(PROCESS_UNITS).optional(),
@@ -80,6 +82,7 @@ export const manufacturingLineSchema = z.object({
 });
 
 export const materialLineSchema = z.object({
+  id: optionalId,
   itemId: optionalId,
   supplierId: optionalId,
   descriptionSnapshot: optionalString,
@@ -93,6 +96,7 @@ export const materialLineSchema = z.object({
 });
 
 export const extraLineSchema = z.object({
+  id: optionalId,
   description: requiredString("La descripcion del extra es requerida"),
   quantity: z.coerce.number().min(0).default(1),
   unit: optionalString,
@@ -103,6 +107,7 @@ export const extraLineSchema = z.object({
 });
 
 export const installationLineSchema = z.object({
+  id: optionalId,
   installationConceptId: optionalId,
   conceptNameSnapshot: optionalString,
   unitSnapshot: z.enum(PROCESS_UNITS).optional(),
@@ -134,7 +139,10 @@ export const quoteItemUpsertSchema = z.object({
   ),
   clientObservations: optionalString,
   internalObservations: optionalString,
-  benefitPercentage: z.coerce.number().min(0).max(1000).default(30),
+  benefitPercentage: z.preprocess(
+    (value) => (value === "" || value == null ? 30 : value),
+    z.coerce.number().min(0).max(1000)
+  ),
   discountPercentage: z.coerce.number().min(0).max(100).default(0),
   isUrgent: z.coerce.boolean().default(false),
   warehouseId: optionalId,

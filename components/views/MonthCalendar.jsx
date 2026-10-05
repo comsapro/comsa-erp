@@ -53,6 +53,7 @@ function buildMonthCells(monthDate) {
  * @param {(row)=>string} getHref
  * @param {(row)=>string} getTitle
  * @param {(row)=>string} [getSubtitle]
+ * @param {(row)=>string} [getTone]
  */
 export function MonthCalendar({
   rows,
@@ -60,6 +61,7 @@ export function MonthCalendar({
   getHref,
   getTitle,
   getSubtitle,
+  getTone,
   loading,
   error,
   emptyTitle = "Sin registros",
@@ -165,7 +167,12 @@ export function MonthCalendar({
                 {items.slice(0, 3).map((row) => (
                   <div
                     key={row.id}
-                    className="truncate rounded px-1 py-0.5 text-[10px] font-medium text-brand-800 bg-brand-100/80"
+                    className={cn(
+                      "truncate rounded px-1 py-0.5 text-[10px] font-medium",
+                      getTone?.(row) === "event"
+                        ? "bg-warning-100 text-warning-800"
+                        : "bg-brand-100/80 text-brand-800"
+                    )}
                     title={getTitle(row)}
                   >
                     {getTitle(row)}
@@ -203,7 +210,10 @@ export function MonthCalendar({
               <li key={row.id}>
                 <button
                   type="button"
-                  onClick={() => router.push(getHref(row))}
+                  onClick={() => {
+                    const href = getHref?.(row);
+                    if (href) router.push(href);
+                  }}
                   className="flex w-full flex-col gap-0.5 px-3 py-2.5 text-left hover:bg-surface-muted/60"
                 >
                   <span className="text-sm font-medium text-brand-700">

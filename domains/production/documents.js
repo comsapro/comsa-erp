@@ -110,6 +110,12 @@ export async function dimensionalControlPdf(request, orderId, itemId) {
   return pdfResponse(buffer, `control-dimensional-${order.folio}-${item.position}.pdf`);
 }
 
+export async function getWorkOrderPrintModel(orderId, itemId) {
+  await requirePermission("production.print");
+  const { order, item } = await loadOrderItem(orderId, itemId);
+  return { order, item, model: buildWorkOrderModel(order, item) };
+}
+
 export async function workOrderPdf(request, orderId, itemId) {
   await requirePermission("production.print");
   const actor = await getActor(request);
@@ -124,7 +130,9 @@ export async function workOrderPdf(request, orderId, itemId) {
     action: AUDIT_ACTIONS.PDF_GENERATE,
     newData: { type: "WORK_ORDER", itemId, folio: order.folio },
   });
-  return pdfResponse(buffer, `orden-trabajo-${order.folio}-${item.position}.pdf`);
+  return pdfResponse(buffer, `orden-trabajo-${order.folio}-${item.position}.pdf`, {
+    disposition: "inline",
+  });
 }
 
 export async function requireItemId(searchParams) {

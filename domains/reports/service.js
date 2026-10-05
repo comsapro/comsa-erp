@@ -15,10 +15,11 @@ import { formatMoney } from "@/lib/utils/format";
 import { toNumber } from "@/lib/quotes/calculations";
 import { NotFoundError, ValidationError } from "@/lib/permissions/errors";
 import { PO_STATUS_LABELS } from "@/domains/purchase-orders/constants";
-import { QUOTE_STATUS_LABELS } from "@/domains/quotes/constants";
+import { QUOTE_STATUS_LABELS, quoteCanPrint } from "@/domains/quotes/constants";
 import { PRODUCTION_STATUS_LABELS } from "@/domains/production/constants";
 import { MOVEMENT_TYPE_LABELS } from "@/domains/inventory/constants";
 import { quotePdfResponse } from "@/lib/pdf/quote-pdf";
+import { assertQuoteInScope } from "@/domains/quotes/access";
 import { purchaseOrderPdfResponse } from "@/lib/pdf/purchase-order-pdf";
 
 function filterList(searchParams) {
@@ -45,7 +46,8 @@ export async function quotationPdf(request, id) {
     },
   });
   if (!quote) throw new NotFoundError("Cotizacion no encontrada");
-  if (!["APPROVED", "IN_PRODUCTION"].includes(quote.status)) {
+  await assertQuoteInScope(quote);
+  if (!quoteCanPrint(quote)) {
     throw new ValidationError(
       "Solo se puede generar PDF de cotizaciones aprobadas"
     );

@@ -761,29 +761,93 @@ export function SellerCatalogSelect({
   );
 }
 
+function catalogOptionLabel(row) {
+  const name = row?.name || "";
+  const code = row?.code || "";
+  if (code && name) return `${code} — ${name}`;
+  return name || code || "Sin nombre";
+}
+
+function withSelectedCatalog(list, selected) {
+  const rows = Array.isArray(list) ? [...list] : [];
+  if (!selected?.id) return rows;
+  if (rows.some((row) => String(row.id) === String(selected.id))) return rows;
+  return [selected, ...rows];
+}
+
 export function ProcessCatalogSelect({
   value,
   onChange,
   options,
   onOptionsChange,
   onSelected,
+  selectedOption = null,
   error,
   label = "Proceso",
   allowClear = false,
   required = true,
 }) {
+  const selectedId = selectedOption?.id || value || "";
+  const selectedName = selectedOption?.name || "";
+  const selectedCode = selectedOption?.code || "";
+  const selectedUnit = selectedOption?.unit || "";
+  const [localOptions, setLocalOptions] = useState(() =>
+    withSelectedCatalog(options, selectedId ? selectedOption : null)
+  );
+
+  useEffect(() => {
+    setLocalOptions(
+      withSelectedCatalog(
+        options,
+        selectedId
+          ? {
+              id: selectedId,
+              code: selectedCode,
+              name: selectedName || "Proceso",
+              unit: selectedUnit,
+              defaultRate: selectedOption?.defaultRate,
+            }
+          : null
+      )
+    );
+  }, [options, selectedId, selectedName, selectedCode, selectedUnit, selectedOption?.defaultRate]);
+
+  const handleSearch = async (q) => {
+    const res = await api.get(
+      `/api/procesos${toQuery({
+        status: "ACTIVE",
+        q: q || undefined,
+        pageSize: 50,
+        sort: "name",
+        order: "asc",
+      })}`
+    );
+    const selected = selectedId
+      ? {
+          id: selectedId,
+          code: selectedCode,
+          name: selectedName || "Proceso",
+          unit: selectedUnit,
+          defaultRate: selectedOption?.defaultRate,
+        }
+      : null;
+    setLocalOptions(withSelectedCatalog(res?.data || [], selected));
+  };
+
   return (
     <CatalogCombobox
       label={label}
       value={value}
+      fallbackLabel={selectedName}
       onChange={(id) => {
         onChange?.(id);
-        const found = (options || []).find((p) => p.id === id);
+        const found = localOptions.find((p) => String(p.id) === String(id));
         if (found) onSelected?.(found);
       }}
-      options={(options || []).map((p) => ({
+      onSearch={handleSearch}
+      options={localOptions.map((p) => ({
         value: p.id,
-        label: `${p.code} — ${p.name}`,
+        label: catalogOptionLabel(p),
         description: PROCESS_UNIT_LABELS[p.unit] || p.unit,
       }))}
       placeholder="Buscar proceso del catalogo..."
@@ -802,6 +866,7 @@ export function InstallationCatalogSelect({
   options,
   onOptionsChange,
   onSelected,
+  selectedOption = null,
   error,
   label = "Concepto",
   allowClear = true,
@@ -809,20 +874,68 @@ export function InstallationCatalogSelect({
   const { has } = usePermissions();
   const [createOpen, setCreateOpen] = useState(false);
   const [initialName, setInitialName] = useState("");
+  const selectedId = selectedOption?.id || value || "";
+  const selectedName = selectedOption?.name || "";
+  const selectedCode = selectedOption?.code || "";
+  const selectedUnit = selectedOption?.unit || "";
+  const [localOptions, setLocalOptions] = useState(() =>
+    withSelectedCatalog(options, selectedId ? selectedOption : null)
+  );
+
+  useEffect(() => {
+    setLocalOptions(
+      withSelectedCatalog(
+        options,
+        selectedId
+          ? {
+              id: selectedId,
+              code: selectedCode,
+              name: selectedName || "Concepto",
+              unit: selectedUnit,
+              defaultPrice: selectedOption?.defaultPrice,
+            }
+          : null
+      )
+    );
+  }, [options, selectedId, selectedName, selectedCode, selectedUnit, selectedOption?.defaultPrice]);
+
+  const handleSearch = async (q) => {
+    const res = await api.get(
+      `/api/instalaciones${toQuery({
+        status: "ACTIVE",
+        q: q || undefined,
+        pageSize: 50,
+        sort: "name",
+        order: "asc",
+      })}`
+    );
+    const selected = selectedId
+      ? {
+          id: selectedId,
+          code: selectedCode,
+          name: selectedName || "Concepto",
+          unit: selectedUnit,
+          defaultPrice: selectedOption?.defaultPrice,
+        }
+      : null;
+    setLocalOptions(withSelectedCatalog(res?.data || [], selected));
+  };
 
   return (
     <>
       <CatalogCombobox
         label={label}
         value={value}
+        fallbackLabel={selectedName}
         onChange={(id) => {
           onChange?.(id);
-          const found = (options || []).find((c) => c.id === id);
+          const found = localOptions.find((c) => String(c.id) === String(id));
           if (found) onSelected?.(found);
         }}
-        options={(options || []).map((c) => ({
+        onSearch={handleSearch}
+        options={localOptions.map((c) => ({
           value: c.id,
-          label: `${c.code} — ${c.name}`,
+          label: catalogOptionLabel(c),
           description: PROCESS_UNIT_LABELS[c.unit] || c.unit,
         }))}
         placeholder="Buscar concepto..."

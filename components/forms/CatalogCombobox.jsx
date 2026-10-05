@@ -18,6 +18,7 @@ export function CatalogCombobox({
   onChange,
   options = [],
   placeholder = "Buscar...",
+  fallbackLabel = "",
   emptyLabel = "Sin resultados",
   required = false,
   error,
@@ -126,10 +127,10 @@ export function CatalogCombobox({
           <span
             className={cn(
               "min-w-0 flex-1 truncate",
-              selected ? "text-content" : "text-content-muted"
+              selected || fallbackLabel ? "text-content" : "text-content-muted"
             )}
           >
-            {selected?.label || placeholder}
+            {selected?.label || fallbackLabel || placeholder}
           </span>
           <ChevronsUpDown className="h-4 w-4 shrink-0 text-content-muted" />
         </button>

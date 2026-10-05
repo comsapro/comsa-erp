@@ -43,13 +43,37 @@ function SectionShell({ title, description, onAdd, children }) {
             <p className="text-xs text-content-muted">{description}</p>
           )}
         </div>
-        <Button type="button" size="sm" variant="secondary" onClick={onAdd}>
-          <Plus className="h-4 w-4" /> Agregar
-        </Button>
+        {onAdd ? (
+          <Button type="button" size="sm" variant="secondary" onClick={onAdd}>
+            <Plus className="h-4 w-4" /> Agregar
+          </Button>
+        ) : (
+          <span />
+        )}
       </div>
       <div className="space-y-3">{children}</div>
     </div>
   );
+}
+
+function SectionTotal({ rows, quantityKey = "quantity", priceKey = "unitPrice" }) {
+  const sum = (rows || []).reduce(
+    (total, row) => total + lineAmount(row?.[quantityKey], row?.[priceKey]),
+    0
+  );
+  return (
+    <p className="border-t border-border pt-2 text-sm font-medium text-content">
+      Suma de conceptos: {formatMoney(sum)}{" "}
+      <span className="font-normal text-content-muted">antes de IVA</span>
+    </p>
+  );
+}
+
+function withSelectedSupplier(list, selected) {
+  const rows = Array.isArray(list) ? [...list] : [];
+  if (!selected?.id) return rows;
+  if (rows.some((row) => row.id === selected.id)) return rows;
+  return [{ id: selected.id, name: selected.name || "Proveedor" }, ...rows];
 }
 
 function AmountPreview({ quantity, unitPrice }) {
@@ -60,12 +84,28 @@ function AmountPreview({ quantity, unitPrice }) {
   );
 }
 
-function SupplierLineSelect({ value, onChange, suppliers, onSuppliersChange }) {
-  const [options, setOptions] = useState(suppliers || []);
+function SupplierLineSelect({
+  value,
+  onChange,
+  suppliers,
+  onSuppliersChange,
+  selectedSupplier = null,
+}) {
+  const selectedId = selectedSupplier?.id || value || "";
+  const selectedName = selectedSupplier?.name || (selectedId ? "Proveedor" : "");
+  const selected = selectedId ? { id: selectedId, name: selectedName } : null;
+  const [options, setOptions] = useState(() =>
+    withSelectedSupplier(suppliers, selected)
+  );
 
   useEffect(() => {
-    setOptions(suppliers || []);
-  }, [suppliers]);
+    setOptions(
+      withSelectedSupplier(
+        suppliers,
+        selectedId ? { id: selectedId, name: selectedName } : null
+      )
+    );
+  }, [suppliers, selectedId, selectedName]);
 
   const handleSearch = async (q) => {
     const res = await api.get(
@@ -77,7 +117,7 @@ function SupplierLineSelect({ value, onChange, suppliers, onSuppliersChange }) {
         order: "asc",
       })}`
     );
-    const data = res?.data || [];
+    const data = withSelectedSupplier(res?.data || [], selected);
     setOptions(data);
     onSuppliersChange?.(data);
   };
@@ -110,6 +150,8 @@ export function CostLineSections({
   installations = [],
   onProcessesChange,
   onInstallationsChange,
+  hideProcessQuantity = false,
+  sellerReview = false,
 }) {
   const manufacturing = useFieldArray({ control, name: "manufacturing" });
   const materials = useFieldArray({ control, name: "materials" });
@@ -122,11 +164,23 @@ export function CostLineSections({
   const installationsValues = useWatch({ control, name: "installations" }) || [];
   const [suppliers, setSuppliers] = useState([]);
 
+  const mergeSuppliers = (incoming) => {
+    setSuppliers((prev) => {
+      const map = new Map();
+      for (const row of [...(prev || []), ...(incoming || [])]) {
+        if (row?.id) map.set(row.id, row);
+      }
+      return [...map.values()];
+    });
+  };
+
   const onSelectProcess = (index, processId, processOverride = null) => {
     const process =
       processOverride || processes.find((p) => p.id === processId) || null;
     setValue(`manufacturing.${index}.manufacturingProcessId`, processId || "");
     if (process) {
+      setValue(`manufacturing.${index}.processCode`, process.code || "");
+      setValue(`manufacturing.${index}.processStatus`, process.status || "ACTIVE");
       setValue(`manufacturing.${index}.processNameSnapshot`, process.name || "");
       setValue(`manufacturing.${index}.unitSnapshot`, process.unit || "HOUR");
       setValue(
@@ -141,6 +195,7 @@ export function CostLineSections({
       conceptOverride || installations.find((c) => c.id === conceptId) || null;
     setValue(`installations.${index}.installationConceptId`, conceptId || null);
     if (concept) {
+      setValue(`installations.${index}.conceptCode`, concept.code || "");
       setValue(`installations.${index}.conceptNameSnapshot`, concept.name || "");
       setValue(`installations.${index}.unitSnapshot`, concept.unit || "SERVICE");
       setValue(
@@ -154,13 +209,17 @@ export function CostLineSections({
     <div className="flex flex-col gap-4">
       <SectionShell
         title="Manufactura"
-        description="Selecciona un proceso del catalogo. Nombre, unidad y tarifa quedan bloqueados."
+        description={
+          hideProcessQuantity
+            ? "Selecciona los procesos. Las horas las registra produccion al terminar."
+            : "Selecciona un proceso del catalogo. Nombre, unidad y tarifa quedan bloqueados."
+        }
         onAdd={() =>
           manufacturing.append({
             manufacturingProcessId: "",
             processNameSnapshot: "",
             unitSnapshot: "HOUR",
-            quantity: 1,
+            quantity: hideProcessQuantity ? 0 : 1,
             unitRate: 0,
             observations: "",
             sortOrder: manufacturing.fields.length,
@@ -181,6 +240,20 @@ export function CostLineSections({
                 <ProcessCatalogSelect
                   label="Proceso"
                   value={manufacturingValues[index]?.manufacturingProcessId || ""}
+                  selectedOption={
+                    manufacturingValues[index]?.manufacturingProcessId ||
+                    manufacturingValues[index]?.processNameSnapshot
+                      ? {
+                          id: manufacturingValues[index]?.manufacturingProcessId || "",
+                          code: manufacturingValues[index]?.processCode || "",
+                          name:
+                            manufacturingValues[index]?.processNameSnapshot ||
+                            "Proceso",
+                          unit: manufacturingValues[index]?.unitSnapshot || "HOUR",
+                          defaultRate: manufacturingValues[index]?.unitRate,
+                        }
+                      : null
+                  }
                   options={processes}
                   onOptionsChange={onProcessesChange}
                   onChange={(processId) => onSelectProcess(index, processId)}
@@ -192,8 +265,13 @@ export function CostLineSections({
                       ?.message
                   }
                 />
+                {manufacturingValues[index]?.processStatus === "INACTIVE" && (
+                  <p className="mt-1 text-xs text-warning-700">
+                    Este proceso esta inactivo en el catalogo.
+                  </p>
+                )}
               </div>
-              <div className="sm:col-span-3">
+              <div className="sm:col-span-2">
                 <label className="mb-1 block text-xs font-medium text-content-muted">
                   Nombre
                 </label>
@@ -220,17 +298,21 @@ export function CostLineSections({
                   ))}
                 </Select>
               </div>
-              <div className="sm:col-span-1">
-                <label className="mb-1 block text-xs font-medium text-content-muted">
-                  Cant.
-                </label>
-                <Input
-                  type="number"
-                  step="0.001"
-                  min="0"
-                  {...register(`manufacturing.${index}.quantity`)}
-                />
-              </div>
+              {hideProcessQuantity ? null : (
+                <div className="sm:col-span-2 min-w-[8.5rem]">
+                  <label className="mb-1 block text-xs font-medium text-content-muted">
+                    Cant.
+                  </label>
+                  <Input
+                    type="number"
+                    step="0.001"
+                    min="0"
+                    className="min-w-[8.5rem] tabular-nums"
+                    readOnly={Boolean(manufacturingValues[index]?.locked)}
+                    {...register(`manufacturing.${index}.quantity`)}
+                  />
+                </div>
+              )}
               <div className="sm:col-span-2">
                 <label className="mb-1 block text-xs font-medium text-content-muted">
                   Tarifa
@@ -243,7 +325,7 @@ export function CostLineSections({
                     {...register(`manufacturing.${index}.unitRate`)}
                     readOnly
                     disabled
-                    className="bg-surface-muted"
+                    className="min-w-[8.5rem] bg-surface-muted tabular-nums"
                   />
                   <Button
                     type="button"
@@ -251,6 +333,8 @@ export function CostLineSections({
                     variant="ghost"
                     onClick={() => manufacturing.remove(index)}
                     aria-label="Eliminar linea"
+                    disabled={Boolean(manufacturingValues[index]?.locked)}
+                    className={manufacturingValues[index]?.locked ? "invisible" : ""}
                   >
                     <Trash2 className="h-4 w-4 text-danger-700" />
                   </Button>
@@ -265,26 +349,43 @@ export function CostLineSections({
                   </p>
                 )}
               </div>
+              <div className="sm:col-span-12">
+                <label className="mb-1 block text-xs font-medium text-content-muted">
+                  Para qué es este proceso en la pieza
+                </label>
+                <Input
+                  {...register(`manufacturing.${index}.observations`)}
+                  placeholder="Comentario del proceso en esta pieza"
+                  readOnly={Boolean(manufacturingValues[index]?.locked)}
+                />
+              </div>
             </div>
           );
         })}
+        <SectionTotal
+          rows={manufacturingValues}
+          priceKey="unitRate"
+        />
       </SectionShell>
 
       <SectionShell
         title="Materiales"
         description="BOM: cantidad, descripcion, dimensiones, presentacion, proveedor, unidad y precio."
-        onAdd={() =>
-          materials.append({
-            itemId: null,
-            supplierId: null,
-            descriptionSnapshot: "",
-            dimensions: "",
-            presentation: "",
-            unit: "PZA",
-            quantity: 1,
-            unitPrice: 0,
-            observations: "",
-          })
+        onAdd={
+          sellerReview
+            ? undefined
+            : () =>
+                materials.append({
+                  itemId: null,
+                  supplierId: null,
+                  descriptionSnapshot: "",
+                  dimensions: "",
+                  presentation: "",
+                  unit: "PZA",
+                  quantity: 1,
+                  unitPrice: 0,
+                  observations: "",
+                })
         }
       >
         {materials.fields.length === 0 && (
@@ -295,7 +396,7 @@ export function CostLineSections({
             key={field.id}
             className="grid gap-2 rounded-[var(--radius-sm)] border border-border/80 bg-surface-muted/40 p-3 sm:grid-cols-12"
           >
-            <div className="sm:col-span-2">
+            <div className="sm:col-span-3 min-w-[8.5rem]">
               <label className="mb-1 block text-xs font-medium text-content-muted">
                 Cantidad
               </label>
@@ -303,6 +404,7 @@ export function CostLineSections({
                 type="number"
                 step="0.001"
                 min="0"
+                className="min-w-[8.5rem] tabular-nums"
                 {...register(`materials.${index}.quantity`)}
               />
             </div>
@@ -332,11 +434,24 @@ export function CostLineSections({
             <div className="sm:col-span-4">
               <SupplierLineSelect
                 value={materialsValues[index]?.supplierId}
-                onChange={(id) =>
-                  setValue(`materials.${index}.supplierId`, id || null)
+                selectedSupplier={
+                  materialsValues[index]?.supplierId
+                    ? {
+                        id: materialsValues[index].supplierId,
+                        name: materialsValues[index].supplierName,
+                      }
+                    : null
                 }
+                onChange={(id) => {
+                  const found = suppliers.find((row) => row.id === id);
+                  setValue(`materials.${index}.supplierId`, id || null);
+                  setValue(
+                    `materials.${index}.supplierName`,
+                    found?.name || found?.legalName || ""
+                  );
+                }}
                 suppliers={suppliers}
-                onSuppliersChange={setSuppliers}
+                onSuppliersChange={mergeSuppliers}
               />
             </div>
             <div className="sm:col-span-2">
@@ -365,6 +480,7 @@ export function CostLineSections({
                 type="number"
                 step="0.01"
                 min="0"
+                className="min-w-[8.5rem] tabular-nums"
                 {...register(`materials.${index}.unitPrice`)}
               />
             </div>
@@ -387,6 +503,8 @@ export function CostLineSections({
                   variant="ghost"
                   onClick={() => materials.remove(index)}
                   aria-label="Eliminar linea"
+                  disabled={Boolean(materialsValues[index]?.locked)}
+                  className={materialsValues[index]?.locked ? "invisible" : ""}
                 >
                   <Trash2 className="h-4 w-4 text-danger-700" />
                 </Button>
@@ -394,6 +512,7 @@ export function CostLineSections({
             </div>
           </div>
         ))}
+        <SectionTotal rows={materialsValues} />
       </SectionShell>
 
       <SectionShell
@@ -406,6 +525,7 @@ export function CostLineSections({
             unit: "",
             unitPrice: 0,
             supplierId: null,
+            supplierName: "",
             observations: "",
           })
         }
@@ -443,6 +563,7 @@ export function CostLineSections({
                 type="number"
                 step="0.001"
                 min="0"
+                className="min-w-[8.5rem] tabular-nums"
                 {...register(`extras.${index}.quantity`)}
               />
             </div>
@@ -455,6 +576,7 @@ export function CostLineSections({
                   type="number"
                   step="0.01"
                   min="0"
+                  className="min-w-[8.5rem] tabular-nums"
                   {...register(`extras.${index}.unitPrice`)}
                 />
                 <Button
@@ -463,6 +585,8 @@ export function CostLineSections({
                   variant="ghost"
                   onClick={() => extras.remove(index)}
                   aria-label="Eliminar linea"
+                  disabled={Boolean(extrasValues[index]?.locked)}
+                  className={extrasValues[index]?.locked ? "invisible" : ""}
                 >
                   <Trash2 className="h-4 w-4 text-danger-700" />
                 </Button>
@@ -472,22 +596,49 @@ export function CostLineSections({
                 unitPrice={extrasValues[index]?.unitPrice}
               />
             </div>
+            <div className="sm:col-span-4">
+              <SupplierLineSelect
+                value={extrasValues[index]?.supplierId}
+                selectedSupplier={
+                  extrasValues[index]?.supplierId
+                    ? {
+                        id: extrasValues[index].supplierId,
+                        name: extrasValues[index].supplierName,
+                      }
+                    : null
+                }
+                onChange={(id) => {
+                  const found = suppliers.find((row) => row.id === id);
+                  setValue(`extras.${index}.supplierId`, id || null);
+                  setValue(
+                    `extras.${index}.supplierName`,
+                    found?.name || found?.legalName || ""
+                  );
+                }}
+                suppliers={suppliers}
+                onSuppliersChange={mergeSuppliers}
+              />
+            </div>
           </div>
         ))}
+        <SectionTotal rows={extrasValues} />
       </SectionShell>
 
       <SectionShell
         title="Instalaciones"
         description="Conceptos de instalacion del catalogo."
-        onAdd={() =>
-          installationsArr.append({
-            installationConceptId: null,
-            conceptNameSnapshot: "",
-            unitSnapshot: "SERVICE",
-            quantity: 1,
-            unitPrice: 0,
-            observations: "",
-          })
+        onAdd={
+          sellerReview
+            ? undefined
+            : () =>
+                installationsArr.append({
+                  installationConceptId: null,
+                  conceptNameSnapshot: "",
+                  unitSnapshot: "SERVICE",
+                  quantity: 1,
+                  unitPrice: 0,
+                  observations: "",
+                })
         }
       >
         {installationsArr.fields.length === 0 && (
@@ -503,6 +654,20 @@ export function CostLineSections({
                 label="Concepto"
                 value={
                   installationsValues[index]?.installationConceptId || ""
+                }
+                selectedOption={
+                  installationsValues[index]?.installationConceptId ||
+                  installationsValues[index]?.conceptNameSnapshot
+                    ? {
+                        id: installationsValues[index]?.installationConceptId || "",
+                        code: installationsValues[index]?.conceptCode || "",
+                        name:
+                          installationsValues[index]?.conceptNameSnapshot ||
+                          "Concepto",
+                        unit: installationsValues[index]?.unitSnapshot || "SERVICE",
+                        defaultPrice: installationsValues[index]?.unitPrice,
+                      }
+                    : null
                 }
                 options={installations}
                 onOptionsChange={onInstallationsChange}
@@ -534,7 +699,7 @@ export function CostLineSections({
                 ))}
               </Select>
             </div>
-            <div className="sm:col-span-1">
+            <div className="sm:col-span-2 min-w-[8.5rem]">
               <label className="mb-1 block text-xs font-medium text-content-muted">
                 Cant.
               </label>
@@ -542,6 +707,7 @@ export function CostLineSections({
                 type="number"
                 step="0.001"
                 min="0"
+                className="min-w-[8.5rem] tabular-nums"
                 {...register(`installations.${index}.quantity`)}
               />
             </div>
@@ -554,6 +720,7 @@ export function CostLineSections({
                   type="number"
                   step="0.01"
                   min="0"
+                  className="min-w-[8.5rem] tabular-nums"
                   {...register(`installations.${index}.unitPrice`)}
                 />
                 <Button
@@ -562,6 +729,8 @@ export function CostLineSections({
                   variant="ghost"
                   onClick={() => installationsArr.remove(index)}
                   aria-label="Eliminar linea"
+                  disabled={Boolean(installationsValues[index]?.locked)}
+                  className={installationsValues[index]?.locked ? "invisible" : ""}
                 >
                   <Trash2 className="h-4 w-4 text-danger-700" />
                 </Button>
@@ -573,6 +742,7 @@ export function CostLineSections({
             </div>
           </div>
         ))}
+        <SectionTotal rows={installationsValues} />
       </SectionShell>
     </div>
   );

@@ -23,6 +23,49 @@ export function mapSelectedMaterials(
     }));
 }
 
+export function toPurchaseFormLine(row) {
+  return {
+    itemId: row.itemId || "",
+    quantity: row.quantity,
+    unitPrice: Number(row.unitPrice) || 0,
+    unit: row.unit || "",
+    descriptionSnapshot: row.descriptionSnapshot || "",
+    dimensions: row.dimensions || "",
+    presentation: row.presentation || "",
+    supplierName: row.supplierName || "",
+    sourceMaterialId: row.sourceMaterialId || null,
+    manual: !row.itemId,
+  };
+}
+
+export function toPurchaseItemPayload(line) {
+  return {
+    itemId: line.itemId || null,
+    descriptionSnapshot: line.descriptionSnapshot || null,
+    dimensions: line.dimensions || null,
+    presentation: line.presentation || null,
+    supplierName: line.supplierName || null,
+    quantity: Number(line.quantity),
+    unitPrice: Number(line.unitPrice) || 0,
+    unit: line.unit || null,
+    sourceType: line.sourceMaterialId ? "QUOTE_MATERIAL" : "MANUAL",
+    sourceMaterialId: line.sourceMaterialId || null,
+  };
+}
+
+export function mergePurchaseLines(current = [], incoming = []) {
+  const remaining = current.filter(
+    (line) => line.itemId || String(line.descriptionSnapshot || "").trim()
+  );
+  const existing = new Set(
+    remaining.map((line) => line.sourceMaterialId).filter(Boolean)
+  );
+  const extra = incoming.filter(
+    (line) => !line.sourceMaterialId || !existing.has(line.sourceMaterialId)
+  );
+  return [...remaining, ...extra];
+}
+
 export function dedupeBySourceMaterial(lines = []) {
   const seen = new Set();
   const result = [];

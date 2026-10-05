@@ -109,17 +109,21 @@ export async function getStage2DashboardStats() {
   };
 }
 
-export async function getRecentActivity(limit = 8) {
+export async function getRecentActivity(limit = 8, { excludeModules = [] } = {}) {
   return prisma.auditLog.findMany({
+    where: excludeModules.length
+      ? { module: { notIn: excludeModules } }
+      : undefined,
     take: limit,
     orderBy: { createdAt: "desc" },
     include: { user: { select: { name: true } } },
   });
 }
 
-export async function getRecentCommercialActivity(limit = 8) {
+export async function getRecentCommercialActivity(limit = 8, modules = ["quotes", "direct_orders"]) {
+  if (!modules.length) return [];
   return prisma.auditLog.findMany({
-    where: { module: { in: ["quotes", "direct_orders"] } },
+    where: { module: { in: modules } },
     take: limit,
     orderBy: { createdAt: "desc" },
     include: { user: { select: { name: true } } },

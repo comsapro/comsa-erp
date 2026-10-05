@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -9,6 +9,11 @@ import { CatalogCombobox } from "@/components/forms/CatalogCombobox";
 import { ItemCatalogSelect } from "@/components/forms/catalog-selects";
 import { api, toQuery } from "@/lib/api/client";
 import { MaterialPreload } from "@/components/purchase-orders/MaterialPreload";
+import {
+  mergePurchaseLines,
+  toPurchaseFormLine,
+  toPurchaseItemPayload,
+} from "@/domains/purchase-orders/preload";
 
 export default function PurchaseOrderFormClient({
   productionOrderId = "",
@@ -41,6 +46,7 @@ export default function PurchaseOrderFormClient({
   ]);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
+  const preloadRef = useRef(null);
 
   const searchSuppliers = useCallback(async (q) => {
     const res = await api.get(
@@ -76,6 +82,7 @@ export default function PurchaseOrderFormClient({
         pageSize: 50,
         sort: "folio",
         order: "desc",
+        forLink: "1",
       })}`
     );
     setQuotes(res?.data || []);
@@ -174,6 +181,25 @@ export default function PurchaseOrderFormClient({
       if (!prodId) {
         throw new Error("La orden de produccion es obligatoria");
       }
+      const pending = preloadRef.current?.collectSelected?.() || {
+        rows: [],
+        error: null,
+      };
+      if (pending.error) throw new Error(pending.error);
+      const readyLines = mergePurchaseLines(
+        lines,
+        (pending.rows || []).map(toPurchaseFormLine)
+      );
+      const items = readyLines
+        .filter(
+          (l) => l.itemId || String(l.descriptionSnapshot || "").trim()
+        )
+        .map(toPurchaseItemPayload);
+      if (!items.length) {
+        throw new Error(
+          "Agrega al menos una partida. Si marcaste materiales de la cotizacion, se incluyen al crear la orden."
+        );
+      }
       const created = await api.post("/api/ordenes-compra", {
         supplierId,
         productionOrderId: prodId,
@@ -181,20 +207,7 @@ export default function PurchaseOrderFormClient({
         requestDate,
         expectedDate: expectedDate || null,
         comments,
-        items: lines
-          .filter(
-            (l) =>
-              l.itemId || String(l.descriptionSnapshot || "").trim()
-          )
-          .map((l) => ({
-            itemId: l.itemId || null,
-            descriptionSnapshot: l.descriptionSnapshot || null,
-            quantity: Number(l.quantity),
-            unitPrice: Number(l.unitPrice),
-            unit: l.unit || null,
-            sourceType: l.sourceMaterialId ? "QUOTE_MATERIAL" : "MANUAL",
-            sourceMaterialId: l.sourceMaterialId || null,
-          })),
+        items,
       });
       router.push(`/ordenes-compra/${created.id}`);
     } catch (err) {
@@ -205,7 +218,7 @@ export default function PurchaseOrderFormClient({
   }
 
   return (
-    <div className="mx-auto max-w-3xl">
+    <div className="mx-auto max-w-5xl">
       <PageHeader title="Nueva orden de compra" />
       <form
         onSubmit={onSubmit}
@@ -323,6 +336,7 @@ export default function PurchaseOrderFormClient({
         </label>
 
         <MaterialPreload
+          ref={preloadRef}
           productionOrderId={prodId}
           quoteId={qId}
           catalogItems={items}
@@ -339,33 +353,11 @@ export default function PurchaseOrderFormClient({
             }
             const next = mapped
               .filter((row) => row.itemId || row.descriptionSnapshot)
-              .map((row) => ({
-                itemId: row.itemId || "",
-                quantity: row.quantity,
-                unitPrice: 0,
-                unit: row.unit || "",
-                descriptionSnapshot: row.descriptionSnapshot,
-                sourceMaterialId: row.sourceMaterialId,
-                manual: !row.itemId,
-              }));
+              .map(toPurchaseFormLine);
             if (!next.length) return;
             setLines((prev) => {
-              const remaining = prev.filter(
-                (l) => l.itemId || String(l.descriptionSnapshot || "").trim()
-              );
-              const existingSources = new Set(
-                remaining.map((l) => l.sourceMaterialId).filter(Boolean)
-              );
-              const extra = next.filter(
-                (n) =>
-                  !n.sourceMaterialId ||
-                  !existingSources.has(n.sourceMaterialId)
-              );
-              return extra.length
-                ? [...remaining, ...extra]
-                : remaining.length
-                  ? remaining
-                  : prev;
+              const merged = mergePurchaseLines(prev, next);
+              return merged.length ? merged : prev;
             });
           }}
         />
@@ -494,6 +486,42 @@ export default function PurchaseOrderFormClient({
                   Quitar
                 </Button>
               </div>
+              <label className="block text-sm sm:col-span-4">
+                <span className="mb-1 block text-content-muted">Dimensiones</span>
+                <input
+                  className="w-full rounded-md border border-border px-3 py-2"
+                  value={line.dimensions || ""}
+                  onChange={(e) => {
+                    const next = [...lines];
+                    next[idx] = { ...next[idx], dimensions: e.target.value };
+                    setLines(next);
+                  }}
+                />
+              </label>
+              <label className="block text-sm sm:col-span-2">
+                <span className="mb-1 block text-content-muted">Presentacion</span>
+                <input
+                  className="w-full rounded-md border border-border px-3 py-2"
+                  value={line.presentation || ""}
+                  onChange={(e) => {
+                    const next = [...lines];
+                    next[idx] = { ...next[idx], presentation: e.target.value };
+                    setLines(next);
+                  }}
+                />
+              </label>
+              <label className="block text-sm sm:col-span-2">
+                <span className="mb-1 block text-content-muted">Proveedor</span>
+                <input
+                  className="w-full rounded-md border border-border px-3 py-2"
+                  value={line.supplierName || ""}
+                  onChange={(e) => {
+                    const next = [...lines];
+                    next[idx] = { ...next[idx], supplierName: e.target.value };
+                    setLines(next);
+                  }}
+                />
+              </label>
             </div>
           ))}
           <div className="flex flex-wrap gap-2">
@@ -507,6 +535,9 @@ export default function PurchaseOrderFormClient({
                   {
                     itemId: "",
                     descriptionSnapshot: "",
+                    dimensions: "",
+                    presentation: "",
+                    supplierName: "",
                     quantity: 1,
                     unitPrice: 0,
                     unit: "",
@@ -527,6 +558,9 @@ export default function PurchaseOrderFormClient({
                   {
                     itemId: "",
                     descriptionSnapshot: "",
+                    dimensions: "",
+                    presentation: "",
+                    supplierName: "",
                     quantity: 1,
                     unitPrice: 0,
                     unit: "",

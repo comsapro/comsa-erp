@@ -8,6 +8,7 @@ import {
   ValidationError,
   NotFoundError,
   ConflictError,
+  ForbiddenError,
 } from "@/lib/permissions/errors";
 import { jsonOk, jsonCreated } from "@/lib/api/http";
 import { generateFolio } from "@/lib/folios";
@@ -33,12 +34,14 @@ import {
   nextAvailableLetter,
   parseFolioVersion,
 } from "./versions";
-import { getCurrentUser } from "@/lib/auth/session";
+import { getCurrentUser, userHasPermission } from "@/lib/auth/session";
 import {
-  isSellerScopedUser,
-  resolveSalesScope,
-  sellerWhere,
-} from "@/domains/sales/scope";
+  canSearchQuotesForLink,
+  quoteListSellerWhere,
+  assertQuoteInScope,
+  resolveAssignedSellerId,
+} from "./access";
+import { assertSellerReviewEdit, attachLineIdentity } from "./seller-review";
 
 const SORTABLE = [
   "folio",
@@ -82,14 +85,38 @@ const DETAIL_INCLUDE = {
   items: {
     orderBy: { position: "asc" },
     include: {
-      manufacturing: { orderBy: { sortOrder: "asc" } },
+      manufacturing: {
+        orderBy: { sortOrder: "asc" },
+        include: {
+          process: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+              unit: true,
+              defaultRate: true,
+              status: true,
+            },
+          },
+        },
+      },
       materials: {
         include: {
           supplier: { select: { id: true, name: true } },
         },
       },
-      extras: true,
-      installations: true,
+      extras: {
+        include: {
+          supplier: { select: { id: true, name: true } },
+        },
+      },
+      installations: {
+        include: {
+          concept: {
+            select: { id: true, code: true, name: true, unit: true, defaultPrice: true },
+          },
+        },
+      },
       attachments: {
         orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
       },
@@ -115,6 +142,7 @@ async function findQuoteOrThrow(id, include = undefined) {
     include,
   });
   if (!record) throw new NotFoundError("Cotizacion no encontrada");
+  await assertQuoteInScope(record);
   return record;
 }
 
@@ -140,7 +168,7 @@ async function resolveManufacturingRows(tx, rows = []) {
     if (!process) {
       throw new NotFoundError("Proceso de manufactura no encontrado");
     }
-    if (process.status !== "ACTIVE") {
+    if (process.status !== "ACTIVE" && !row.id) {
       throw new ValidationError(
         "No se puede seleccionar un proceso inactivo"
       );
@@ -149,6 +177,7 @@ async function resolveManufacturingRows(tx, rows = []) {
     const quantity = Number(row.quantity) || 0;
     const unitRate = Number(process.defaultRate) || 0;
     result.push({
+      id: row.id || undefined,
       manufacturingProcessId: process.id,
       processNameSnapshot: process.name,
       unitSnapshot: process.unit,
@@ -203,6 +232,7 @@ async function resolveMaterialRows(tx, rows = []) {
     const quantity = Number(row.quantity) || 0;
     const unitPrice = Number(row.unitPrice) || 0;
     result.push({
+      id: row.id || undefined,
       itemId: row.itemId || null,
       supplierId: row.supplierId || null,
       descriptionSnapshot,
@@ -235,6 +265,7 @@ async function resolveExtraRows(tx, rows = []) {
     const quantity = Number(row.quantity) || 0;
     const unitPrice = Number(row.unitPrice) || 0;
     result.push({
+      id: row.id || undefined,
       description: row.description,
       quantity,
       unit: row.unit ?? null,
@@ -260,7 +291,7 @@ async function resolveInstallationRows(tx, rows = []) {
       if (!concept) {
         throw new NotFoundError("Concepto de instalacion no encontrado");
       }
-      if (concept.status !== "ACTIVE") {
+      if (concept.status !== "ACTIVE" && !row.id) {
         throw new ValidationError(
           "No se puede seleccionar un concepto inactivo"
         );
@@ -283,6 +314,7 @@ async function resolveInstallationRows(tx, rows = []) {
     const quantity = Number(row.quantity) || 0;
     const unitPrice = Number(row.unitPrice) || 0;
     result.push({
+      id: row.id || undefined,
       installationConceptId: row.installationConceptId || null,
       conceptNameSnapshot,
       unitSnapshot,
@@ -304,11 +336,17 @@ async function nextItemPosition(tx, quoteId) {
 }
 
 function mapChildCreates(resolved) {
+  const clean = (rows) =>
+    (rows || []).map((row) => {
+      const data = { ...row };
+      if (!data.id) delete data.id;
+      return data;
+    });
   return {
-    manufacturing: { create: resolved.manufacturing },
-    materials: { create: resolved.materials },
-    extras: { create: resolved.extras },
-    installations: { create: resolved.installations },
+    manufacturing: { create: clean(resolved.manufacturing) },
+    materials: { create: clean(resolved.materials) },
+    extras: { create: clean(resolved.extras) },
+    installations: { create: clean(resolved.installations) },
   };
 }
 
@@ -329,14 +367,14 @@ export async function listQuotes(request) {
   if (clientId) where.clientId = clientId;
 
   const sellerId = params.searchParams.get("sellerId");
-  const user = await getCurrentUser();
-  if (isSellerScopedUser(user)) {
-    const scope = await resolveSalesScope(request, {
-      sellerIdParam: sellerId || undefined,
-    });
-    Object.assign(where, sellerWhere(scope));
-  } else if (sellerId) {
-    where.sellerId = sellerId;
+  const forLink = params.searchParams.get("forLink") === "1";
+  const linkUser = forLink ? await getCurrentUser() : null;
+  if (!(forLink && canSearchQuotesForLink(linkUser))) {
+    Object.assign(where, await quoteListSellerWhere(sellerId || null));
+  }
+
+  if (params.searchParams.get("priceAfterProduction") === "1") {
+    where.priceAfterProduction = true;
   }
 
   if (params.q) {
@@ -428,7 +466,7 @@ export async function createQuote(request) {
     }
   }
 
-  const sellerId = data.sellerId || actor.id;
+  const sellerId = await resolveAssignedSellerId(data.sellerId, actor.id, null);
   if (!sellerId) {
     throw new ValidationError("El vendedor es requerido");
   }
@@ -474,6 +512,7 @@ export async function createQuote(request) {
               advancePercentage: data.advancePercentage,
               settlementPercentage: data.settlementPercentage,
               paymentNotes: data.paymentNotes ?? null,
+              priceAfterProduction: Boolean(data.priceAfterProduction),
               status: "DRAFT",
               createdBy: actor.id,
               updatedBy: actor.id,
@@ -547,17 +586,8 @@ export async function updateQuote(request, id) {
     }
   }
 
-  if (data.sellerId === null) {
-    throw new ValidationError("El vendedor es requerido");
-  }
-  if (data.sellerId) {
-    const seller = await prisma.user.findFirst({
-      where: { id: data.sellerId, deletedAt: null },
-    });
-    if (!seller) throw new NotFoundError("Vendedor no encontrado");
-    if (seller.status !== "ACTIVE") {
-      throw new ValidationError("El vendedor debe estar activo");
-    }
+  if (data.clientId === null) {
+    throw new ValidationError("El cliente es requerido");
   }
 
   if (data.issuingCompanyId === null) {
@@ -573,14 +603,28 @@ export async function updateQuote(request, id) {
     }
   }
 
-  if (data.clientId === null) {
-    throw new ValidationError("El cliente es requerido");
+  const sellerId = await resolveAssignedSellerId(
+    data.sellerId,
+    actor.id,
+    existing.sellerId
+  );
+  if (sellerId !== existing.sellerId) {
+    const seller = await prisma.user.findFirst({
+      where: { id: sellerId, deletedAt: null },
+    });
+    if (!seller) throw new NotFoundError("Vendedor no encontrado");
+    if (seller.status !== "ACTIVE") {
+      throw new ValidationError("El vendedor debe estar activo");
+    }
   }
+
+  const { sellerId: _sellerFromBody, priceAfterProduction: _flag, ...quoteFields } = data;
 
   const record = await prisma.quote.update({
     where: { id },
     data: {
-      ...data,
+      ...quoteFields,
+      sellerId,
       updatedBy: actor.id,
     },
     include: DETAIL_INCLUDE,
@@ -626,16 +670,32 @@ export async function upsertQuoteItem(request, quoteId) {
   await requirePermission("quotes.edit");
   const actor = await getActor(request);
   const quote = await findQuoteOrThrow(quoteId);
-  assertDraft(quote);
+  if (quote.status !== "DRAFT" && quote.status !== "SELLER_REVIEW") {
+    throw new ConflictError(
+      "Solo se pueden editar cotizaciones en borrador o en revision del vendedor"
+    );
+  }
 
   const body = await request.json();
   const data = quoteItemUpsertSchema.parse(body);
 
   if (Number(data.benefitPercentage) < MIN_BENEFIT_SALES) {
-    await requirePermission("quotes.edit_benefit");
+    const actorUser = await getCurrentUser();
+    if (!userHasPermission(actorUser, "quotes.edit_benefit")) {
+      throw new ForbiddenError(
+        "No cuentas con permiso quotes.edit_benefit para capturar un beneficio menor a 30%",
+        "quotes.edit_benefit"
+      );
+    }
   }
   if (Number(data.discountPercentage) > 0) {
-    await requirePermission("quotes.apply_discount");
+    const actorUser = await getCurrentUser();
+    if (!userHasPermission(actorUser, "quotes.apply_discount")) {
+      throw new ForbiddenError(
+        "No cuentas con permiso quotes.apply_discount para aplicar un descuento",
+        "quotes.apply_discount"
+      );
+    }
   }
 
   if (data.itemId) {
@@ -666,13 +726,22 @@ export async function upsertQuoteItem(request, quoteId) {
   }
 
   const record = await prisma.$transaction(async (tx) => {
-    const manufacturing = await resolveManufacturingRows(tx, data.manufacturing);
+    let manufacturing = await resolveManufacturingRows(tx, data.manufacturing);
     const materials = await resolveMaterialRows(tx, data.materials);
     const extras = await resolveExtraRows(tx, data.extras);
     const installations = await resolveInstallationRows(
       tx,
       data.installations
     );
+
+    if (quote.priceAfterProduction && quote.status === "DRAFT") {
+      manufacturing = manufacturing.map((row) => ({
+        ...row,
+        quantity: 0,
+        unitSnapshot: "HOUR",
+        amount: 0,
+      }));
+    }
 
     const itemFields = {
       templateId: data.templateId || null,
@@ -701,6 +770,35 @@ export async function upsertQuoteItem(request, quoteId) {
         throw new NotFoundError("Item de cotizacion no encontrado");
       }
 
+      if (quote.status === "SELLER_REVIEW") {
+        const fullItem = await tx.quoteItem.findFirst({
+          where: { id: itemId, quoteId },
+          include: {
+            manufacturing: true,
+            materials: true,
+            extras: true,
+            installations: true,
+          },
+        });
+        assertSellerReviewEdit(fullItem, data, quote.sellerReviewStartedAt);
+        manufacturing.splice(
+          0,
+          manufacturing.length,
+          ...attachLineIdentity(manufacturing, fullItem.manufacturing)
+        );
+        materials.splice(
+          0,
+          materials.length,
+          ...attachLineIdentity(materials, fullItem.materials)
+        );
+        extras.splice(0, extras.length, ...attachLineIdentity(extras, fullItem.extras));
+        installations.splice(
+          0,
+          installations.length,
+          ...attachLineIdentity(installations, fullItem.installations)
+        );
+      }
+
       await tx.quoteItemManufacturing.deleteMany({
         where: { quoteItemId: itemId },
       });
@@ -723,6 +821,11 @@ export async function upsertQuoteItem(request, quoteId) {
         },
       });
     } else {
+      if (quote.status === "SELLER_REVIEW") {
+        throw new ValidationError(
+          "En la revision solo se pueden agregar cargos a partidas existentes"
+        );
+      }
       const position = await nextItemPosition(tx, quoteId);
       const created = await tx.quoteItem.create({
         data: {
@@ -1285,6 +1388,39 @@ export async function submitQuote(request, id) {
 }
 
 export async function approveQuote(request, id) {
+  const existing = await findQuoteOrThrow(id);
+  if (existing.priceAfterProduction && !existing.productionOrderId) {
+    await requirePermission("quotes.approve");
+    if (existing.status !== "PENDING_APPROVAL") {
+      throw new ConflictError(
+        `No se puede cambiar el estatus de ${existing.status} a IN_PRODUCTION`
+      );
+    }
+    const actor = await getActor(request);
+    await prisma.quote.update({
+      where: { id },
+      data: {
+        approvedBy: actor.id,
+        approvedAt: new Date(),
+        rejectedBy: null,
+        rejectedAt: null,
+        rejectionReason: null,
+        updatedBy: actor.id,
+      },
+    });
+    const delivery = existing.validUntil
+      ? new Date(existing.validUntil)
+      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    return sendToProduction(request, id, {
+      skipPermission: true,
+      allowPending: true,
+      payload: {
+        purchaseOrder: existing.purchaseOrder || existing.requisition || "DIRECTA",
+        estimatedDeliveryDate: delivery,
+      },
+    });
+  }
+
   return transitionQuote(request, id, {
     permission: "quotes.approve",
     toStatus: "APPROVED",
@@ -1387,6 +1523,12 @@ export async function createQuoteRevision(request, id) {
     );
   }
 
+  const revisionSellerId = await resolveAssignedSellerId(
+    source.sellerId,
+    actor.id,
+    source.sellerId
+  );
+
   const record = await prisma.$transaction(async (tx) => {
     const created = await tx.quote.create({
       data: {
@@ -1395,7 +1537,7 @@ export async function createQuoteRevision(request, id) {
         parentQuoteId: source.id,
         clientId: source.clientId,
         clientContactId: source.clientContactId,
-        sellerId: source.sellerId,
+        sellerId: revisionSellerId,
         issuingCompanyId: source.issuingCompanyId,
         orderType: source.orderType,
         currency: source.currency,
@@ -1409,6 +1551,7 @@ export async function createQuoteRevision(request, id) {
         advancePercentage: source.advancePercentage,
         settlementPercentage: source.settlementPercentage,
         paymentNotes: source.paymentNotes,
+        priceAfterProduction: source.priceAfterProduction,
         status: "DRAFT",
         createdBy: actor.id,
         updatedBy: actor.id,
@@ -1522,12 +1665,20 @@ export async function createQuoteRevision(request, id) {
   return jsonCreated(record);
 }
 
-export async function sendToProduction(request, id) {
-  await requirePermission("quotes.send_to_production");
+export async function sendToProduction(request, id, options = {}) {
+  if (!options.skipPermission) {
+    await requirePermission("quotes.send_to_production");
+  }
   const actor = await getActor(request);
-  const body = await request.json().catch(() => ({}));
-  const { purchaseOrder, estimatedDeliveryDate } =
-    sendToProductionSchema.parse(body);
+  let purchaseOrder;
+  let estimatedDeliveryDate;
+  if (options.payload) {
+    ({ purchaseOrder, estimatedDeliveryDate } = options.payload);
+  } else {
+    const body = await request.json().catch(() => ({}));
+    ({ purchaseOrder, estimatedDeliveryDate } =
+      sendToProductionSchema.parse(body));
+  }
 
   const existing = await findQuoteOrThrow(id, {
     ...DETAIL_INCLUDE,
@@ -1539,7 +1690,13 @@ export async function sendToProduction(request, id) {
     },
   });
 
-  if (existing.status !== "APPROVED" && existing.status !== "IN_PRODUCTION") {
+  const allowed =
+    existing.status === "APPROVED" ||
+    existing.status === "IN_PRODUCTION" ||
+    (options.allowPending &&
+      existing.priceAfterProduction &&
+      existing.status === "PENDING_APPROVAL");
+  if (!allowed) {
     throw new ConflictError(
       "Solo se pueden enviar a produccion cotizaciones aprobadas o en produccion (nuevas partidas)"
     );

@@ -12,6 +12,8 @@ import { formatDate, formatMoney } from "@/lib/utils/format";
 import { toNumber } from "@/lib/quotes/calculations";
 import { PO_STATUS_LABELS } from "@/domains/purchase-orders/constants";
 import { remainingQuantity } from "@/domains/purchase-orders/calculations";
+import { MaterialPreload } from "@/components/purchase-orders/MaterialPreload";
+import { toPurchaseItemPayload } from "@/domains/purchase-orders/preload";
 
 export default function PurchaseOrderDetailClient({ id }) {
   const [row, setRow] = useState(null);
@@ -21,6 +23,7 @@ export default function PurchaseOrderDetailClient({ id }) {
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [warehouseId, setWarehouseId] = useState("");
   const [recvQty, setRecvQty] = useState({});
+  const [catalogItems, setCatalogItems] = useState([]);
 
   const load = useCallback(() => {
     api
@@ -35,6 +38,39 @@ export default function PurchaseOrderDetailClient({ id }) {
       .get(`/api/almacenes${toQuery({ status: "ACTIVE", pageSize: 100 })}`)
       .then((res) => setWarehouses(res?.data || []));
   }, [load]);
+
+  const searchItems = useCallback(async (q) => {
+    const res = await api.get(
+      `/api/items${toQuery({
+        status: "ACTIVE",
+        q: q || undefined,
+        pageSize: 50,
+        sort: "name",
+        order: "asc",
+        excludeLegacy: "1",
+      })}`
+    );
+    setCatalogItems(res?.data || []);
+  }, []);
+
+  async function addPreloadedMaterials(mapped) {
+    setBusy(true);
+    setError(null);
+    try {
+      const items = (mapped || [])
+        .filter((line) => line.itemId || String(line.descriptionSnapshot || "").trim())
+        .map(toPurchaseItemPayload);
+      if (!items.length) {
+        throw new Error("Selecciona al menos un material.");
+      }
+      await api.patch(`/api/ordenes-compra/${id}`, { items });
+      load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function runAction(action, body = {}) {
     setBusy(true);
@@ -161,6 +197,24 @@ export default function PurchaseOrderDetailClient({ id }) {
         }
       />
       {error && <p className="text-sm text-danger-700">{error}</p>}
+      {row.status === "DRAFT" && !(row.items || []).length && (
+        <Card className="space-y-3 p-5">
+          <p className="text-sm font-medium text-content">Esta orden no tiene partidas</p>
+          <p className="text-sm text-content-muted">
+            Los materiales de la cotizacion no se guardaron al crearla. Marcalos y
+            agregalos a esta orden.
+          </p>
+          <MaterialPreload
+            productionOrderId={row.productionOrder?.id}
+            quoteId={row.quote?.id}
+            catalogItems={catalogItems}
+            onCatalogItemsChange={setCatalogItems}
+            onSearchItems={searchItems}
+            selectAllByDefault
+            onApply={addPreloadedMaterials}
+          />
+        </Card>
+      )}
       <Card className="space-y-3 p-5">
         <Badge>{PO_STATUS_LABELS[row.status] || row.status}</Badge>
         <div className="grid gap-3 text-sm sm:grid-cols-3">
@@ -233,6 +287,10 @@ export default function PurchaseOrderDetailClient({ id }) {
             <tr className="border-b text-left text-content-muted">
               <th className="py-2">Item</th>
               <th className="py-2">Cant.</th>
+              <th className="py-2">Unidad</th>
+              <th className="py-2">Dimensiones</th>
+              <th className="py-2">Presentacion</th>
+              <th className="py-2">Proveedor</th>
               <th className="py-2">Recibido</th>
               <th className="py-2">Pendiente</th>
               <th className="py-2">Precio</th>
@@ -240,10 +298,21 @@ export default function PurchaseOrderDetailClient({ id }) {
             </tr>
           </thead>
           <tbody>
+            {!(row.items || []).length && (
+              <tr>
+                <td colSpan={10} className="py-4 text-content-muted">
+                  Sin partidas.
+                </td>
+              </tr>
+            )}
             {row.items?.map((it) => (
               <tr key={it.id} className="border-b border-border">
                 <td className="py-2">{it.descriptionSnapshot}</td>
                 <td className="py-2">{toNumber(it.quantity)}</td>
+                <td className="py-2">{it.unit || "-"}</td>
+                <td className="py-2">{it.dimensions || "-"}</td>
+                <td className="py-2">{it.presentation || "-"}</td>
+                <td className="py-2">{it.supplierName || "-"}</td>
                 <td className="py-2">{toNumber(it.receivedQuantity)}</td>
                 <td className="py-2">
                   {remainingQuantity(it.quantity, it.receivedQuantity)}

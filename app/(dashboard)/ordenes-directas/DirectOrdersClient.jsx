@@ -134,7 +134,7 @@ export default function DirectOrdersClient() {
     <div>
       <PageHeader
         title="Ordenes directas"
-        description="Ordenes sin cotizacion previa: captura, aprobacion y envio a produccion o cotizacion."
+        description="El trabajo se captura primero, se produce y despues se cotiza con las horas reales. Las ordenes anteriores siguen en este listado."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <ViewModeToggle value={mode} onChange={setMode} />

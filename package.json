@@ -9,7 +9,7 @@
     "build": "node scripts/build.mjs",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test tests/permissions.test.js tests/etapa2.test.js tests/etapa3.test.js tests/quote-versions.test.js tests/produccion-feedback.test.js tests/produccion-ops.test.js tests/produccion-formatos.test.js tests/purchase-order-pdf.test.js tests/sales-dashboard.test.js tests/teams.test.js tests/quality.test.js tests/calidad.test.js",
+    "test": "node --test tests/permissions.test.js tests/etapa2.test.js tests/etapa3.test.js tests/quote-versions.test.js tests/quote-access.test.js tests/produccion-feedback.test.js tests/produccion-ops.test.js tests/produccion-formatos.test.js tests/purchase-order-pdf.test.js tests/sales-dashboard.test.js tests/teams.test.js tests/quality.test.js tests/calidad.test.js",
     "verify:formatos": "node scripts/dev/verify-iso-forms.mjs",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -17,6 +17,7 @@
     "db:seed": "node prisma/seed.js",
     "db:seed:legacy": "node --env-file=.env prisma/import-legacy.js",
     "db:seed:legacy-users": "node --env-file=.env prisma/import-legacy-users.js",
+    "db:reassign-legacy-sellers": "node --env-file=.env scripts/reassign-legacy-quote-sellers.mjs",
     "db:studio": "prisma studio",
     "db:reset": "prisma migrate reset"
   },
