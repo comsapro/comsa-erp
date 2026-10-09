@@ -276,7 +276,7 @@ export default function SalesInvoiceFormClient({
       [quoteId]: { ...(prev[quoteId] || {}), loading: true, error: null },
     }));
     try {
-      const detail = await api.get(`/api/cotizaciones/${quoteId}`);
+      const detail = await api.get(`/api/cotizaciones/${quoteId}?forLink=1`);
       const items = (detail?.items || [])
         .filter((i) => i.status === "ACTIVE")
         .map((i) => ({

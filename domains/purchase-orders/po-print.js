@@ -95,13 +95,24 @@ export function partNumberOf(item) {
 export function mapPurchaseOrderLine(item, index, material) {
   const catalog = item.item || {};
   const snapshot = String(item.descriptionSnapshot || "").trim();
+  const linePresentation = String(item.presentation || "").trim();
+  const lineDimensions = String(item.dimensions || "").trim();
+  const usesLineDetail = Boolean(linePresentation || lineDimensions);
   const materialType = String(
-    material?.descriptionSnapshot || catalog.name || ""
+    usesLineDetail || !material
+      ? linePresentation || material?.descriptionSnapshot || catalog.name || ""
+      : material?.descriptionSnapshot || catalog.name || ""
   ).trim();
   const description = String(
-    material?.presentation || snapshot || catalog.description || ""
+    usesLineDetail || !material
+      ? snapshot || material?.presentation || catalog.description || ""
+      : material?.presentation || snapshot || catalog.description || ""
   ).trim();
-  const dimensions = String(material?.dimensions || "").trim();
+  const dimensions = String(
+    lineDimensions || material?.dimensions || ""
+  ).trim();
+  const unit = String(item.unit || "").trim();
+  const quantity = formatPoQuantity(item.quantity);
 
   return {
     position: index + 1,
@@ -109,7 +120,7 @@ export function mapPurchaseOrderLine(item, index, material) {
     materialType: materialType || "NA",
     description,
     dimensions,
-    quantity: formatPoQuantity(item.quantity),
+    quantity: unit ? `${quantity} ${unit}` : quantity,
     unitPrice: formatQuoteMoney(item.unitPrice),
     subtotal: formatQuoteMoney(item.subtotal),
   };

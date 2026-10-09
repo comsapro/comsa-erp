@@ -382,8 +382,17 @@ export default function QuoteDetailClient({ quoteId }) {
         }`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Button as={Link} href="/cotizaciones" variant="secondary">
-              <ArrowLeft className="h-4 w-4" /> Volver
+            <Button
+              as={Link}
+              href={
+                quote.directOrderId
+                  ? `/ordenes-directas/${quote.directOrderId}`
+                  : "/cotizaciones"
+              }
+              variant="secondary"
+            >
+              <ArrowLeft className="h-4 w-4" />{" "}
+              {quote.directOrderId ? "Volver a la orden" : "Volver"}
             </Button>
             {has("quotes.print") && quoteCanPrint(quote) && (
               <>
@@ -456,7 +465,13 @@ export default function QuoteDetailClient({ quoteId }) {
                 </Button>
               )}
             {(quote.status === "DRAFT" || quote.status === "SELLER_REVIEW") &&
-              has("quotes.submit") && (
+              has("quotes.submit") &&
+              !(
+                quote.directOrderId &&
+                quote.priceAfterProduction &&
+                quote.status === "DRAFT" &&
+                !quote.productionOrderId
+              ) && (
               <Button
                 variant="subtle"
                 loading={actionBusy}
@@ -586,6 +601,21 @@ export default function QuoteDetailClient({ quoteId }) {
           </div>
         }
       />
+
+      {quote.directOrderId && quote.priceAfterProduction && quote.status === "DRAFT" && (
+        <Alert variant="info" title="Orden directa" className="mb-4">
+          Captura procesos sin horas, materiales, extras e instalaciones. La
+          autorizacion se envia desde la orden directa. Las horas reales se
+          registran en produccion y, al terminar, el vendedor solo puede agregar
+          cargos. El PDF queda disponible cuando el supervisor aprueba.
+        </Alert>
+      )}
+      {quote.directOrderId && quote.status === "SELLER_REVIEW" && (
+        <Alert variant="info" title="Revision del vendedor" className="mb-4">
+          Puedes agregar procesos o extras. Lo ya capturado no se modifica ni se
+          elimina. Despues envia la cotizacion a aprobacion del supervisor.
+        </Alert>
+      )}
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <QuoteStatusBadge

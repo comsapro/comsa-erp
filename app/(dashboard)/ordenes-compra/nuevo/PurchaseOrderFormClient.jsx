@@ -510,18 +510,16 @@ export default function PurchaseOrderFormClient({
                   }}
                 />
               </label>
-              <label className="block text-sm sm:col-span-2">
-                <span className="mb-1 block text-content-muted">Proveedor</span>
-                <input
-                  className="w-full rounded-md border border-border px-3 py-2"
-                  value={line.supplierName || ""}
-                  onChange={(e) => {
-                    const next = [...lines];
-                    next[idx] = { ...next[idx], supplierName: e.target.value };
-                    setLines(next);
-                  }}
-                />
-              </label>
+              {line.supplierName ? (
+                <p className="block text-sm sm:col-span-2">
+                  <span className="mb-1 block text-content-muted">
+                    Proveedor del material
+                  </span>
+                  <span className="block rounded-md border border-border bg-surface-muted px-3 py-2 text-content">
+                    {line.supplierName}
+                  </span>
+                </p>
+              ) : null}
             </div>
           ))}
           <div className="flex flex-wrap gap-2">

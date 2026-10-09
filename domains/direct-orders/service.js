@@ -12,6 +12,7 @@ import {
 import { jsonOk, jsonCreated } from "@/lib/api/http";
 import { generateFolio } from "@/lib/folios";
 import { recalculateQuote } from "@/domains/quotes/recalculate";
+import { copyQuotedProcessesForOrderItems } from "@/domains/production/process-copy";
 import { DIRECT_ORDER_STATUSES, VALID_TRANSITIONS } from "./constants";
 import {
   directOrderCreateSchema,
@@ -95,8 +96,119 @@ function addDays(date, days) {
   return d;
 }
 
+async function createCompanionQuote(tx, order, actorId) {
+  const elaborationDate = order.requestDate || new Date();
+  const validUntil = order.validUntil || addDays(elaborationDate, 30);
+  const folio = await generateFolio(tx, "QUOTE", elaborationDate);
+  return tx.quote.create({
+    data: {
+      folio,
+      clientId: order.clientId,
+      clientContactId: order.clientContactId || null,
+      sellerId: order.sellerId,
+      issuingCompanyId: order.issuingCompanyId,
+      orderType: "DIRECT_ORDER_REFERENCE",
+      currency: "MXN",
+      elaborationDate,
+      requestDate: order.requestDate,
+      validUntil,
+      requisition: order.requisition ?? null,
+      internalObservations: order.observations ?? null,
+      status: "DRAFT",
+      priceAfterProduction: true,
+      directOrderId: order.id,
+      createdBy: actorId,
+      updatedBy: actorId,
+    },
+  });
+}
+
+async function ensureCompanionQuote(actor, order) {
+  if (order.quote || order.status !== "DRAFT") return order;
+  await prisma.$transaction(async (tx) => {
+    const current = await tx.quote.findFirst({
+      where: { directOrderId: order.id, deletedAt: null },
+      select: { id: true },
+    });
+    if (current) return;
+    await createCompanionQuote(tx, order, actor.id);
+  });
+  return findDirectOrderOrThrow(order.id, DETAIL_INCLUDE);
+}
+
+function directStatusForQuote(quote) {
+  if (quote.status === "CANCELLED") return "CANCELLED";
+  if (quote.status === "REJECTED") return "REJECTED";
+  if (quote.status === "IN_PRODUCTION" || quote.status === "SELLER_REVIEW") {
+    return "IN_PRODUCTION";
+  }
+  if (quote.status === "APPROVED") {
+    return quote.productionOrderId ? "IN_PRODUCTION" : "APPROVED";
+  }
+  if (quote.status === "PENDING_APPROVAL") return "PENDING_APPROVAL";
+  return "DRAFT";
+}
+
+async function adoptPriceAfterQuotes(actorId) {
+  const loose = await prisma.quote.findMany({
+    where: {
+      deletedAt: null,
+      priceAfterProduction: true,
+      directOrderId: null,
+    },
+    take: 50,
+    orderBy: { createdAt: "desc" },
+  });
+  for (const quote of loose) {
+    await prisma.$transaction(async (tx) => {
+      const fresh = await tx.quote.findFirst({
+        where: { id: quote.id, directOrderId: null, deletedAt: null },
+      });
+      if (!fresh) return;
+      const folioTaken = await tx.directOrder.findFirst({
+        where: { folio: fresh.folio },
+        select: { id: true },
+      });
+      const folio = folioTaken
+        ? await generateFolio(
+            tx,
+            "DIRECT_ORDER",
+            fresh.requestDate || fresh.elaborationDate
+          )
+        : fresh.folio;
+      const orderType = ["GENERAL", "URGENT", "WAREHOUSE"].includes(fresh.orderType)
+        ? fresh.orderType
+        : "GENERAL";
+      const order = await tx.directOrder.create({
+        data: {
+          folio,
+          orderType,
+          clientId: fresh.clientId,
+          clientContactId: fresh.clientContactId,
+          sellerId: fresh.sellerId,
+          issuingCompanyId: fresh.issuingCompanyId,
+          requestDate: fresh.requestDate || fresh.elaborationDate,
+          validUntil: fresh.validUntil,
+          requisition: fresh.requisition,
+          observations: fresh.internalObservations,
+          status: directStatusForQuote(fresh),
+          productionOrderId: fresh.productionOrderId,
+          createdBy: actorId,
+          updatedBy: actorId,
+        },
+      });
+      await tx.quote.update({
+        where: { id: fresh.id },
+        data: { directOrderId: order.id },
+      });
+    });
+  }
+}
+
 export async function listDirectOrders(request) {
   await requirePermission("direct_orders.view");
+  const actor = await getActor(request);
+  await adoptPriceAfterQuotes(actor.id);
   const params = parseListParams(request, {
     allowedSort: SORTABLE,
     defaultSort: "createdAt",
@@ -160,7 +272,9 @@ export async function listDirectOrders(request) {
 
 export async function getDirectOrder(request, id) {
   await requirePermission("direct_orders.view");
-  const record = await findDirectOrderOrThrow(id, DETAIL_INCLUDE);
+  const actor = await getActor(request);
+  const found = await findDirectOrderOrThrow(id, DETAIL_INCLUDE);
+  const record = await ensureCompanionQuote(actor, found);
   return jsonOk(record);
 }
 
@@ -217,7 +331,7 @@ export async function createDirectOrder(request) {
 
   const record = await prisma.$transaction(async (tx) => {
     const folio = await generateFolio(tx, "DIRECT_ORDER", data.requestDate);
-    return tx.directOrder.create({
+    const order = await tx.directOrder.create({
       data: {
         folio,
         orderType: data.orderType,
@@ -233,6 +347,10 @@ export async function createDirectOrder(request) {
         createdBy: actor.id,
         updatedBy: actor.id,
       },
+    });
+    await createCompanionQuote(tx, order, actor.id);
+    return tx.directOrder.findFirst({
+      where: { id: order.id },
       include: DETAIL_INCLUDE,
     });
   });
@@ -517,7 +635,19 @@ export async function submitDirectOrder(request, id) {
   const existing = await findDirectOrderOrThrow(id, {
     items: true,
   });
-  if (!existing.items.length) {
+  const quote = await prisma.quote.findFirst({
+    where: { directOrderId: id, deletedAt: null },
+    include: {
+      items: { where: { status: "ACTIVE" }, select: { id: true } },
+    },
+  });
+  const hasQuoteItems = (quote?.items?.length || 0) > 0;
+  if (quote && !hasQuoteItems) {
+    throw new ValidationError(
+      "Captura al menos una partida con procesos, materiales, extras o instalacion antes de enviar a autorizacion"
+    );
+  }
+  if (!quote && !existing.items.length) {
     throw new ValidationError(
       "La orden directa debe tener al menos un item para enviar a aprobacion"
     );
@@ -531,7 +661,7 @@ export async function submitDirectOrder(request, id) {
 }
 
 export async function approveDirectOrder(request, id) {
-  return transitionDirectOrder(request, id, {
+  await transitionDirectOrder(request, id, {
     permission: "direct_orders.approve",
     toStatus: "APPROVED",
     auditAction: AUDIT_ACTIONS.APPROVE,
@@ -543,6 +673,7 @@ export async function approveDirectOrder(request, id) {
       rejectionReason: null,
     }),
   });
+  return releaseDirectOrderToProduction(request, id, { skipPermission: true });
 }
 
 export async function rejectDirectOrder(request, id) {
@@ -637,6 +768,7 @@ export async function convertToQuote(request, id) {
         requisition: existing.requisition ?? null,
         internalObservations: existing.observations ?? null,
         status: "DRAFT",
+        priceAfterProduction: true,
         directOrderId: existing.id,
         createdBy: actor.id,
         updatedBy: actor.id,
@@ -680,12 +812,22 @@ export async function convertToQuote(request, id) {
 }
 
 export async function sendDirectOrderToProduction(request, id) {
-  await requirePermission("direct_orders.send_to_production");
+  return releaseDirectOrderToProduction(request, id);
+}
+
+async function releaseDirectOrderToProduction(request, id, { skipPermission = false } = {}) {
+  if (!skipPermission) {
+    await requirePermission("direct_orders.send_to_production");
+  }
   const actor = await getActor(request);
   const existing = await findDirectOrderOrThrow(id, {
     ...DETAIL_INCLUDE,
     items: { orderBy: { position: "asc" } },
   });
+
+  if (existing.status === "IN_PRODUCTION" && existing.productionOrderId) {
+    return jsonOk(existing);
+  }
 
   assertTransition(existing.status, "IN_PRODUCTION");
 
@@ -699,38 +841,79 @@ export async function sendDirectOrderToProduction(request, id) {
       "La orden directa ya tiene una orden de produccion asociada"
     );
   }
-  if (!existing.items.length) {
+
+  const quote = existing.quote?.id
+    ? await prisma.quote.findFirst({
+        where: { id: existing.quote.id, deletedAt: null },
+        include: {
+          items: {
+            where: { status: "ACTIVE" },
+            orderBy: { position: "asc" },
+          },
+        },
+      })
+    : null;
+  const quoteItems = quote?.items || [];
+  if (!quoteItems.length && !existing.items.length) {
     throw new ValidationError(
-      "La orden directa no tiene items para enviar a produccion"
+      "La orden directa no tiene partidas para enviar a produccion"
     );
   }
 
   const record = await prisma.$transaction(async (tx) => {
     const folio = await generateFolio(tx, "PRODUCTION");
+    const useQuoteItems = quoteItems.length > 0;
     const productionOrder = await tx.productionOrder.create({
       data: {
         folio,
         sourceType: "DIRECT_ORDER",
         clientId: existing.clientId,
+        quoteId: useQuoteItems ? quote.id : null,
         approvalDate: existing.approvedAt || new Date(),
         status: "PENDING",
-        totalItems: existing.items.length,
+        totalItems: useQuoteItems ? quoteItems.length : existing.items.length,
         completedItems: 0,
         progressPercentage: 0,
         createdBy: actor.id,
         updatedBy: actor.id,
         items: {
-          create: existing.items.map((item) => ({
-            sourceItemId: item.id,
-            sourceItemType: "DIRECT_ORDER_ITEM",
-            position: item.position,
-            description: item.description,
-            quantity: item.quantity,
-            status: "PENDING",
-          })),
+          create: useQuoteItems
+            ? quoteItems.map((item) => ({
+                sourceItemId: item.id,
+                sourceItemType: "QUOTE_ITEM",
+                position: item.position,
+                description: item.description,
+                quantity: item.quantity,
+                status: "PENDING",
+              }))
+            : existing.items.map((item) => ({
+                sourceItemId: item.id,
+                sourceItemType: "DIRECT_ORDER_ITEM",
+                position: item.position,
+                description: item.description,
+                quantity: item.quantity,
+                status: "PENDING",
+              })),
         },
       },
+      include: { items: true },
     });
+
+    if (useQuoteItems) {
+      await copyQuotedProcessesForOrderItems(
+        tx,
+        productionOrder.items,
+        actor.id
+      );
+      await tx.quote.update({
+        where: { id: quote.id },
+        data: {
+          status: "IN_PRODUCTION",
+          productionOrderId: productionOrder.id,
+          updatedBy: actor.id,
+        },
+      });
+    }
 
     return tx.directOrder.update({
       where: { id },
