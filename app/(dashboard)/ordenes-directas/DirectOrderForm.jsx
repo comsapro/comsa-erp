@@ -258,9 +258,11 @@ export default function DirectOrderForm({
 
       {mode === "edit" && onSaveItem && (
         <Card className="p-5">
-          <h2 className="mb-1 text-base font-semibold text-content">Items</h2>
+          <h2 className="mb-1 text-base font-semibold text-content">Items simples</h2>
           <p className="mb-4 text-sm text-content-muted">
-            Agrega conceptos de la orden. Se requieren para enviar a aprobacion.
+            Los procesos, materiales, extras e instalaciones se capturan en la
+            cotizacion ligada, sin horas. Esta lista solo complementa ordenes
+            anteriores.
           </p>
 
           {initial?.items?.length > 0 && (

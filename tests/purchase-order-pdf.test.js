@@ -82,6 +82,27 @@ test("Linea de OC toma tipo, presentacion y dimensiones del material de cotizaci
   assert.equal(line.unitPrice, "$3,000.00");
 });
 
+test("Linea manual de OC imprime descripcion, dimensiones, presentacion y unidad", () => {
+  const line = mapPurchaseOrderLine(
+    {
+      descriptionSnapshot: "COMPRA DE MATERIAL",
+      dimensions: "4 X 10 PIES",
+      presentation: "SOLERA",
+      quantity: 1,
+      unit: "PZA",
+      unitPrice: 0,
+      subtotal: 0,
+    },
+    0,
+    null
+  );
+  assert.equal(line.partNumber, "NA");
+  assert.equal(line.materialType, "SOLERA");
+  assert.equal(line.description, "COMPRA DE MATERIAL");
+  assert.equal(line.dimensions, "4 X 10 PIES");
+  assert.equal(line.quantity, "1 PZA");
+});
+
 test("PDF COM-ALM-R-01 incluye encabezado, columnas, totales e instrucciones", async () => {
   const model = buildPurchaseOrderPrintModel(PO_SAMPLE_PO, {
     materialsById: PO_SAMPLE_MATERIALS,

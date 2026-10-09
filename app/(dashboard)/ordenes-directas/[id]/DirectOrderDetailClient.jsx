@@ -249,6 +249,7 @@ export default function DirectOrderDetailClient({ id }) {
 
         {record.status === "APPROVED" && (
           <>
+            {!record.quote && (
             <Can permission="direct_orders.convert_to_quote">
               <Button
                 size="sm"
@@ -259,6 +260,7 @@ export default function DirectOrderDetailClient({ id }) {
                 <FileText className="h-4 w-4" /> Convertir a cotizacion
               </Button>
             </Can>
+            )}
             <Can permission="direct_orders.send_to_production">
               <Button
                 size="sm"
@@ -286,7 +288,7 @@ export default function DirectOrderDetailClient({ id }) {
 
         {record.quote && (
           <Button as={Link} href={`/cotizaciones/${record.quote.id}`} size="sm" variant="subtle">
-            Cotizacion {record.quote.folio}
+            <FileText className="h-4 w-4" /> Cotizacion {record.quote.folio}
           </Button>
         )}
         {record.productionOrder && (
@@ -305,6 +307,24 @@ export default function DirectOrderDetailClient({ id }) {
         <Alert variant="warning" title="Motivo registrado">
           {record.rejectionReason || record.cancellationReason}
         </Alert>
+      )}
+
+      {record.quote && (
+        <Card className="p-5">
+          <h2 className="mb-1 text-base font-semibold text-content">
+            Procesos, materiales y extras
+          </h2>
+          <p className="mb-4 text-sm text-content-muted">
+            Se capturan en la cotizacion {record.quote.folio}, sin horas. Al
+            autorizar esta orden pasa a produccion. Produccion registra las horas
+            reales y la cotizacion regresa al vendedor, que solo puede agregar
+            cargos. No aparece en Cotizaciones hasta que el supervisor la aprueba
+            y se puede enviar el PDF.
+          </p>
+          <Button as={Link} href={`/cotizaciones/${record.quote.id}`} size="sm">
+            <FileText className="h-4 w-4" /> Capturar partidas
+          </Button>
+        </Card>
       )}
 
       {canEdit ? (

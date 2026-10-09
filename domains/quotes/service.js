@@ -136,13 +136,13 @@ function assertTransition(from, to) {
   }
 }
 
-async function findQuoteOrThrow(id, include = undefined) {
+async function findQuoteOrThrow(id, include = undefined, { skipScope = false } = {}) {
   const record = await prisma.quote.findFirst({
     where: { id, deletedAt: null },
     include,
   });
   if (!record) throw new NotFoundError("Cotizacion no encontrada");
-  await assertQuoteInScope(record);
+  if (!skipScope) await assertQuoteInScope(record);
   return record;
 }
 
@@ -377,6 +377,17 @@ export async function listQuotes(request) {
     where.priceAfterProduction = true;
   }
 
+  where.AND = [
+    {
+      OR: [
+        {
+          AND: [{ priceAfterProduction: false }, { directOrderId: null }],
+        },
+        { status: "APPROVED" },
+      ],
+    },
+  ];
+
   if (params.q) {
     where.OR = [
       { folio: { contains: params.q, mode: "insensitive" } },
@@ -430,7 +441,11 @@ async function listQuoteVersionFamily(folio) {
 
 export async function getQuote(request, id) {
   await requirePermission("quotes.view");
-  const record = await findQuoteOrThrow(id, DETAIL_INCLUDE);
+  const forLink = new URL(request.url).searchParams.get("forLink") === "1";
+  const linkUser = forLink ? await getCurrentUser() : null;
+  const record = await findQuoteOrThrow(id, DETAIL_INCLUDE, {
+    skipScope: Boolean(forLink && canSearchQuotesForLink(linkUser)),
+  });
   const versions = await listQuoteVersionFamily(record.folio);
   return jsonOk({ ...record, versions });
 }
@@ -493,7 +508,7 @@ export async function createQuote(request) {
         try {
           // Folio por fecha de creacion (mes actual), no por fecha de emision.
           const folio = await generateFolio(tx, "QUOTE", new Date());
-          return await tx.quote.create({
+          const quote = await tx.quote.create({
             data: {
               folio,
               clientId: data.clientId,
@@ -517,6 +532,41 @@ export async function createQuote(request) {
               createdBy: actor.id,
               updatedBy: actor.id,
             },
+          });
+          if (data.priceAfterProduction) {
+            const directFolio = await generateFolio(
+              tx,
+              "DIRECT_ORDER",
+              data.requestDate || data.elaborationDate
+            );
+            const orderType = ["GENERAL", "URGENT", "WAREHOUSE"].includes(data.orderType)
+              ? data.orderType
+              : "GENERAL";
+            const order = await tx.directOrder.create({
+              data: {
+                folio: directFolio,
+                orderType,
+                clientId: data.clientId,
+                clientContactId: data.clientContactId || null,
+                sellerId,
+                issuingCompanyId: data.issuingCompanyId,
+                requestDate: data.requestDate || data.elaborationDate,
+                validUntil: data.validUntil,
+                requisition: data.requisition ?? null,
+                observations: data.internalObservations ?? null,
+                status: "DRAFT",
+                createdBy: actor.id,
+                updatedBy: actor.id,
+              },
+            });
+            return tx.quote.update({
+              where: { id: quote.id },
+              data: { directOrderId: order.id },
+              include: DETAIL_INCLUDE,
+            });
+          }
+          return tx.quote.findFirst({
+            where: { id: quote.id },
             include: DETAIL_INCLUDE,
           });
         } catch (err) {
@@ -1380,6 +1430,17 @@ async function transitionQuote(request, id, {
 }
 
 export async function submitQuote(request, id) {
+  const existing = await findQuoteOrThrow(id);
+  if (
+    existing.directOrderId &&
+    existing.priceAfterProduction &&
+    existing.status === "DRAFT" &&
+    !existing.productionOrderId
+  ) {
+    throw new ConflictError(
+      "La autorizacion de una orden directa se envia desde Ordenes directas"
+    );
+  }
   return transitionQuote(request, id, {
     permission: "quotes.submit",
     toStatus: "PENDING_APPROVAL",
