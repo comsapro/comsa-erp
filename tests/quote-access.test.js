@@ -7,6 +7,8 @@ import {
 } from "../domains/quotes/access-rules.js";
 import { assertSellerReviewEdit } from "../domains/quotes/seller-review.js";
 import { quoteCanPrint } from "../domains/quotes/constants.js";
+import { poCanPrint } from "../domains/purchase-orders/constants.js";
+import { directOrderCanSubmit } from "../domains/direct-orders/constants.js";
 
 const seller = {
   id: "u1",
@@ -51,6 +53,32 @@ test("orden directa no se imprime hasta la aprobacion comercial", () => {
   assert.equal(quoteCanPrint({ priceAfterProduction: true, status: "SELLER_REVIEW" }), false);
   assert.equal(quoteCanPrint({ priceAfterProduction: true, status: "APPROVED" }), true);
   assert.equal(quoteCanPrint({ priceAfterProduction: false, status: "IN_PRODUCTION" }), true);
+});
+
+test("OC solo imprime PDF cuando esta aprobada o recibida", () => {
+  assert.equal(poCanPrint({ status: "DRAFT" }), false);
+  assert.equal(poCanPrint({ status: "PENDING_APPROVAL" }), false);
+  assert.equal(poCanPrint({ status: "APPROVED" }), true);
+  assert.equal(poCanPrint({ status: "PARTIALLY_RECEIVED" }), true);
+  assert.equal(poCanPrint({ status: "COMPLETED" }), true);
+});
+
+test("orden directa se envia con partidas de cotizacion aunque no tenga items simples", () => {
+  assert.equal(
+    directOrderCanSubmit({
+      items: [],
+      quote: { items: [{ id: "1" }] },
+    }),
+    true
+  );
+  assert.equal(
+    directOrderCanSubmit({ items: [{ id: "a" }], quote: null }),
+    true
+  );
+  assert.equal(
+    directOrderCanSubmit({ items: [], quote: { items: [] } }),
+    false
+  );
 });
 
 test("revision del vendedor rechaza quitar un proceso capturado", () => {

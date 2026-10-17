@@ -1,7 +1,10 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { getActor } from "@/lib/api/actor";
-import { requirePermission } from "@/lib/permissions/require-permission";
+import {
+  requirePermission,
+  requireAnyPermission,
+} from "@/lib/permissions/require-permission";
 import { jsonOk, jsonCreated } from "@/lib/api/http";
 import { parseListParams, paginated } from "@/lib/api/list-params";
 import { recordAudit, AUDIT_ACTIONS } from "@/lib/audit/logger";
@@ -12,7 +15,13 @@ import {
   ForbiddenError,
 } from "@/lib/permissions/errors";
 import { toNumber } from "@/lib/quotes/calculations";
-import { salesGoalSchema, salesInvoiceSchema, materialDecisionSchema } from "./schemas";
+import {
+  salesGoalSchema,
+  salesInvoiceSchema,
+  salesInvoiceUpdateSchema,
+  salesInvoiceReceptionSchema,
+  materialDecisionSchema,
+} from "./schemas";
 import {
   periodKeyFor,
   periodRange,
@@ -952,6 +961,210 @@ export async function createSalesInvoice(request) {
   });
 
   return jsonCreated(record);
+}
+
+const INVOICE_DETAIL_INCLUDE = {
+  seller: { select: { id: true, name: true } },
+  quotes: {
+    include: {
+      quote: {
+        select: {
+          id: true,
+          folio: true,
+          status: true,
+          total: true,
+          currency: true,
+          client: { select: { commercialName: true } },
+          seller: { select: { id: true, name: true } },
+        },
+      },
+      items: {
+        include: {
+          quoteItem: {
+            select: {
+              id: true,
+              position: true,
+              description: true,
+              quantity: true,
+              unit: true,
+              total: true,
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
+async function findSalesInvoiceOrThrow(id) {
+  const record = await prisma.salesInvoice.findFirst({
+    where: { id, deletedAt: null },
+    include: INVOICE_DETAIL_INCLUDE,
+  });
+  if (!record) throw new NotFoundError("Factura no encontrada");
+  return record;
+}
+
+export async function getSalesInvoice(request, id) {
+  await requireAnyPermission([
+    "sales.view",
+    "sales.create_invoice",
+    "sales.edit_invoice",
+  ]);
+  const record = await findSalesInvoiceOrThrow(id);
+  const scope = await resolveSalesScope(request, {});
+  if (!canAccessSellerId(scope, record.sellerId)) {
+    throw new ForbiddenError("No puedes consultar facturas de otro vendedor");
+  }
+  return jsonOk(record);
+}
+
+async function assertInvoiceQuoteLinks(request, user, quoteLinks) {
+  if (!quoteLinks.length) {
+    if (!userIsAdmin(user)) {
+      throw new ForbiddenError(
+        "Solo administradores pueden registrar facturas sin cotización ni partidas"
+      );
+    }
+    return;
+  }
+  const invoiceScope = await resolveSalesScope(request, {});
+  for (const link of quoteLinks) {
+    const quote = await prisma.quote.findFirst({
+      where: { id: link.quoteId, deletedAt: null },
+      include: { items: { where: { status: "ACTIVE" }, select: { id: true } } },
+    });
+    if (!quote) throw new NotFoundError(`Cotización no encontrada: ${link.quoteId}`);
+    if (!canAccessSellerId(invoiceScope, quote.sellerId)) {
+      throw new ForbiddenError("No puedes facturar cotizaciones de otro vendedor");
+    }
+    const allowed = new Set(quote.items.map((i) => i.id));
+    for (const itemId of link.quoteItemIds) {
+      if (!allowed.has(itemId)) {
+        throw new ValidationError("Partida no pertenece a la cotización seleccionada");
+      }
+    }
+  }
+}
+
+export async function updateSalesInvoice(request, id) {
+  await requirePermission("sales.edit_invoice");
+  const actor = await getActor(request);
+  const user = await getCurrentUser();
+  const existing = await findSalesInvoiceOrThrow(id);
+  const scope = await resolveSalesScope(request, {});
+  if (!canAccessSellerId(scope, existing.sellerId)) {
+    throw new ForbiddenError("No puedes editar facturas de otro vendedor");
+  }
+
+  const body = await request.json();
+  const data = salesInvoiceUpdateSchema.parse(body);
+
+  const sellerId =
+    canViewTeamSales(user) && data.sellerId ? data.sellerId : existing.sellerId;
+  await assertActiveUser(sellerId, "Vendedor");
+  if (!canAccessSellerId(scope, sellerId)) {
+    throw new ForbiddenError("No puedes asignar ese vendedor");
+  }
+
+  const nextNumber = data.invoiceNumber.trim();
+  if (nextNumber.toLowerCase() !== String(existing.invoiceNumber).toLowerCase()) {
+    const duplicate = await prisma.salesInvoice.findFirst({
+      where: {
+        invoiceNumber: { equals: nextNumber, mode: "insensitive" },
+        deletedAt: null,
+        NOT: { id },
+      },
+    });
+    if (duplicate) {
+      throw new ConflictError("Ya existe una factura con ese número");
+    }
+  }
+
+  const quoteLinks = data.quotes || [];
+  await assertInvoiceQuoteLinks(request, user, quoteLinks);
+
+  const record = await prisma.$transaction(async (tx) => {
+    await tx.salesInvoiceQuoteItem.deleteMany({
+      where: { salesInvoiceQuote: { salesInvoiceId: id } },
+    });
+    await tx.salesInvoiceQuote.deleteMany({ where: { salesInvoiceId: id } });
+
+    return tx.salesInvoice.update({
+      where: { id },
+      data: {
+        invoiceNumber: nextNumber,
+        netAmount: data.netAmount,
+        invoiceDate: data.invoiceDate,
+        sellerId,
+        clientPoNumber: data.clientPoNumber.trim(),
+        receivedByClient: data.receivedByClient,
+        receptionDate: data.receivedByClient ? data.receptionDate : null,
+        notes: data.notes || null,
+        updatedBy: actor.id,
+        quotes: quoteLinks.length
+          ? {
+              create: quoteLinks.map((link) => ({
+                quoteId: link.quoteId,
+                items: {
+                  create: link.quoteItemIds.map((quoteItemId) => ({
+                    quoteItemId,
+                  })),
+                },
+              })),
+            }
+          : undefined,
+      },
+      include: INVOICE_DETAIL_INCLUDE,
+    });
+  });
+
+  await recordAudit({
+    actor,
+    module: "sales",
+    entity: "SalesInvoice",
+    entityId: id,
+    action: AUDIT_ACTIONS.UPDATE,
+    previousData: existing,
+    newData: record,
+  });
+
+  return jsonOk(record);
+}
+
+export async function markSalesInvoiceReception(request, id) {
+  await requirePermission("sales.edit_invoice");
+  const actor = await getActor(request);
+  const existing = await findSalesInvoiceOrThrow(id);
+  const scope = await resolveSalesScope(request, {});
+  if (!canAccessSellerId(scope, existing.sellerId)) {
+    throw new ForbiddenError("No puedes editar facturas de otro vendedor");
+  }
+
+  const body = await request.json();
+  const data = salesInvoiceReceptionSchema.parse(body);
+
+  const record = await prisma.salesInvoice.update({
+    where: { id },
+    data: {
+      receivedByClient: data.receivedByClient,
+      receptionDate: data.receivedByClient ? data.receptionDate : null,
+      updatedBy: actor.id,
+    },
+    include: INVOICE_DETAIL_INCLUDE,
+  });
+
+  await recordAudit({
+    actor,
+    module: "sales",
+    entity: "SalesInvoice",
+    entityId: id,
+    action: AUDIT_ACTIONS.UPDATE,
+    previousData: existing,
+    newData: record,
+  });
+
+  return jsonOk(record);
 }
 
 export async function listSalesCommitments(request) {

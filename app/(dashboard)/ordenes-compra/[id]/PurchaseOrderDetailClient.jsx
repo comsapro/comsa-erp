@@ -10,7 +10,7 @@ import { Can } from "@/components/permissions/Can";
 import { api, toQuery } from "@/lib/api/client";
 import { formatDate, formatMoney } from "@/lib/utils/format";
 import { toNumber } from "@/lib/quotes/calculations";
-import { PO_STATUS_LABELS } from "@/domains/purchase-orders/constants";
+import { PO_STATUS_LABELS, poCanPrint } from "@/domains/purchase-orders/constants";
 import { remainingQuantity } from "@/domains/purchase-orders/calculations";
 import { MaterialPreload } from "@/components/purchase-orders/MaterialPreload";
 import { toPurchaseItemPayload } from "@/domains/purchase-orders/preload";
@@ -136,14 +136,24 @@ export default function PurchaseOrderDetailClient({ id }) {
               Volver
             </Button>
             <Can permission="purchase_orders.print">
-              <Button
-                as={Link}
-                href={`/api/ordenes-compra/${id}/pdf`}
-                variant="secondary"
-                target="_blank"
-              >
-                PDF
-              </Button>
+              {poCanPrint(row) ? (
+                <Button
+                  as={Link}
+                  href={`/api/ordenes-compra/${id}/pdf`}
+                  variant="secondary"
+                  target="_blank"
+                >
+                  PDF
+                </Button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  disabled
+                  title="Solo disponible cuando la orden de compra esta aprobada"
+                >
+                  PDF
+                </Button>
+              )}
             </Can>
             {row.status === "DRAFT" && (
               <Can permission="purchase_orders.submit">

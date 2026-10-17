@@ -32,6 +32,7 @@ import {
   DIRECT_ORDER_STATUS_LABELS,
   DIRECT_ORDER_STATUS_TONES,
   ORDER_TYPE_LABELS,
+  directOrderCanSubmit,
 } from "@/domains/direct-orders/constants";
 import DirectOrderForm from "../DirectOrderForm";
 
@@ -192,7 +193,12 @@ export default function DirectOrderDetailClient({ id }) {
                 size="sm"
                 loading={acting}
                 onClick={() => runAction("submit")}
-                disabled={!record.items?.length}
+                disabled={!directOrderCanSubmit(record)}
+                title={
+                  directOrderCanSubmit(record)
+                    ? undefined
+                    : "Captura al menos una partida en la cotizacion ligada"
+                }
               >
                 <Send className="h-4 w-4" /> Enviar a aprobacion
               </Button>
@@ -321,8 +327,41 @@ export default function DirectOrderDetailClient({ id }) {
             cargos. No aparece en Cotizaciones hasta que el supervisor la aprueba
             y se puede enviar el PDF.
           </p>
+          {(record.quote.items?.length || 0) > 0 ? (
+            <div className="mb-4 overflow-x-auto rounded-[var(--radius-md)] border border-border">
+              <table className="min-w-full text-sm">
+                <thead className="bg-surface-muted text-left text-content-muted">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">#</th>
+                    <th className="px-3 py-2 font-medium">Descripcion</th>
+                    <th className="px-3 py-2 font-medium">Cant.</th>
+                    <th className="px-3 py-2 font-medium">Unidad</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {record.quote.items.map((item) => (
+                    <tr key={item.id}>
+                      <td className="px-3 py-2 text-content-muted">
+                        {item.position}
+                      </td>
+                      <td className="px-3 py-2 text-content">{item.description}</td>
+                      <td className="px-3 py-2">{Number(item.quantity)}</td>
+                      <td className="px-3 py-2">{item.unit || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="mb-4 text-sm text-warning-700">
+              Aun no hay partidas. Capturalas para poder enviar a aprobacion.
+            </p>
+          )}
           <Button as={Link} href={`/cotizaciones/${record.quote.id}`} size="sm">
-            <FileText className="h-4 w-4" /> Capturar partidas
+            <FileText className="h-4 w-4" />{" "}
+            {(record.quote.items?.length || 0) > 0
+              ? "Editar partidas"
+              : "Capturar partidas"}
           </Button>
         </Card>
       )}
@@ -333,8 +372,9 @@ export default function DirectOrderDetailClient({ id }) {
           initial={record}
           saving={saving}
           onSubmitHeader={onSubmitHeader}
-          onSaveItem={onSaveItem}
-          onDeleteItem={onDeleteItem}
+          onSaveItem={record.quote ? undefined : onSaveItem}
+          onDeleteItem={record.quote ? undefined : onDeleteItem}
+          hideSimpleItems={Boolean(record.quote)}
         />
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">

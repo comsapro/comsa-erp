@@ -1,12 +1,19 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { parseListParams, paginated } from "@/lib/api/list-params";
-import { requirePermission } from "@/lib/permissions/require-permission";
+import {
+  requirePermission,
+  requireAnyPermission,
+} from "@/lib/permissions/require-permission";
 import { getActor } from "@/lib/api/actor";
 import { recordAudit, AUDIT_ACTIONS } from "@/lib/audit/logger";
-import { NotFoundError } from "@/lib/permissions/errors";
+import { NotFoundError, ValidationError } from "@/lib/permissions/errors";
 import { jsonOk, jsonCreated } from "@/lib/api/http";
-import { clientCreateSchema, clientUpdateSchema } from "./schemas";
+import {
+  clientContactSchema,
+  clientCreateSchema,
+  clientUpdateSchema,
+} from "./schemas";
 
 const SORTABLE = ["commercialName", "rfc", "status", "createdAt"];
 
@@ -229,6 +236,65 @@ export async function updateClient(request, id) {
     newData: record,
   });
   return jsonOk(record);
+}
+
+export async function addClientContact(request, id) {
+  await requireAnyPermission(["clients.manage_contacts", "clients.edit"]);
+  const actor = await getActor(request);
+  const existing = await prisma.client.findFirst({
+    where: { id, deletedAt: null },
+    include: { contacts: true },
+  });
+  if (!existing) throw new NotFoundError("Cliente no encontrado");
+
+  const body = await request.json();
+  const data = clientContactSchema.parse(body);
+  if (!data.name?.trim()) {
+    throw new ValidationError("El nombre del contacto es requerido");
+  }
+
+  const makePrimary =
+    Boolean(data.isPrimary) || (existing.contacts?.length || 0) === 0;
+
+  const record = await prisma.$transaction(async (tx) => {
+    if (makePrimary) {
+      await tx.clientContact.updateMany({
+        where: { clientId: id },
+        data: { isPrimary: false },
+      });
+    }
+    await tx.clientContact.create({
+      data: {
+        clientId: id,
+        name: data.name,
+        position: data.position ?? null,
+        phone: data.phone ?? null,
+        email: data.email ?? null,
+        isPrimary: makePrimary,
+      },
+    });
+    return tx.client.findFirst({
+      where: { id },
+      include: { contacts: true },
+    });
+  });
+
+  await prisma.client.update({
+    where: { id },
+    data: { updatedBy: actor.id },
+  });
+
+  await recordAudit({
+    actor,
+    module: "clients",
+    entity: "Client",
+    entityId: id,
+    action: AUDIT_ACTIONS.UPDATE,
+    previousData: existing,
+    newData: record,
+  });
+
+  return jsonCreated(record);
 }
 
 export async function removeClient(request, id) {

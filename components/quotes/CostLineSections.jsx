@@ -99,13 +99,13 @@ function SupplierLineSelect({
   );
 
   useEffect(() => {
-    setOptions(
+    setOptions((prev) =>
       withSelectedSupplier(
-        suppliers,
+        prev.length ? prev : suppliers,
         selectedId ? { id: selectedId, name: selectedName } : null
       )
     );
-  }, [suppliers, selectedId, selectedName]);
+  }, [selectedId, selectedName]);
 
   const handleSearch = async (q) => {
     const res = await api.get(
@@ -119,14 +119,19 @@ function SupplierLineSelect({
     );
     const data = withSelectedSupplier(res?.data || [], selected);
     setOptions(data);
-    onSuppliersChange?.(data);
+  };
+
+  const handleChange = (id) => {
+    const found = options.find((row) => row.id === id) || null;
+    if (found) onSuppliersChange?.([found]);
+    onChange?.(id, found);
   };
 
   return (
     <CatalogCombobox
       label="Proveedor"
       value={value || ""}
-      onChange={onChange}
+      onChange={handleChange}
       options={options.map((s) => ({
         value: s.id,
         label: s.name || s.legalName,
@@ -442,12 +447,13 @@ export function CostLineSections({
                       }
                     : null
                 }
-                onChange={(id) => {
-                  const found = suppliers.find((row) => row.id === id);
+                onChange={(id, found) => {
+                  const row =
+                    found || suppliers.find((s) => s.id === id) || null;
                   setValue(`materials.${index}.supplierId`, id || null);
                   setValue(
                     `materials.${index}.supplierName`,
-                    found?.name || found?.legalName || ""
+                    row?.name || row?.legalName || ""
                   );
                 }}
                 suppliers={suppliers}
@@ -607,12 +613,13 @@ export function CostLineSections({
                       }
                     : null
                 }
-                onChange={(id) => {
-                  const found = suppliers.find((row) => row.id === id);
+                onChange={(id, found) => {
+                  const row =
+                    found || suppliers.find((s) => s.id === id) || null;
                   setValue(`extras.${index}.supplierId`, id || null);
                   setValue(
                     `extras.${index}.supplierName`,
-                    found?.name || found?.legalName || ""
+                    row?.name || row?.legalName || ""
                   );
                 }}
                 suppliers={suppliers}

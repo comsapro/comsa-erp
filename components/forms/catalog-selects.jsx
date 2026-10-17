@@ -196,33 +196,15 @@ export function QuickCreateContactModal({
     }
     setSaving(true);
     try {
-      const detail = await api.get(`/api/clientes/${clientId}`);
-      const existing = (detail?.contacts || []).map((c) => ({
-        name: c.name,
-        position: c.position || null,
-        phone: c.phone || null,
-        email: c.email || null,
-        isPrimary: Boolean(c.isPrimary),
-      }));
-      const nextContacts = [
-        ...existing.map((c) =>
-          values.isPrimary ? { ...c, isPrimary: false } : c
-        ),
-        {
-          name: values.name,
-          position: values.position || null,
-          phone: values.phone || null,
-          email: values.email || null,
-          isPrimary: Boolean(values.isPrimary) || existing.length === 0,
-        },
-      ];
-      const updated = await api.put(`/api/clientes/${clientId}`, {
-        contacts: nextContacts,
+      const updated = await api.post(`/api/clientes/${clientId}/contactos`, {
+        name: values.name,
+        position: values.position || null,
+        phone: values.phone || null,
+        email: values.email || null,
+        isPrimary: Boolean(values.isPrimary),
       });
       const created =
-        (updated.contacts || []).find(
-          (c) => c.name === values.name && !existing.some((e) => e.name === c.name && e.phone === c.phone)
-        ) ||
+        (updated.contacts || []).find((c) => c.name === values.name) ||
         (updated.contacts || []).at(-1);
       toast({ variant: "success", title: "Contacto agregado" });
       onCreated?.(created, updated);
@@ -647,7 +629,9 @@ export function ContactCatalogSelect({
   const { has } = usePermissions();
   const [createOpen, setCreateOpen] = useState(false);
   const [initialName, setInitialName] = useState("");
-  const canCreate = Boolean(clientId) && has("clients.edit");
+  const canCreate =
+    Boolean(clientId) &&
+    (has("clients.manage_contacts") || has("clients.edit"));
 
   return (
     <>

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 import { api, toQuery } from "@/lib/api/client";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -10,13 +10,23 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Alert } from "@/components/feedback/Alert";
 import { Skeleton } from "@/components/feedback/Skeleton";
-import { formatDate, formatMoney } from "@/lib/utils/format";
+import { Modal } from "@/components/ui/Modal";
+import { Field } from "@/components/forms/Field";
+import { Input } from "@/components/ui/Input";
+import { Can } from "@/components/permissions/Can";
+import { formatDate, formatMoney, toDateInputValue } from "@/lib/utils/format";
 
 export default function SalesInvoicesClient() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [pendingOnly, setPendingOnly] = useState(false);
+  const [receptionModal, setReceptionModal] = useState({
+    open: false,
+    invoice: null,
+  });
+  const [receptionDate, setReceptionDate] = useState(toDateInputValue(new Date()));
+  const [savingReception, setSavingReception] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -40,6 +50,28 @@ export default function SalesInvoicesClient() {
     load();
   }, [load]);
 
+  const pendingCount = rows.filter((r) => !r.receivedByClient).length;
+
+  async function confirmReception() {
+    if (!receptionModal.invoice) return;
+    setSavingReception(true);
+    try {
+      await api.post(
+        `/api/ventas/facturas/${receptionModal.invoice.id}/recepcion`,
+        {
+          receivedByClient: true,
+          receptionDate,
+        }
+      );
+      setReceptionModal({ open: false, invoice: null });
+      await load();
+    } catch (err) {
+      setError(err.message || "No se pudo marcar la recepción");
+    } finally {
+      setSavingReception(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -53,7 +85,7 @@ export default function SalesInvoicesClient() {
         }
       />
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <Button
           size="sm"
           variant={!pendingOnly ? "primary" : "secondary"}
@@ -67,6 +99,11 @@ export default function SalesInvoicesClient() {
           onClick={() => setPendingOnly(true)}
         >
           Sin recepción del cliente
+          {!pendingOnly && pendingCount > 0 ? (
+            <Badge tone="warning" className="ml-2">
+              {pendingCount}
+            </Badge>
+          ) : null}
         </Button>
       </div>
 
@@ -93,6 +130,7 @@ export default function SalesInvoicesClient() {
                     <th className="px-2 py-2 font-medium">Cotizaciones</th>
                     <th className="px-2 py-2 font-medium">Archivos</th>
                     <th className="px-2 py-2 font-medium">Recepción</th>
+                    <th className="px-2 py-2 font-medium">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -145,6 +183,35 @@ export default function SalesInvoicesClient() {
                           <Badge tone="warning">No</Badge>
                         )}
                       </td>
+                      <td className="px-2 py-2">
+                        <div className="flex flex-wrap gap-2">
+                          <Can permission="sales.edit_invoice">
+                            <Button
+                              as={Link}
+                              href={`/ventas/facturas/${r.id}`}
+                              size="sm"
+                              variant="subtle"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                              Editar
+                            </Button>
+                          </Can>
+                          {!r.receivedByClient ? (
+                            <Can permission="sales.edit_invoice">
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => {
+                                  setReceptionDate(toDateInputValue(new Date()));
+                                  setReceptionModal({ open: true, invoice: r });
+                                }}
+                              >
+                                Marcar recepción
+                              </Button>
+                            </Can>
+                          ) : null}
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -153,6 +220,47 @@ export default function SalesInvoicesClient() {
           )}
         </CardBody>
       </Card>
+
+      <Modal
+        open={receptionModal.open}
+        onClose={() =>
+          savingReception
+            ? undefined
+            : setReceptionModal({ open: false, invoice: null })
+        }
+        title="Recepción del cliente"
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-content-muted">
+            Factura {receptionModal.invoice?.invoiceNumber}. Indica la fecha en
+            que el cliente recibió la factura.
+          </p>
+          <Field label="Fecha de recepción" htmlFor="reception-date" required>
+            <Input
+              id="reception-date"
+              type="date"
+              value={receptionDate || ""}
+              onChange={(e) => setReceptionDate(e.target.value)}
+            />
+          </Field>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="secondary"
+              disabled={savingReception}
+              onClick={() => setReceptionModal({ open: false, invoice: null })}
+            >
+              Cancelar
+            </Button>
+            <Button
+              loading={savingReception}
+              disabled={!receptionDate}
+              onClick={confirmReception}
+            >
+              Confirmar
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

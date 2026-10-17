@@ -27,3 +27,9 @@ export const VALID_TRANSITIONS = {
   COMPLETED: [],
   CANCELLED: [],
 };
+
+/** Solo se imprime/PDF cuando la OC ya fue aprobada (o recibida/completada). */
+export function poCanPrint(po) {
+  if (!po) return false;
+  return ["APPROVED", "PARTIALLY_RECEIVED", "COMPLETED"].includes(po.status);
+}
