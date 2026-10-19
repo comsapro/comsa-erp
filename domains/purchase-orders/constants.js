@@ -28,6 +28,21 @@ export const VALID_TRANSITIONS = {
   CANCELLED: [],
 };
 
+/** Compras edita borradores; el supervisor corrige precio o proveedor antes de aprobar. */
+export const PO_EDIT_PERMISSION_BY_STATUS = {
+  DRAFT: "purchase_orders.edit",
+  PENDING_APPROVAL: "purchase_orders.edit_pending",
+};
+
+export function poEditPermission(status) {
+  return PO_EDIT_PERMISSION_BY_STATUS[status] || null;
+}
+
+export function poCanEdit(po, hasPermission) {
+  const code = poEditPermission(po?.status);
+  return Boolean(code && hasPermission(code));
+}
+
 /** Solo se imprime/PDF cuando la OC ya fue aprobada (o recibida/completada). */
 export function poCanPrint(po) {
   if (!po) return false;

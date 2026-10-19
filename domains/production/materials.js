@@ -2,7 +2,27 @@ import { prisma } from "@/lib/db";
 import { requirePermission } from "@/lib/permissions/require-permission";
 import { jsonOk } from "@/lib/api/http";
 import { NotFoundError } from "@/lib/permissions/errors";
-import { mapSelectedMaterials } from "@/domains/purchase-orders/preload";
+import { toPreloadMaterial } from "@/domains/purchase-orders/preload";
+import { isLegacyQuote } from "@/domains/quotes/constants";
+
+export const QUOTE_MATERIAL_INCLUDE = {
+  item: { select: { id: true, sku: true, name: true, unitOfMeasure: true } },
+  supplier: { select: { id: true, name: true } },
+  quoteItem: {
+    select: {
+      quantity: true,
+      quote: { select: { internalObservations: true } },
+    },
+  },
+};
+
+export function preloadMaterialRow(mat, { includeCost = false } = {}) {
+  return toPreloadMaterial(mat, {
+    pieces: mat.quoteItem?.quantity,
+    perPiece: !isLegacyQuote(mat.quoteItem?.quote),
+    includeCost,
+  });
+}
 
 export async function attachSourceMaterialsForPdf(order) {
   const items = order.items || [];
@@ -18,10 +38,7 @@ export async function attachSourceMaterialsForPdf(order) {
   }
   const materials = await prisma.quoteItemMaterial.findMany({
     where: { quoteItemId: { in: quoteItemIds } },
-    include: {
-      item: { select: { unitOfMeasure: true } },
-      supplier: { select: { id: true, name: true } },
-    },
+    include: QUOTE_MATERIAL_INCLUDE,
   });
   const byItem = new Map();
   for (const mat of materials) {
@@ -29,7 +46,7 @@ export async function attachSourceMaterialsForPdf(order) {
     list.push({
       id: mat.id,
       descriptionSnapshot: mat.descriptionSnapshot,
-      quantity: mat.quantity,
+      quantity: preloadMaterialRow(mat).quantity,
       unit: mat.unit || mat.item?.unitOfMeasure || null,
       dimensions: mat.dimensions,
       presentation: mat.presentation,
@@ -65,27 +82,12 @@ export async function listProductionMaterials(request, productionOrderId) {
   const materials = quoteItemIds.length
     ? await prisma.quoteItemMaterial.findMany({
         where: { quoteItemId: { in: quoteItemIds } },
-        include: {
-          item: { select: { id: true, sku: true, name: true, unitOfMeasure: true } },
-          supplier: { select: { id: true, name: true } },
-        },
+        include: QUOTE_MATERIAL_INCLUDE,
       })
     : [];
 
-  const includeSalePrice = user.permissions?.includes("quotes.view_cost");
-  const available = materials.map((mat) => ({
-    id: mat.id,
-    itemId: mat.itemId,
-    sku: mat.item?.sku || null,
-    descriptionSnapshot: mat.descriptionSnapshot,
-    dimensions: mat.dimensions,
-    presentation: mat.presentation,
-    unit: mat.unit || mat.item?.unitOfMeasure || null,
-    quantity: Number(mat.quantity) || 0,
-    supplierId: mat.supplierId,
-    supplierName: mat.supplier?.name || null,
-    unitPrice: includeSalePrice ? Number(mat.unitPrice || 0) : 0,
-  }));
+  const includeCost = user.permissions?.includes("quotes.view_cost");
+  const available = materials.map((mat) => preloadMaterialRow(mat, { includeCost }));
 
   return jsonOk({
     productionOrderId: order.id,
@@ -94,8 +96,4 @@ export async function listProductionMaterials(request, productionOrderId) {
     quoteFolio: order.quote?.folio || null,
     materials: available,
   });
-}
-
-export function selectedMaterialsPayload(available, selectedIds, includeSalePrice) {
-  return mapSelectedMaterials(available, selectedIds, { includeSalePrice });
 }

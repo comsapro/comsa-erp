@@ -9,6 +9,7 @@ import { CatalogCombobox } from "@/components/forms/CatalogCombobox";
 import { ItemCatalogSelect } from "@/components/forms/catalog-selects";
 import { api, toQuery } from "@/lib/api/client";
 import { MaterialPreload } from "@/components/purchase-orders/MaterialPreload";
+import { CostHint } from "@/components/purchase-orders/CostHint";
 import {
   mergePurchaseLines,
   toPurchaseFormLine,
@@ -459,6 +460,10 @@ export default function PurchaseOrderFormClient({
                     next[idx] = { ...next[idx], unitPrice: e.target.value };
                     setLines(next);
                   }}
+                />
+                <CostHint
+                  unitPrice={line.unitPrice}
+                  quotedUnitPrice={line.quotedUnitPrice}
                 />
               </label>
               <div className="sm:col-span-4 flex flex-wrap gap-2">
