@@ -64,7 +64,7 @@ function SectionTotal({ rows, quantityKey = "quantity", priceKey = "unitPrice" }
   return (
     <p className="border-t border-border pt-2 text-sm font-medium text-content">
       Suma de conceptos: {formatMoney(sum)}{" "}
-      <span className="font-normal text-content-muted">antes de IVA</span>
+      <span className="font-normal text-content-muted">por pieza, antes de IVA</span>
     </p>
   );
 }

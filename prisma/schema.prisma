@@ -1012,6 +1012,7 @@ model QuoteItem {
   extrasTotal          Decimal  @default(0) @map("extras_total") @db.Decimal(14, 2)
   installationTotal    Decimal  @default(0) @map("installation_total") @db.Decimal(14, 2)
   costTotal            Decimal  @default(0) @map("cost_total") @db.Decimal(14, 2)
+  unitSalePrice        Decimal? @map("unit_sale_price") @db.Decimal(14, 2)
   saleSubtotal         Decimal  @default(0) @map("sale_subtotal") @db.Decimal(14, 2)
   taxAmount            Decimal  @default(0) @map("tax_amount") @db.Decimal(14, 2)
   total                Decimal  @default(0) @db.Decimal(14, 2)

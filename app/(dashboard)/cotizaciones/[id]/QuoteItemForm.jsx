@@ -142,6 +142,7 @@ export default function QuoteItemForm({
   captureWithoutHours = false,
   sellerReview = false,
   sellerReviewStartedAt = null,
+  perPiece = true,
 }) {
   const { has } = usePermissions();
   const { toast } = useToast();
@@ -207,8 +208,10 @@ export default function QuoteItemForm({
       installations: installationsRows,
       benefitPercentage: watched?.benefitPercentage,
       discountPercentage: watched?.discountPercentage,
+      quantity: watched?.quantity,
+      perPiece,
     });
-  }, [watched]);
+  }, [watched, perPiece]);
 
   const previewItem = useMemo(() => {
     const totals = preview;
@@ -233,6 +236,7 @@ export default function QuoteItemForm({
       costTotal: totals.costTotal,
       materialsBenefitAmount: totals.materialsBenefitAmount,
       extrasBenefitAmount: totals.extrasBenefitAmount,
+      unitSalePrice: totals.unitSalePrice,
       saleSubtotal: totals.saleSubtotal,
       taxAmount: totals.taxAmount,
       total: totals.total,

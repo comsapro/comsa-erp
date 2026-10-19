@@ -8,6 +8,11 @@ export const QUOTE_STATUSES = [
   "CANCELLED",
 ];
 
+/** Cotizaciones importadas del sistema anterior: sus lineas ya son el total de la partida. */
+export function isLegacyQuote(quote) {
+  return String(quote?.internalObservations || "").startsWith("[legacy:");
+}
+
 export const QUOTE_STATUS_LABELS = {
   DRAFT: "Borrador",
   PENDING_APPROVAL: "En revision",

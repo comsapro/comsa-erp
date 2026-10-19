@@ -23,7 +23,12 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import { QUOTE_STATUS_LABELS, ORDER_TYPE_LABELS, quoteCanPrint } from "@/domains/quotes/constants";
+import {
+  QUOTE_STATUS_LABELS,
+  ORDER_TYPE_LABELS,
+  quoteCanPrint,
+  isLegacyQuote,
+} from "@/domains/quotes/constants";
 import { api, toQuery } from "@/lib/api/client";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
@@ -929,6 +934,7 @@ export default function QuoteDetailClient({ quoteId }) {
           captureWithoutHours={Boolean(quote.priceAfterProduction) && isDraft}
           sellerReview={isSellerReview}
           sellerReviewStartedAt={quote.sellerReviewStartedAt}
+          perPiece={!isLegacyQuote(quote)}
         />
       </Modal>
 

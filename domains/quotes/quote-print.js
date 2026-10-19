@@ -1,6 +1,6 @@
 import path from "path";
-import { toNumber } from "@/lib/quotes/calculations";
-import { normalizeDeliveryTimeUnit } from "@/domains/quotes/constants";
+import { toNumber } from "../../lib/quotes/calculations.js";
+import { normalizeDeliveryTimeUnit } from "./constants.js";
 
 export const QUOTE_PRINT_NOTES = [
   "Condiciones de pago serán: pago del 100% a el crédito establecido.",
@@ -84,6 +84,7 @@ export function formatDateIso(value) {
 }
 
 export function lineUnitPrice(item) {
+  if (item.unitSalePrice != null) return toNumber(item.unitSalePrice);
   const qty = toNumber(item.quantity) || 1;
   const subtotal = toNumber(item.saleSubtotal);
   return qty ? subtotal / qty : 0;
