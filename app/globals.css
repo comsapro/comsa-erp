@@ -108,6 +108,11 @@ body {
     page-break-inside: avoid;
   }
 
+  .print-quote table tr.print-row-breakable {
+    break-inside: auto;
+    page-break-inside: auto;
+  }
+
   .print-quote thead {
     display: table-header-group;
   }

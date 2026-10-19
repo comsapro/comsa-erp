@@ -44,6 +44,13 @@ export const QUOTE_PRINT_CANCELLATION = [
   },
 ];
 
+/** Comentarios mas largos se imprimen en una fila de ancho completo bajo la partida. */
+export const COMMENT_INLINE_MAX_CHARS = 80;
+
+export function commentsGoBelow(comments) {
+  return String(comments || "").trim().length > COMMENT_INLINE_MAX_CHARS;
+}
+
 const DELIVERY_UNIT_PRINT = {
   HOUR: "HORAS",
   DAY: "DIAS",
@@ -161,6 +168,7 @@ export function buildQuotePrintModel(quote) {
         deliveryRange: delivery.range,
         deliveryUnit: delivery.unit,
         comments: item.clientObservations || "",
+        commentsBelow: commentsGoBelow(item.clientObservations),
         unitPrice: formatQuoteMoney(lineUnitPrice(item), currency),
         discount: formatQuoteMoney(item.discountAmount, currency),
         quantity: Number(toNumber(item.quantity)).toFixed(2),
