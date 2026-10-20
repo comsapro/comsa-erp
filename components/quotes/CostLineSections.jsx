@@ -107,7 +107,7 @@ function SupplierLineSelect({
     );
   }, [selectedId, selectedName]);
 
-  const handleSearch = async (q) => {
+  const handleSearch = async (q, { signal } = {}) => {
     const res = await api.get(
       `/api/proveedores${toQuery({
         status: "ACTIVE",
@@ -115,7 +115,8 @@ function SupplierLineSelect({
         pageSize: 50,
         sort: "name",
         order: "asc",
-      })}`
+      })}`,
+      { signal }
     );
     const data = withSelectedSupplier(res?.data || [], selected);
     setOptions(data);

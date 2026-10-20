@@ -4,12 +4,16 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, ChevronsUpDown, Plus, Search } from "lucide-react";
 import { Field } from "@/components/forms/Field";
 import { cn } from "@/lib/utils/cn";
+import { isAbortError } from "@/lib/api/client";
+import { visibleOptions } from "@/lib/utils/option-filter";
 
 /**
  * Combobox buscable con opcion "Agregar nueva".
  * options: [{ value, label, description? }]
  *
- * Si se pasa onSearch, la busqueda es remota (debounce) y no filtra en cliente.
+ * Si se pasa onSearch(query, { signal }), la busqueda es remota (debounce). Al seguir
+ * escribiendo se aborta la peticion anterior: pasa `signal` a api.get para que una
+ * respuesta vieja no reemplace a la nueva.
  * onSearch se guarda en ref para no re-disparar el efecto en cada render.
  */
 export function CatalogCombobox({
@@ -40,6 +44,8 @@ export function CatalogCombobox({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
+  const [resolvedQuery, setResolvedQuery] = useState(null);
+  const [searchError, setSearchError] = useState(null);
   const remote = typeof onSearch === "function";
 
   onSearchRef.current = onSearch;
@@ -49,15 +55,10 @@ export function CatalogCombobox({
     [options, value]
   );
 
-  const filtered = useMemo(() => {
-    if (remote) return options;
-    const q = query.trim().toLowerCase();
-    if (!q) return options;
-    return options.filter((o) => {
-      const hay = `${o.label || ""} ${o.description || ""}`.toLowerCase();
-      return hay.includes(q);
-    });
-  }, [options, query, remote]);
+  const filtered = useMemo(
+    () => visibleOptions({ options, query, remote, resolvedQuery }),
+    [options, query, remote, resolvedQuery]
+  );
 
   useEffect(() => {
     function onDocClick(e) {
@@ -73,10 +74,18 @@ export function CatalogCombobox({
   useEffect(() => {
     if (!remote || !open) return undefined;
     let cancelled = false;
+    const controller = new AbortController();
+    const q = query.trim();
     const handle = setTimeout(async () => {
       setSearching(true);
+      setSearchError(null);
       try {
-        await onSearchRef.current?.(query.trim());
+        await onSearchRef.current?.(q, { signal: controller.signal });
+        if (!cancelled) setResolvedQuery(q);
+      } catch (err) {
+        if (!cancelled && !isAbortError(err)) {
+          setSearchError("No se pudo buscar. Intenta de nuevo.");
+        }
       } finally {
         if (!cancelled) setSearching(false);
       }
@@ -84,6 +93,7 @@ export function CatalogCombobox({
     return () => {
       cancelled = true;
       clearTimeout(handle);
+      controller.abort();
     };
   }, [query, open, remote, searchDebounceMs]);
 
@@ -172,11 +182,19 @@ export function CatalogCombobox({
                 </li>
               )}
 
-              {searching && filtered.length === 0 && (
-                <li className="px-3 py-2 text-sm text-content-muted">Buscando...</li>
+              {searching && (
+                <li className="px-3 py-2 text-xs text-content-muted" aria-live="polite">
+                  Buscando...
+                </li>
               )}
 
-              {!searching && filtered.length === 0 && (
+              {searchError && !searching && (
+                <li className="px-3 py-2 text-sm text-danger-700" role="alert">
+                  {searchError}
+                </li>
+              )}
+
+              {!searching && !searchError && filtered.length === 0 && (
                 <li className="px-3 py-2 text-sm text-content-muted">{emptyLabel}</li>
               )}
 

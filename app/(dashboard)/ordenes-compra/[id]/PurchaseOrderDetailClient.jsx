@@ -52,7 +52,7 @@ export default function PurchaseOrderDetailClient({ id }) {
       .then((res) => setWarehouses(res?.data || []));
   }, [load]);
 
-  const searchItems = useCallback(async (q) => {
+  const searchItems = useCallback(async (q, { signal } = {}) => {
     const res = await api.get(
       `/api/items${toQuery({
         status: "ACTIVE",
@@ -61,7 +61,8 @@ export default function PurchaseOrderDetailClient({ id }) {
         sort: "name",
         order: "asc",
         excludeLegacy: "1",
-      })}`
+      })}`,
+      { signal }
     );
     setCatalogItems(res?.data || []);
   }, []);

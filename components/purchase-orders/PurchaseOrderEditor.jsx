@@ -36,7 +36,7 @@ export function PurchaseOrderEditor({ order, requireCosts = false, onSave, onCan
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
-  const searchSuppliers = useCallback(async (q) => {
+  const searchSuppliers = useCallback(async (q, { signal } = {}) => {
     const res = await api.get(
       `/api/proveedores${toQuery({
         status: "ACTIVE",
@@ -44,7 +44,8 @@ export function PurchaseOrderEditor({ order, requireCosts = false, onSave, onCan
         pageSize: 50,
         sort: "name",
         order: "asc",
-      })}`
+      })}`,
+      { signal }
     );
     setSearchResults(res?.data || []);
   }, []);

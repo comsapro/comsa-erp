@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { api, toQuery } from "@/lib/api/client";
+import { api, isAbortError, toQuery } from "@/lib/api/client";
 import {
   categoryCreateSchema,
   itemCreateSchema,
@@ -544,7 +544,7 @@ export function ClientCatalogSelect({
   }, [value, remoteSearch]);
 
   const handleSearch = useCallback(
-    async (q) => {
+    async (q, { signal } = {}) => {
       try {
         const res = await api.get(
           `/api/clientes${toQuery({
@@ -553,7 +553,8 @@ export function ClientCatalogSelect({
             pageSize: 50,
             sort: "commercialName",
             order: "asc",
-          })}`
+          })}`,
+          { signal }
         );
         const data = res?.data || [];
         // Conservar cliente seleccionado si no viene en la pagina
@@ -568,6 +569,7 @@ export function ClientCatalogSelect({
           return data;
         });
       } catch (err) {
+        if (isAbortError(err)) return;
         toast({
           variant: "error",
           title: "No se pudo buscar clientes",
@@ -796,7 +798,7 @@ export function ProcessCatalogSelect({
     );
   }, [options, selectedId, selectedName, selectedCode, selectedUnit, selectedOption?.defaultRate]);
 
-  const handleSearch = async (q) => {
+  const handleSearch = async (q, { signal } = {}) => {
     const res = await api.get(
       `/api/procesos${toQuery({
         status: "ACTIVE",
@@ -804,7 +806,8 @@ export function ProcessCatalogSelect({
         pageSize: 50,
         sort: "name",
         order: "asc",
-      })}`
+      })}`,
+      { signal }
     );
     const selected = selectedId
       ? {
@@ -883,7 +886,7 @@ export function InstallationCatalogSelect({
     );
   }, [options, selectedId, selectedName, selectedCode, selectedUnit, selectedOption?.defaultPrice]);
 
-  const handleSearch = async (q) => {
+  const handleSearch = async (q, { signal } = {}) => {
     const res = await api.get(
       `/api/instalaciones${toQuery({
         status: "ACTIVE",
@@ -891,7 +894,8 @@ export function InstallationCatalogSelect({
         pageSize: 50,
         sort: "name",
         order: "asc",
-      })}`
+      })}`,
+      { signal }
     );
     const selected = selectedId
       ? {
