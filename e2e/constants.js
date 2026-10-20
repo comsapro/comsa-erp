@@ -32,6 +32,9 @@ export const FOLIOS = {
   pendingPo: "E2E-PO",
   directOrder: "E2E-DO",
   directQuote: "E2E-DOQ",
+  handbackOrder: "E2E-HBO",
+  handbackQuote: "E2E-HBQ",
+  handbackProduction: "E2E-HBP",
 };
 
 export const INVOICE_NUMBER = "E2E-F-001";

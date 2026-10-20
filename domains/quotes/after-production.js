@@ -1,5 +1,6 @@
 import { lineAmount } from "@/lib/quotes/calculations";
 import { recalculateQuote } from "./recalculate";
+import { syncCompanionDirectOrderStatus } from "@/domains/direct-orders/status-sync";
 
 /**
  * Al cerrar la orden de produccion de una orden directa, copia las horas reales
@@ -89,4 +90,9 @@ export async function handbackPriceAfterProduction(tx, productionOrder, actorId)
       updatedBy: actorId || null,
     },
   });
+  await syncCompanionDirectOrderStatus(
+    tx,
+    { ...quote, status: "SELLER_REVIEW" },
+    actorId
+  );
 }

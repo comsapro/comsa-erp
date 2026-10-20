@@ -17,7 +17,12 @@ import { Field } from "@/components/forms/Field";
 import { Alert } from "@/components/feedback/Alert";
 import { QuoteStatusBadge } from "@/components/ui/Badge";
 import { salesInvoiceSchema } from "@/domains/sales/schemas";
-import { formatDate, formatMoney, toDateInputValue } from "@/lib/utils/format";
+import {
+  invoiceFormDefaultValues,
+  invoiceFormQuoteState,
+  ORPHANED_QUOTE_MESSAGE,
+} from "@/domains/sales/invoice-form";
+import { formatDate, formatMoney } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
 
 const MAX_FILE_MB = 25;
@@ -180,7 +185,7 @@ export default function SalesInvoiceFormClient({
 }) {
   const router = useRouter();
   const isEdit = Boolean(invoice?.id);
-  const firstQuoteLink = invoice?.quotes?.[0] || null;
+  const quoteState = useMemo(() => invoiceFormQuoteState(invoice), [invoice]);
   const pdfInputRef = useRef(null);
   const xmlInputRef = useRef(null);
   const [sellers, setSellers] = useState([]);
@@ -189,29 +194,15 @@ export default function SalesInvoiceFormClient({
   const [searching, setSearching] = useState(false);
   const [expandedQuoteId, setExpandedQuoteId] = useState(null);
   const [quoteDetailsById, setQuoteDetailsById] = useState({});
-  const [selectedQuote, setSelectedQuote] = useState(
-    firstQuoteLink?.quote
-      ? {
-          id: firstQuoteLink.quote.id,
-          folio: firstQuoteLink.quote.folio,
-          status: firstQuoteLink.quote.status,
-          total: firstQuoteLink.quote.total,
-          currency: firstQuoteLink.quote.currency,
-          client: firstQuoteLink.quote.client,
-          seller: firstQuoteLink.quote.seller,
-        }
-      : null
-  );
-  const [itemIds, setItemIds] = useState(
-    (firstQuoteLink?.items || []).map((row) => row.quoteItemId || row.quoteItem?.id).filter(Boolean)
-  );
-  const [skipQuoteLink, setSkipQuoteLink] = useState(
-    Boolean(invoice && !(invoice.quotes || []).length)
-  );
+  const [selectedQuote, setSelectedQuote] = useState(quoteState.selectedQuote);
+  const [itemIds, setItemIds] = useState(quoteState.itemIds);
+  const [skipQuoteLink, setSkipQuoteLink] = useState(quoteState.skipQuoteLink);
   const [pdfFile, setPdfFile] = useState(null);
   const [xmlFile, setXmlFile] = useState(null);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(
+    quoteState.orphanedQuoteLink ? ORPHANED_QUOTE_MESSAGE : ""
+  );
 
   const {
     register,
@@ -221,21 +212,7 @@ export default function SalesInvoiceFormClient({
     formState: { errors },
   } = useForm({
     resolver: zodResolver(salesInvoiceSchema),
-    defaultValues: {
-      invoiceNumber: invoice?.invoiceNumber || "",
-      netAmount: invoice?.netAmount != null ? Number(invoice.netAmount) : "",
-      invoiceDate: toDateInputValue(
-        invoice?.invoiceDate ? new Date(invoice.invoiceDate) : new Date()
-      ),
-      sellerId: invoice?.sellerId || currentUserId,
-      clientPoNumber: invoice?.clientPoNumber || "",
-      receivedByClient: Boolean(invoice?.receivedByClient),
-      receptionDate: invoice?.receptionDate
-        ? toDateInputValue(new Date(invoice.receptionDate))
-        : null,
-      notes: invoice?.notes || "",
-      quotes: [],
-    },
+    defaultValues: invoiceFormDefaultValues(invoice, currentUserId),
   });
 
   const receivedByClient = watch("receivedByClient");
@@ -253,26 +230,6 @@ export default function SalesInvoiceFormClient({
       .then((res) => setSellers(res?.data || []))
       .catch(() => setSellers([]));
   }, [canViewTeam]);
-
-  useEffect(() => {
-    if (!isEdit || !firstQuoteLink?.quote?.id) return;
-    const items = (firstQuoteLink.items || []).map((row) => ({
-      id: row.quoteItemId || row.quoteItem?.id,
-      position: row.quoteItem?.position,
-      description: row.quoteItem?.description,
-      quantity: row.quoteItem?.quantity,
-      unit: row.quoteItem?.unit,
-      total: row.quoteItem?.total,
-    })).filter((row) => row.id);
-    setQuoteDetailsById((prev) => ({
-      ...prev,
-      [firstQuoteLink.quote.id]: {
-        loading: false,
-        error: null,
-        items,
-      },
-    }));
-  }, [isEdit, firstQuoteLink]);
 
   useEffect(() => {
     if (skipQuoteLink) {
@@ -658,14 +615,16 @@ export default function SalesInvoiceFormClient({
                       <div>
                         <p className="font-medium text-content">{selectedQuote.folio}</p>
                         <p className="text-sm text-content-muted">
-                          {selectedQuote.clientName}
+                          {selectedQuote.clientName ||
+                            selectedQuote.client?.commercialName ||
+                            ""}
                         </p>
                       </div>
                       <Button type="button" size="sm" variant="ghost" onClick={clearQuote}>
                         Cambiar cotización
                       </Button>
                     </div>
-                    {selectedQuote.items.length === 0 ? (
+                    {(selectedQuote.items || []).length === 0 ? (
                       <p className="text-sm text-content-muted">
                         Esta cotización no tiene partidas activas.
                       </p>
@@ -674,7 +633,7 @@ export default function SalesInvoiceFormClient({
                         <p className="text-xs text-content-muted">
                           Solo se muestran partidas de esta cotización.
                         </p>
-                        {selectedQuote.items.map((item) => (
+                        {(selectedQuote.items || []).map((item) => (
                           <label
                             key={item.id}
                             className="flex items-start gap-2 text-sm"

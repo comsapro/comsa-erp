@@ -395,6 +395,64 @@ export async function seedE2e() {
     data: { directOrderId: directOrder.id, priceAfterProduction: true },
   });
 
+  const handbackQuote = await createQuoteWithItem(prisma, {
+    ...quoteArgs,
+    folio: FOLIOS.handbackQuote,
+    status: "PENDING_APPROVAL",
+    supplierId: paloma.id,
+    quantity: 2,
+  });
+  const handbackProduction = await prisma.productionOrder.create({
+    data: {
+      folio: FOLIOS.handbackProduction,
+      sourceType: "DIRECT_ORDER",
+      clientId: client.id,
+      quoteId: handbackQuote.id,
+      approvalDate: today(),
+      status: "COMPLETED",
+      totalItems: 1,
+      completedItems: 1,
+      progressPercentage: 100,
+      createdBy: users.supervisor.id,
+      updatedBy: users.supervisor.id,
+      items: {
+        create: {
+          sourceItemId: handbackQuote.items[0].id,
+          sourceItemType: "QUOTE_ITEM",
+          position: 1,
+          description: handbackQuote.items[0].description,
+          quantity: 2,
+          status: "COMPLETED",
+        },
+      },
+    },
+  });
+  const handbackOrder = await prisma.directOrder.create({
+    data: {
+      folio: FOLIOS.handbackOrder,
+      orderType: "GENERAL",
+      clientId: client.id,
+      clientContactId: contact.id,
+      sellerId: users.ventas.id,
+      issuingCompanyId: issuingCompany.id,
+      requestDate: today(),
+      validUntil: addDays(today(), 30),
+      status: "PENDING_APPROVAL",
+      productionOrderId: handbackProduction.id,
+      createdBy: users.ventas.id,
+      updatedBy: users.ventas.id,
+    },
+  });
+  await prisma.quote.update({
+    where: { id: handbackQuote.id },
+    data: {
+      directOrderId: handbackOrder.id,
+      productionOrderId: handbackProduction.id,
+      priceAfterProduction: true,
+      status: "PENDING_APPROVAL",
+    },
+  });
+
   const invoice = await prisma.salesInvoice.create({
     data: {
       invoiceNumber: INVOICE_NUMBER,
@@ -428,6 +486,9 @@ export async function seedE2e() {
     productionItemId: production.items[0].id,
     pendingPoId: pendingPo.id,
     directOrderId: directOrder.id,
+    directQuoteId: directQuote.id,
+    handbackOrderId: handbackOrder.id,
+    handbackQuoteId: handbackQuote.id,
     invoiceId: invoice.id,
     palomaId: paloma.id,
     amilId: amil.id,

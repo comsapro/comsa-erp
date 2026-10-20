@@ -5,6 +5,7 @@ import {
   buildQuotePrintModel,
   commentsGoBelow,
   COMMENT_INLINE_MAX_CHARS,
+  printItemComments,
 } from "../domains/quotes/quote-print.js";
 import {
   drawQuoteForm,
@@ -101,6 +102,69 @@ test("PDF: descripcion larga se ajusta en varias lineas en lugar de cortarse", a
   const all = normalize(pages.flat().join(" "));
   assert.ok(all.includes("Pieza mecanizada parte 12"));
   assert.ok(!all.includes("..."));
+});
+
+test("PDF: cada partida imprime sus comentarios, no solo la primera", async () => {
+  const comment1 = Array.from({ length: 20 }, () => PHRASE).join(" ");
+  const comment2 = Array.from({ length: 18 }, () => "Partida dos con acabado sanitario").join(" ");
+  const quote = {
+    folio: "2610-8-C",
+    currency: "MXN",
+    subtotal: 426250,
+    taxTotal: 68200,
+    total: 494450,
+    items: [
+      {
+        position: 1,
+        description: "Prueba del dia 19.10.2026",
+        quantity: 15,
+        status: "ACTIVE",
+        unitSalePrice: 17050,
+        saleSubtotal: 255750,
+        discountAmount: 0,
+        deliveryTimeMin: 15,
+        deliveryTimeMax: 20,
+        deliveryTimeUnit: "DAY",
+        clientObservations: comment1,
+      },
+      {
+        position: 2,
+        description: "Prueba del dia 19.10.2026",
+        quantity: 10,
+        status: "ACTIVE",
+        unitSalePrice: 17050,
+        saleSubtotal: 170500,
+        discountAmount: 0,
+        deliveryTimeMin: 15,
+        deliveryTimeMax: 20,
+        deliveryTimeUnit: "DAY",
+        clientObservations: comment2,
+        internalObservations: "No debe salir en el PDF",
+      },
+    ],
+  };
+  const model = buildQuotePrintModel(quote);
+  assert.equal(model.items.length, 2);
+  assert.equal(model.items[0].commentsBelow, true);
+  assert.equal(model.items[1].commentsBelow, true);
+  assert.equal(model.items[1].comments, comment2);
+  const pages = await renderPages(quote);
+  const all = normalize(pages.flat().join(" "));
+  assert.ok(all.includes(normalize(`Comentarios: ${comment1}`)));
+  assert.ok(all.includes(normalize(`Comentarios: ${comment2}`)));
+  assert.ok(!all.includes("No debe salir en el PDF"));
+  assert.ok((all.match(/Ver abajo/g) || []).length >= 2);
+});
+
+test("printItemComments solo usa observaciones al cliente", () => {
+  assert.equal(
+    printItemComments({
+      clientObservations: "  visible  ",
+      internalObservations: "oculto",
+    }),
+    "visible"
+  );
+  assert.equal(printItemComments({ internalObservations: "oculto" }), "");
 });
 
 test("wrapCell respeta saltos de linea y corta palabras mas anchas que la celda", () => {

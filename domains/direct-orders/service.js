@@ -13,7 +13,13 @@ import { jsonOk, jsonCreated } from "@/lib/api/http";
 import { generateFolio } from "@/lib/folios";
 import { recalculateQuote } from "@/domains/quotes/recalculate";
 import { copyQuotedProcessesForOrderItems } from "@/domains/production/process-copy";
-import { DIRECT_ORDER_STATUSES, VALID_TRANSITIONS } from "./constants";
+import {
+  DIRECT_ORDER_STATUSES,
+  VALID_TRANSITIONS,
+  directStatusForQuote,
+  directOrderSearchOr,
+} from "./constants";
+import { applyCompanionQuoteHeader } from "./header-sync";
 import {
   directOrderCreateSchema,
   directOrderUpdateSchema,
@@ -158,19 +164,6 @@ async function ensureCompanionQuote(actor, order) {
   return findDirectOrderOrThrow(order.id, DETAIL_INCLUDE);
 }
 
-function directStatusForQuote(quote) {
-  if (quote.status === "CANCELLED") return "CANCELLED";
-  if (quote.status === "REJECTED") return "REJECTED";
-  if (quote.status === "IN_PRODUCTION" || quote.status === "SELLER_REVIEW") {
-    return "IN_PRODUCTION";
-  }
-  if (quote.status === "APPROVED") {
-    return quote.productionOrderId ? "IN_PRODUCTION" : "APPROVED";
-  }
-  if (quote.status === "PENDING_APPROVAL") return "PENDING_APPROVAL";
-  return "DRAFT";
-}
-
 async function adoptPriceAfterQuotes(actorId) {
   const loose = await prisma.quote.findMany({
     where: {
@@ -267,15 +260,7 @@ export async function listDirectOrders(request) {
   }
 
   if (params.q) {
-    where.OR = [
-      { folio: { contains: params.q, mode: "insensitive" } },
-      { requisition: { contains: params.q, mode: "insensitive" } },
-      {
-        client: {
-          commercialName: { contains: params.q, mode: "insensitive" },
-        },
-      },
-    ];
+    where.OR = directOrderSearchOr(params.q);
   }
 
   const [rows, total] = await Promise.all([
@@ -459,13 +444,22 @@ export async function updateDirectOrder(request, id) {
     throw new ValidationError("El cliente es requerido");
   }
 
-  const record = await prisma.directOrder.update({
-    where: { id },
-    data: {
-      ...data,
-      updatedBy: actor.id,
-    },
-    include: DETAIL_INCLUDE,
+  const record = await prisma.$transaction(async (tx) => {
+    await tx.directOrder.update({
+      where: { id },
+      data: {
+        ...data,
+        updatedBy: actor.id,
+      },
+    });
+    const updated = await tx.directOrder.findFirst({
+      where: { id },
+    });
+    await applyCompanionQuoteHeader(tx, updated, actor.id);
+    return tx.directOrder.findFirst({
+      where: { id },
+      include: DETAIL_INCLUDE,
+    });
   });
 
   await recordAudit({

@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requirePagePermission } from "@/lib/auth/guard";
 import { userHasPermission, userIsAdmin } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
+import { serializeInvoiceForClient } from "@/domains/sales/invoice-form";
 import SalesInvoiceFormClient from "../nuevo/SalesInvoiceFormClient";
 
 export const metadata = { title: "Editar factura de ventas" };
@@ -52,7 +53,7 @@ export default async function EditarFacturaVentasPage({ params }) {
       isAdmin={userIsAdmin(user)}
       currentUserId={user.id}
       currentUserName={user.name}
-      invoice={JSON.parse(JSON.stringify(invoice))}
+      invoice={serializeInvoiceForClient(invoice)}
     />
   );
 }

@@ -51,6 +51,10 @@ export function commentsGoBelow(comments) {
   return String(comments || "").trim().length > COMMENT_INLINE_MAX_CHARS;
 }
 
+export function printItemComments(item) {
+  return String(item?.clientObservations || "").trim();
+}
+
 const DELIVERY_UNIT_PRINT = {
   HOUR: "HORAS",
   DAY: "DIAS",
@@ -162,13 +166,14 @@ export function buildQuotePrintModel(quote) {
     },
     items: activeItems.map((item) => {
       const delivery = formatDeliveryPrint(item);
+      const comments = printItemComments(item);
       return {
         position: item.position,
         description: item.description || "",
         deliveryRange: delivery.range,
         deliveryUnit: delivery.unit,
-        comments: item.clientObservations || "",
-        commentsBelow: commentsGoBelow(item.clientObservations),
+        comments,
+        commentsBelow: commentsGoBelow(comments),
         unitPrice: formatQuoteMoney(lineUnitPrice(item), currency),
         discount: formatQuoteMoney(item.discountAmount, currency),
         quantity: Number(toNumber(item.quantity)).toFixed(2),
