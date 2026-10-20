@@ -14,7 +14,7 @@ import {
 import { formatMoney } from "@/lib/utils/format";
 import { toNumber } from "@/lib/quotes/calculations";
 import { NotFoundError, ValidationError } from "@/lib/permissions/errors";
-import { PO_STATUS_LABELS } from "@/domains/purchase-orders/constants";
+import { PO_STATUS_LABELS, poCanPrint } from "@/domains/purchase-orders/constants";
 import { QUOTE_STATUS_LABELS, quoteCanPrint } from "@/domains/quotes/constants";
 import { PRODUCTION_STATUS_LABELS } from "@/domains/production/constants";
 import { MOVEMENT_TYPE_LABELS } from "@/domains/inventory/constants";
@@ -104,6 +104,11 @@ export async function purchaseOrderPdf(request, id) {
     },
   });
   if (!po) throw new NotFoundError("Orden de compra no encontrada");
+  if (!poCanPrint(po)) {
+    throw new ValidationError(
+      "Solo se puede generar PDF de ordenes de compra aprobadas"
+    );
+  }
 
   const materialIds = [
     ...new Set(

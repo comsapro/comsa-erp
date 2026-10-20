@@ -52,3 +52,15 @@ export const VALID_TRANSITIONS = {
   CANCELLED: [],
   IN_PRODUCTION: [],
 };
+
+/**
+ * Se puede enviar a aprobacion si hay partidas en la cotizacion ligada
+ * o, en ordenes legacy sin cotizacion, al menos un item simple.
+ */
+export function directOrderCanSubmit(order) {
+  if (!order) return false;
+  if (order.quote) {
+    return (order.quote.items?.length || 0) > 0;
+  }
+  return (order.items?.length || 0) > 0;
+}

@@ -15,6 +15,7 @@ import {
 import { PRODUCTION_DETAIL_INCLUDE } from "./recalc";
 import { attachSourceMaterialsForPdf } from "./materials";
 import { operatorNames } from "./process-rules";
+import { buildProductionItemQr, resolveAppOrigin } from "./qr";
 
 // Las observaciones que el formato imprime son las que el vendedor dejo en el origen;
 // si produccion ya capturo observaciones propias, esas tienen prioridad.
@@ -110,17 +111,24 @@ export async function dimensionalControlPdf(request, orderId, itemId) {
   return pdfResponse(buffer, `control-dimensional-${order.folio}-${item.position}.pdf`);
 }
 
-export async function getWorkOrderPrintModel(orderId, itemId) {
+async function workOrderModelWithQr(order, item, request) {
+  const origin = resolveAppOrigin(request);
+  const qr = await buildProductionItemQr(order.id, item.id, origin);
+  return buildWorkOrderModel(order, item, qr);
+}
+
+export async function getWorkOrderPrintModel(orderId, itemId, request = null) {
   await requirePermission("production.print");
   const { order, item } = await loadOrderItem(orderId, itemId);
-  return { order, item, model: buildWorkOrderModel(order, item) };
+  const model = await workOrderModelWithQr(order, item, request);
+  return { order, item, model };
 }
 
 export async function workOrderPdf(request, orderId, itemId) {
   await requirePermission("production.print");
   const actor = await getActor(request);
   const { order, item } = await loadOrderItem(orderId, itemId);
-  const model = buildWorkOrderModel(order, item);
+  const model = await workOrderModelWithQr(order, item, request);
   const buffer = await buildPdfBuffer((doc) => drawWorkOrder(doc, model), PDF_OPTIONS);
   await recordAudit({
     actor,

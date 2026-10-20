@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { requirePagePermission } from "@/lib/auth/guard";
@@ -149,19 +150,37 @@ export default async function ImprimirCotizacionPage({ params }) {
             </tr>
           ) : (
             model.items.map((item) => (
-              <tr key={item.position} className="print-row">
-                <td className={cell}>{item.position}</td>
-                <td className={cellLeft}>{item.description}</td>
-                <td className={`${cell} whitespace-pre-line`}>
-                  {item.deliveryRange}
-                  {item.deliveryUnit ? `\n${item.deliveryUnit}` : ""}
-                </td>
-                <td className={cellLeft}>{item.comments || ""}</td>
-                <td className={cellRight}>{item.unitPrice}</td>
-                <td className={cellRight}>{item.discount}</td>
-                <td className={cell}>{item.quantity}</td>
-                <td className={cellRight}>{item.amount}</td>
-              </tr>
+              <Fragment key={item.position}>
+                <tr className="print-row">
+                  <td className={cell}>{item.position}</td>
+                  <td className={`${cellLeft} whitespace-pre-line break-words`}>
+                    {item.description}
+                  </td>
+                  <td className={`${cell} whitespace-pre-line`}>
+                    {item.deliveryRange}
+                    {item.deliveryUnit ? `\n${item.deliveryUnit}` : ""}
+                  </td>
+                  <td className={`${cellLeft} whitespace-pre-line break-words`}>
+                    {item.commentsBelow ? "Ver abajo" : item.comments || ""}
+                  </td>
+                  <td className={cellRight}>{item.unitPrice}</td>
+                  <td className={cellRight}>{item.discount}</td>
+                  <td className={cell}>{item.quantity}</td>
+                  <td className={cellRight}>{item.amount}</td>
+                </tr>
+                {item.commentsBelow ? (
+                  <tr className="print-row-breakable">
+                    <td className={cell} />
+                    <td
+                      colSpan={7}
+                      className={`${cellLeft} whitespace-pre-line break-words`}
+                    >
+                      <span className="font-semibold">Comentarios: </span>
+                      {item.comments}
+                    </td>
+                  </tr>
+                ) : null}
+              </Fragment>
             ))
           )}
         </tbody>

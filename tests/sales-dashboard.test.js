@@ -73,6 +73,7 @@ test("catalogo incluye permisos de sales", () => {
   assert.ok(codes.has("sales.view"));
   assert.ok(codes.has("sales.manage_goals"));
   assert.ok(codes.has("sales.create_invoice"));
+  assert.ok(codes.has("sales.edit_invoice"));
   assert.ok(codes.has("sales.edit_commitment"));
   assert.ok(codes.has("sales.view_team"));
 });

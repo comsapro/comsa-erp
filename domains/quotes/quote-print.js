@@ -1,6 +1,6 @@
 import path from "path";
-import { toNumber } from "@/lib/quotes/calculations";
-import { normalizeDeliveryTimeUnit } from "@/domains/quotes/constants";
+import { toNumber } from "../../lib/quotes/calculations.js";
+import { normalizeDeliveryTimeUnit } from "./constants.js";
 
 export const QUOTE_PRINT_NOTES = [
   "Condiciones de pago serán: pago del 100% a el crédito establecido.",
@@ -44,6 +44,13 @@ export const QUOTE_PRINT_CANCELLATION = [
   },
 ];
 
+/** Comentarios mas largos se imprimen en una fila de ancho completo bajo la partida. */
+export const COMMENT_INLINE_MAX_CHARS = 80;
+
+export function commentsGoBelow(comments) {
+  return String(comments || "").trim().length > COMMENT_INLINE_MAX_CHARS;
+}
+
 const DELIVERY_UNIT_PRINT = {
   HOUR: "HORAS",
   DAY: "DIAS",
@@ -84,6 +91,7 @@ export function formatDateIso(value) {
 }
 
 export function lineUnitPrice(item) {
+  if (item.unitSalePrice != null) return toNumber(item.unitSalePrice);
   const qty = toNumber(item.quantity) || 1;
   const subtotal = toNumber(item.saleSubtotal);
   return qty ? subtotal / qty : 0;
@@ -160,6 +168,7 @@ export function buildQuotePrintModel(quote) {
         deliveryRange: delivery.range,
         deliveryUnit: delivery.unit,
         comments: item.clientObservations || "",
+        commentsBelow: commentsGoBelow(item.clientObservations),
         unitPrice: formatQuoteMoney(lineUnitPrice(item), currency),
         discount: formatQuoteMoney(item.discountAmount, currency),
         quantity: Number(toNumber(item.quantity)).toFixed(2),

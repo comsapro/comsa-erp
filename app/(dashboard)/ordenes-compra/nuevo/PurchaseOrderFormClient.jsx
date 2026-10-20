@@ -9,6 +9,7 @@ import { CatalogCombobox } from "@/components/forms/CatalogCombobox";
 import { ItemCatalogSelect } from "@/components/forms/catalog-selects";
 import { api, toQuery } from "@/lib/api/client";
 import { MaterialPreload } from "@/components/purchase-orders/MaterialPreload";
+import { CostHint } from "@/components/purchase-orders/CostHint";
 import {
   mergePurchaseLines,
   toPurchaseFormLine,
@@ -48,7 +49,7 @@ export default function PurchaseOrderFormClient({
   const [saving, setSaving] = useState(false);
   const preloadRef = useRef(null);
 
-  const searchSuppliers = useCallback(async (q) => {
+  const searchSuppliers = useCallback(async (q, { signal } = {}) => {
     const res = await api.get(
       `/api/proveedores${toQuery({
         status: "ACTIVE",
@@ -56,12 +57,13 @@ export default function PurchaseOrderFormClient({
         pageSize: 50,
         sort: "name",
         order: "asc",
-      })}`
+      })}`,
+      { signal }
     );
     setSuppliers(res?.data || []);
   }, []);
 
-  const searchItems = useCallback(async (q) => {
+  const searchItems = useCallback(async (q, { signal } = {}) => {
     const res = await api.get(
       `/api/items${toQuery({
         status: "ACTIVE",
@@ -70,12 +72,13 @@ export default function PurchaseOrderFormClient({
         sort: "name",
         order: "asc",
         excludeLegacy: "1",
-      })}`
+      })}`,
+      { signal }
     );
     setItems(res?.data || []);
   }, []);
 
-  const searchQuotes = useCallback(async (q) => {
+  const searchQuotes = useCallback(async (q, { signal } = {}) => {
     const res = await api.get(
       `/api/cotizaciones${toQuery({
         q: q || undefined,
@@ -83,7 +86,8 @@ export default function PurchaseOrderFormClient({
         sort: "folio",
         order: "desc",
         forLink: "1",
-      })}`
+      })}`,
+      { signal }
     );
     setQuotes(res?.data || []);
   }, []);
@@ -459,6 +463,10 @@ export default function PurchaseOrderFormClient({
                     next[idx] = { ...next[idx], unitPrice: e.target.value };
                     setLines(next);
                   }}
+                />
+                <CostHint
+                  unitPrice={line.unitPrice}
+                  quotedUnitPrice={line.quotedUnitPrice}
                 />
               </label>
               <div className="sm:col-span-4 flex flex-wrap gap-2">

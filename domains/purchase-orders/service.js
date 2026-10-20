@@ -13,12 +13,56 @@ import {
   ConflictError,
 } from "@/lib/permissions/errors";
 import { poCreateSchema, poUpdateSchema, reasonSchema } from "./schemas";
-import { VALID_TRANSITIONS } from "./constants";
+import { VALID_TRANSITIONS, poEditPermission } from "./constants";
 import {
   calculatePurchaseLineTotals,
   calculatePurchaseHeaderTotals,
 } from "./calculations";
-import { dedupeBySourceMaterial } from "./preload";
+import { dedupeBySourceMaterial, missingCostMessage } from "./preload";
+
+function poAuditSnapshot(po) {
+  return {
+    status: po.status,
+    supplierId: po.supplierId,
+    supplier: po.supplier?.name || null,
+    subtotal: po.subtotal,
+    total: po.total,
+    items: (po.items || []).map((it) => ({
+      description: it.descriptionSnapshot,
+      quantity: it.quantity,
+      unitPrice: it.unitPrice,
+      supplierName: it.supplierName,
+    })),
+  };
+}
+
+function assertCostsCaptured(items) {
+  const message = missingCostMessage(items);
+  if (message) throw new ValidationError(message);
+}
+
+/** Costo cotizado de cada partida precargada, como referencia para compras y supervisor. */
+async function withQuotedCosts(po, user) {
+  if (!user.permissions?.includes("quotes.view_cost")) return po;
+  const ids = (po.items || [])
+    .filter((it) => it.sourceType === "QUOTE_MATERIAL" && it.sourceMaterialId)
+    .map((it) => it.sourceMaterialId);
+  if (!ids.length) return po;
+  const materials = await prisma.quoteItemMaterial.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, unitPrice: true },
+  });
+  const byId = new Map(materials.map((m) => [m.id, m.unitPrice]));
+  return {
+    ...po,
+    items: po.items.map((it) => ({
+      ...it,
+      quotedUnitPrice: byId.has(it.sourceMaterialId)
+        ? byId.get(it.sourceMaterialId)
+        : null,
+    })),
+  };
+}
 
 const DETAIL_INCLUDE = {
   supplier: { select: { id: true, name: true, legalName: true, rfc: true, status: true } },
@@ -168,8 +212,8 @@ export async function listPurchaseOrders(request) {
 }
 
 export async function getPurchaseOrder(_request, id) {
-  await requirePermission("purchase_orders.view");
-  return jsonOk(await getPoOrThrow(id));
+  const user = await requirePermission("purchase_orders.view");
+  return jsonOk(await withQuotedCosts(await getPoOrThrow(id), user));
 }
 
 export async function createPurchaseOrder(request) {
@@ -246,13 +290,28 @@ export async function createPurchaseOrder(request) {
 }
 
 export async function updatePurchaseOrder(request, id) {
-  await requirePermission("purchase_orders.edit");
-  const actor = await getActor(request);
   const existing = await getPoOrThrow(id);
-  if (existing.status !== "DRAFT") {
-    throw new ConflictError("Solo se pueden editar ordenes en borrador");
+  const editPermission = poEditPermission(existing.status);
+  if (!editPermission) {
+    throw new ConflictError(
+      "Solo se pueden modificar ordenes en borrador o pendientes de aprobacion"
+    );
   }
+  const user = await requirePermission(editPermission);
+  const actor = await getActor(request);
   const body = poUpdateSchema.parse(await request.json());
+
+  if (existing.status === "PENDING_APPROVAL") {
+    const relinks =
+      (body.productionOrderId !== undefined &&
+        body.productionOrderId !== existing.productionOrderId) ||
+      (body.quoteId !== undefined && body.quoteId !== existing.quoteId);
+    if (relinks) {
+      throw new ConflictError(
+        "Una orden pendiente de aprobacion no puede cambiar de produccion o cotizacion"
+      );
+    }
+  }
 
   if (body.supplierId) {
     const supplier = await prisma.supplier.findFirst({
@@ -263,6 +322,9 @@ export async function updatePurchaseOrder(request, id) {
 
   const itemRows =
     body.items !== undefined ? await buildItemRows(body.items) : null;
+  if (itemRows && existing.status === "PENDING_APPROVAL") {
+    assertCostsCaptured(itemRows);
+  }
   const header = itemRows
     ? calculatePurchaseHeaderTotals(itemRows)
     : {
@@ -309,10 +371,11 @@ export async function updatePurchaseOrder(request, id) {
     entity: "PurchaseOrder",
     entityId: id,
     action: AUDIT_ACTIONS.UPDATE,
-    newData: { folio: record.folio },
+    previousData: poAuditSnapshot(existing),
+    newData: { folio: record.folio, ...poAuditSnapshot(record) },
   });
 
-  return jsonOk(record);
+  return jsonOk(await withQuotedCosts(record, user));
 }
 
 export async function submitPurchaseOrder(request, id) {
@@ -325,6 +388,7 @@ export async function submitPurchaseOrder(request, id) {
       "La orden debe tener al menos un item antes de enviarse"
     );
   }
+  assertCostsCaptured(existing.items);
 
   const record = await prisma.purchaseOrder.update({
     where: { id },
@@ -350,6 +414,7 @@ export async function approvePurchaseOrder(request, id) {
   const actor = await getActor(request);
   const existing = await getPoOrThrow(id);
   assertTransition(existing.status, "APPROVED");
+  assertCostsCaptured(existing.items);
 
   const record = await prisma.purchaseOrder.update({
     where: { id },
@@ -464,35 +529,23 @@ export async function listPreloadMaterials(request) {
   });
   if (!quote) throw new NotFoundError("Cotizacion no encontrada");
 
+  const { QUOTE_MATERIAL_INCLUDE, preloadMaterialRow } = await import(
+    "@/domains/production/materials"
+  );
   const quoteItemIds = (quote.items || []).map((i) => i.id);
   const materials = quoteItemIds.length
     ? await prisma.quoteItemMaterial.findMany({
         where: { quoteItemId: { in: quoteItemIds } },
-        include: {
-          item: { select: { id: true, sku: true, name: true, unitOfMeasure: true } },
-          supplier: { select: { id: true, name: true } },
-        },
+        include: QUOTE_MATERIAL_INCLUDE,
       })
     : [];
 
-  const includeSalePrice = user.permissions?.includes("quotes.view_cost");
+  const includeCost = user.permissions?.includes("quotes.view_cost");
   return jsonOk({
     productionOrderId: quote.productionOrder?.id || null,
     productionFolio: quote.productionOrder?.folio || null,
     quoteId: quote.id,
     quoteFolio: quote.folio,
-    materials: materials.map((mat) => ({
-      id: mat.id,
-      itemId: mat.itemId,
-      sku: mat.item?.sku || null,
-      descriptionSnapshot: mat.descriptionSnapshot,
-      dimensions: mat.dimensions,
-      presentation: mat.presentation,
-      unit: mat.unit || mat.item?.unitOfMeasure || null,
-      quantity: Number(mat.quantity) || 0,
-      supplierId: mat.supplierId,
-      supplierName: mat.supplier?.name || null,
-      unitPrice: includeSalePrice ? Number(mat.unitPrice || 0) : 0,
-    })),
+    materials: materials.map((mat) => preloadMaterialRow(mat, { includeCost })),
   });
 }

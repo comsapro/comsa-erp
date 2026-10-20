@@ -23,8 +23,13 @@ import {
   Trash2,
   XCircle,
 } from "lucide-react";
-import { QUOTE_STATUS_LABELS, ORDER_TYPE_LABELS, quoteCanPrint } from "@/domains/quotes/constants";
-import { api, toQuery } from "@/lib/api/client";
+import {
+  QUOTE_STATUS_LABELS,
+  ORDER_TYPE_LABELS,
+  quoteCanPrint,
+  isLegacyQuote,
+} from "@/domains/quotes/constants";
+import { api, isAbortError, toQuery } from "@/lib/api/client";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -221,7 +226,7 @@ export default function QuoteDetailClient({ quoteId }) {
     }
   };
 
-  const searchLibrary = async (q) => {
+  const searchLibrary = async (q, { signal } = {}) => {
     try {
       const res = await api.get(
         `/api/biblioteca-items${toQuery({
@@ -230,10 +235,12 @@ export default function QuoteDetailClient({ quoteId }) {
           pageSize: 50,
           sort: "name",
           order: "asc",
-        })}`
+        })}`,
+        { signal }
       );
       setTemplates(res?.data || []);
     } catch (err) {
+      if (isAbortError(err)) return;
       toast({
         variant: "error",
         title: "No se pudo buscar en biblioteca",
@@ -929,6 +936,7 @@ export default function QuoteDetailClient({ quoteId }) {
           captureWithoutHours={Boolean(quote.priceAfterProduction) && isDraft}
           sellerReview={isSellerReview}
           sellerReviewStartedAt={quote.sellerReviewStartedAt}
+          perPiece={!isLegacyQuote(quote)}
         />
       </Modal>
 

@@ -412,6 +412,8 @@ export async function importQuotesAndProduction(prisma, {
         ...children,
         benefitPercentage,
         discountPercentage,
+        quantity: toNumber(partida.cantidad) || 1,
+        perPiece: false,
       });
       itemTotalsAcc.push(totals);
 

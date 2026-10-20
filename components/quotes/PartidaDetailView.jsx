@@ -60,7 +60,7 @@ function SectionSum({ rows, currency }) {
   return (
     <p className="text-sm font-medium text-content">
       Suma de conceptos: {formatMoney(sectionSum(rows), currency)}{" "}
-      <span className="font-normal text-content-muted">antes de IVA</span>
+      <span className="font-normal text-content-muted">por pieza, antes de IVA</span>
     </p>
   );
 }
@@ -360,40 +360,51 @@ function CostBreakdown({ item, currency, canViewCost, canViewBenefit }) {
       ? Number(item.extrasBenefitAmount)
       : benefitOf(item.extrasTotal, item.benefitPercentage);
   const beforeTax =
-    (Number(item.manufacturingTotal) || 0) +
-    (Number(item.materialsTotal) || 0) +
-    materialsBenefit +
-    (Number(item.extrasTotal) || 0) +
-    extrasBenefit +
-    (Number(installationTotal) || 0);
+    item.saleSubtotal != null
+      ? Number(item.saleSubtotal) || 0
+      : (Number(item.manufacturingTotal) || 0) +
+        (Number(item.materialsTotal) || 0) +
+        materialsBenefit +
+        (Number(item.extrasTotal) || 0) +
+        extrasBenefit +
+        (Number(installationTotal) || 0);
+  const quantity = Number(item.quantity) > 0 ? Number(item.quantity) : 1;
+  const unitPrice =
+    item.unitSalePrice != null ? Number(item.unitSalePrice) || 0 : beforeTax / quantity;
+  const piecesLabel = `${quantity} ${quantity === 1 ? "pieza" : "piezas"}`;
 
   return (
     <dl className="grid gap-2 text-sm sm:grid-cols-2">
       {canViewCost && (
         <>
-          <SummaryRow label="Manufactura" value={formatMoney(item.manufacturingTotal, currency)} />
-          <SummaryRow label="Materiales" value={formatMoney(item.materialsTotal, currency)} />
+          <SummaryRow label={`Manufactura (${piecesLabel})`} value={formatMoney(item.manufacturingTotal, currency)} />
+          <SummaryRow label={`Materiales (${piecesLabel})`} value={formatMoney(item.materialsTotal, currency)} />
           {canViewBenefit && (
             <SummaryRow
               label={`% beneficio del costo de materiales (${Number(item.benefitPercentage) || 0}%)`}
               value={formatMoney(materialsBenefit, currency)}
             />
           )}
-          <SummaryRow label="Extras" value={formatMoney(item.extrasTotal, currency)} />
+          <SummaryRow label={`Extras (${piecesLabel})`} value={formatMoney(item.extrasTotal, currency)} />
           {canViewBenefit && (
             <SummaryRow
               label={`% beneficio del costo de extras (${Number(item.benefitPercentage) || 0}%)`}
               value={formatMoney(extrasBenefit, currency)}
             />
           )}
-          <SummaryRow label="Instalaciones" value={formatMoney(installationTotal, currency)} />
-          <SummaryRow
-            label="Total por pieza antes de IVA"
-            value={formatMoney(beforeTax, currency)}
-            strong
-          />
+          <SummaryRow label={`Instalaciones (${piecesLabel})`} value={formatMoney(installationTotal, currency)} />
         </>
       )}
+      <SummaryRow
+        label="Precio por pieza antes de IVA"
+        value={formatMoney(unitPrice, currency)}
+      />
+      <SummaryRow
+        label={`Subtotal antes de IVA (${piecesLabel})`}
+        value={formatMoney(beforeTax, currency)}
+        strong
+      />
+
       <SummaryRow
         label="Descuento"
         value={

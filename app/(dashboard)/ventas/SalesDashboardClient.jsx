@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { CalendarDays, Plus, Receipt, ShoppingCart, Target } from "lucide-react";
+import { CalendarDays, Plus, ShoppingCart, Target } from "lucide-react";
 import { api, toQuery } from "@/lib/api/client";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
@@ -11,6 +11,7 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { GoalProgressCard } from "@/components/sales/GoalProgressCard";
 import { QuoteStatusCards } from "@/components/sales/QuoteStatusCards";
 import { MaterialsPanels } from "@/components/sales/MaterialsPanels";
+import { PendingReceptionCard } from "@/components/sales/PendingReceptionCard";
 import { Alert } from "@/components/feedback/Alert";
 import { Skeleton } from "@/components/feedback/Skeleton";
 
@@ -143,21 +144,11 @@ export default function SalesDashboardClient({
                 Ver calendario
               </Link>
             </Card>
-            <Card className="p-4">
-              <p className="text-sm text-content-muted">Facturas</p>
-              <p className="mt-1 text-sm text-content">
-                Registra ventas para alimentar la meta.
-              </p>
-              {canCreateInvoice && (
-                <Link
-                  href="/ventas/facturas"
-                  className="mt-2 inline-flex items-center gap-1 text-sm text-brand-700 hover:underline"
-                >
-                  <Receipt className="h-4 w-4" />
-                  Ver facturas
-                </Link>
-              )}
-            </Card>
+            <PendingReceptionCard
+              summary={data?.invoices?.pendingReception}
+              sellerId={scopeSellerId || undefined}
+              canOpenInvoices={canCreateInvoice}
+            />
           </div>
 
           <MaterialsPanels

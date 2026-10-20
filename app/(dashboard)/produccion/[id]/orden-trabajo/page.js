@@ -18,7 +18,9 @@ export default async function OrdenTrabajoPage({ params, searchParams }) {
 
   let payload;
   try {
-    payload = await getWorkOrderPrintModel(id, itemId);
+    payload = await getWorkOrderPrintModel(id, itemId, {
+      url: process.env.AUTH_URL || process.env.NEXT_PUBLIC_APP_URL || "",
+    });
   } catch (error) {
     if (error instanceof NotFoundError || error instanceof ValidationError) {
       notFound();
@@ -50,18 +52,30 @@ export default async function OrdenTrabajoPage({ params, searchParams }) {
               {model.title}
             </td>
             <td className={`${cell} w-[34%]`}>
-              <p>
-                <span className="font-semibold">Código de trabajo</span>
-              </p>
-              <p className="text-base font-semibold">{model.workCode}</p>
-              <p className="mt-1">
-                <span className="font-semibold">Fecha de solicitud: </span>
-                {model.requestDate || "—"}
-              </p>
-              <p>
-                <span className="font-semibold">Fecha final esperada: </span>
-                {model.expectedDate || "—"}
-              </p>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p>
+                    <span className="font-semibold">Código de trabajo</span>
+                  </p>
+                  <p className="text-base font-semibold">{model.workCode}</p>
+                  <p className="mt-1">
+                    <span className="font-semibold">Fecha de solicitud: </span>
+                    {model.requestDate || "—"}
+                  </p>
+                  <p>
+                    <span className="font-semibold">Fecha final esperada: </span>
+                    {model.expectedDate || "—"}
+                  </p>
+                </div>
+                {model.qrDataUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={model.qrDataUrl}
+                    alt="Codigo QR de la partida"
+                    className="h-16 w-16 shrink-0 object-contain"
+                  />
+                ) : null}
+              </div>
             </td>
           </tr>
         </tbody>

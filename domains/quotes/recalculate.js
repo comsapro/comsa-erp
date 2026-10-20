@@ -5,12 +5,18 @@ import {
   persistedQuoteItemTotals,
   lineAmount,
 } from "@/lib/quotes/calculations";
+import { isLegacyQuote } from "@/domains/quotes/constants";
 
 /**
  * Recalcula importes de lineas, totales de items y totales del encabezado.
  * Debe ejecutarse dentro de una transaccion Prisma (`tx`).
  */
 export async function recalculateQuote(tx, quoteId) {
+  const quote = await tx.quote.findUnique({
+    where: { id: quoteId },
+    select: { internalObservations: true },
+  });
+  const perPiece = !isLegacyQuote(quote);
   const items = await tx.quoteItem.findMany({
     where: { quoteId },
     include: {
@@ -68,6 +74,8 @@ export async function recalculateQuote(tx, quoteId) {
       installations: item.installations,
       benefitPercentage: item.benefitPercentage,
       discountPercentage: item.discountPercentage,
+      quantity: item.quantity,
+      perPiece,
     });
 
     const updated = await tx.quoteItem.update({

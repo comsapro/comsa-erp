@@ -10,6 +10,7 @@ import {
 } from "@/components/forms/catalog-selects";
 import { usePermissions } from "@/components/permissions/PermissionsProvider";
 import { mapSelectedMaterials } from "@/domains/purchase-orders/preload";
+import { formatMoney } from "@/lib/utils/format";
 
 export const MaterialPreload = forwardRef(function MaterialPreload(
   {
@@ -117,7 +118,8 @@ export const MaterialPreload = forwardRef(function MaterialPreload(
     <div className="rounded-md border border-border bg-surface-muted/40 p-3">
       <p className="text-sm font-medium text-content">Precargar materiales</p>
       <p className="mb-3 text-xs text-content-muted">
-        Selecciona los materiales de origen. No se copian precios de venta.
+        Selecciona los materiales de origen. Se precarga el costo cotizado y la
+        cantidad para todas las piezas; ajusta el costo al precio actual del proveedor.
       </p>
       {loading && <p className="text-sm text-content-muted">Cargando materiales...</p>}
       {error && <p className="text-sm text-danger-700">{error}</p>}
@@ -158,6 +160,10 @@ export const MaterialPreload = forwardRef(function MaterialPreload(
                     <span className="font-medium">{mat.descriptionSnapshot}</span>
                     <span className="block text-xs text-content-muted">
                       {mat.quantity} {mat.unit || ""}
+                      {mat.pieces > 1
+                        ? ` (${mat.quantityPerPiece} por pieza x ${mat.pieces} piezas)`
+                        : ""}
+                      {mat.unitPrice > 0 ? ` · cotizado ${formatMoney(mat.unitPrice)}` : ""}
                       {mat.dimensions ? ` · ${mat.dimensions}` : ""}
                       {mat.supplierName ? ` · ${mat.supplierName}` : ""}
                       {needsItem

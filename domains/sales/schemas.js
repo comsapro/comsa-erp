@@ -76,6 +76,26 @@ export const salesInvoiceSchema = z
     }
   });
 
+export const salesInvoiceUpdateSchema = salesInvoiceSchema;
+
+export const salesInvoiceReceptionSchema = z
+  .object({
+    receivedByClient: z.boolean(),
+    receptionDate: z.preprocess(
+      (v) => (v === "" || v == null ? null : v),
+      z.coerce.date().nullable().optional()
+    ),
+  })
+  .superRefine((data, ctx) => {
+    if (data.receivedByClient && !data.receptionDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "La fecha de recepción es obligatoria",
+        path: ["receptionDate"],
+      });
+    }
+  });
+
 export const materialDecisionSchema = z
   .object({
     quoteItemMaterialId: z.string().min(1),

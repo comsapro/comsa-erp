@@ -1,8 +1,39 @@
-export function mapSelectedMaterials(
-  available = [],
-  selectedIds = [],
-  { includeSalePrice = false } = {}
+import { itemQuantity } from "../../lib/quotes/calculations.js";
+
+function roundQuantity(value) {
+  return Math.round((Number(value) || 0) * 1000) / 1000;
+}
+
+/**
+ * Material de cotizacion -> fila precargable para la OC.
+ * La cantidad del material es por pieza y se multiplica por las piezas de la partida;
+ * en cotizaciones legacy (perPiece: false) ya es el total.
+ * includeCost: el costo cotizado solo se expone a quien puede ver costos.
+ */
+export function toPreloadMaterial(
+  mat,
+  { pieces = 1, perPiece = true, includeCost = false } = {}
 ) {
+  const quantityPerPiece = Number(mat.quantity) || 0;
+  const factor = perPiece ? itemQuantity(pieces) : 1;
+  return {
+    id: mat.id,
+    itemId: mat.itemId || null,
+    sku: mat.item?.sku || null,
+    descriptionSnapshot: mat.descriptionSnapshot,
+    dimensions: mat.dimensions,
+    presentation: mat.presentation,
+    unit: mat.unit || mat.item?.unitOfMeasure || null,
+    quantityPerPiece,
+    pieces: perPiece ? factor : null,
+    quantity: roundQuantity(quantityPerPiece * factor),
+    supplierId: mat.supplierId,
+    supplierName: mat.supplier?.name || null,
+    unitPrice: includeCost ? Number(mat.unitPrice || 0) : 0,
+  };
+}
+
+export function mapSelectedMaterials(available = [], selectedIds = []) {
   const selected = new Set(selectedIds);
   return available
     .filter((row) => selected.has(row.id))
@@ -16,11 +47,24 @@ export function mapSelectedMaterials(
       presentation: row.presentation || null,
       supplierId: row.supplierId || null,
       supplierName: row.supplierName || row.supplier?.name || null,
-      unitPrice: includeSalePrice ? Number(row.unitPrice || 0) : 0,
+      unitPrice: Number(row.unitPrice || 0),
+      quotedUnitPrice: Number(row.unitPrice || 0),
       sourceType: "QUOTE_MATERIAL",
       sourceMaterialId: row.id,
       needsCatalogMapping: !row.itemId,
     }));
+}
+
+/** Partidas sin costo capturado; la OC no puede enviarse ni aprobarse con ellas. */
+export function linesWithoutCost(lines = []) {
+  return lines.filter((line) => !(Number(line.unitPrice) > 0));
+}
+
+export function missingCostMessage(lines = []) {
+  const names = linesWithoutCost(lines)
+    .map((line) => line.descriptionSnapshot || line.item?.name || "partida")
+    .join(", ");
+  return names ? `Captura el costo de: ${names}` : null;
 }
 
 export function toPurchaseFormLine(row) {
@@ -28,6 +72,8 @@ export function toPurchaseFormLine(row) {
     itemId: row.itemId || "",
     quantity: row.quantity,
     unitPrice: Number(row.unitPrice) || 0,
+    quotedUnitPrice:
+      row.quotedUnitPrice != null ? Number(row.quotedUnitPrice) : null,
     unit: row.unit || "",
     descriptionSnapshot: row.descriptionSnapshot || "",
     dimensions: row.dimensions || "",

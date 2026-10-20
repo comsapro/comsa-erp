@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { api, toQuery } from "@/lib/api/client";
+import { api, isAbortError, toQuery } from "@/lib/api/client";
 import {
   categoryCreateSchema,
   itemCreateSchema,
@@ -196,33 +196,15 @@ export function QuickCreateContactModal({
     }
     setSaving(true);
     try {
-      const detail = await api.get(`/api/clientes/${clientId}`);
-      const existing = (detail?.contacts || []).map((c) => ({
-        name: c.name,
-        position: c.position || null,
-        phone: c.phone || null,
-        email: c.email || null,
-        isPrimary: Boolean(c.isPrimary),
-      }));
-      const nextContacts = [
-        ...existing.map((c) =>
-          values.isPrimary ? { ...c, isPrimary: false } : c
-        ),
-        {
-          name: values.name,
-          position: values.position || null,
-          phone: values.phone || null,
-          email: values.email || null,
-          isPrimary: Boolean(values.isPrimary) || existing.length === 0,
-        },
-      ];
-      const updated = await api.put(`/api/clientes/${clientId}`, {
-        contacts: nextContacts,
+      const updated = await api.post(`/api/clientes/${clientId}/contactos`, {
+        name: values.name,
+        position: values.position || null,
+        phone: values.phone || null,
+        email: values.email || null,
+        isPrimary: Boolean(values.isPrimary),
       });
       const created =
-        (updated.contacts || []).find(
-          (c) => c.name === values.name && !existing.some((e) => e.name === c.name && e.phone === c.phone)
-        ) ||
+        (updated.contacts || []).find((c) => c.name === values.name) ||
         (updated.contacts || []).at(-1);
       toast({ variant: "success", title: "Contacto agregado" });
       onCreated?.(created, updated);
@@ -562,7 +544,7 @@ export function ClientCatalogSelect({
   }, [value, remoteSearch]);
 
   const handleSearch = useCallback(
-    async (q) => {
+    async (q, { signal } = {}) => {
       try {
         const res = await api.get(
           `/api/clientes${toQuery({
@@ -571,7 +553,8 @@ export function ClientCatalogSelect({
             pageSize: 50,
             sort: "commercialName",
             order: "asc",
-          })}`
+          })}`,
+          { signal }
         );
         const data = res?.data || [];
         // Conservar cliente seleccionado si no viene en la pagina
@@ -586,6 +569,7 @@ export function ClientCatalogSelect({
           return data;
         });
       } catch (err) {
+        if (isAbortError(err)) return;
         toast({
           variant: "error",
           title: "No se pudo buscar clientes",
@@ -647,7 +631,9 @@ export function ContactCatalogSelect({
   const { has } = usePermissions();
   const [createOpen, setCreateOpen] = useState(false);
   const [initialName, setInitialName] = useState("");
-  const canCreate = Boolean(clientId) && has("clients.edit");
+  const canCreate =
+    Boolean(clientId) &&
+    (has("clients.manage_contacts") || has("clients.edit"));
 
   return (
     <>
@@ -812,7 +798,7 @@ export function ProcessCatalogSelect({
     );
   }, [options, selectedId, selectedName, selectedCode, selectedUnit, selectedOption?.defaultRate]);
 
-  const handleSearch = async (q) => {
+  const handleSearch = async (q, { signal } = {}) => {
     const res = await api.get(
       `/api/procesos${toQuery({
         status: "ACTIVE",
@@ -820,7 +806,8 @@ export function ProcessCatalogSelect({
         pageSize: 50,
         sort: "name",
         order: "asc",
-      })}`
+      })}`,
+      { signal }
     );
     const selected = selectedId
       ? {
@@ -899,7 +886,7 @@ export function InstallationCatalogSelect({
     );
   }, [options, selectedId, selectedName, selectedCode, selectedUnit, selectedOption?.defaultPrice]);
 
-  const handleSearch = async (q) => {
+  const handleSearch = async (q, { signal } = {}) => {
     const res = await api.get(
       `/api/instalaciones${toQuery({
         status: "ACTIVE",
@@ -907,7 +894,8 @@ export function InstallationCatalogSelect({
         pageSize: 50,
         sort: "name",
         order: "asc",
-      })}`
+      })}`,
+      { signal }
     );
     const selected = selectedId
       ? {

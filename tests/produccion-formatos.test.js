@@ -95,9 +95,16 @@ test("Control dimensional lleva la cantidad dentro del nombre de la pieza", () =
   assert.equal(model.operators.length, 4);
 });
 
-test("Orden de trabajo sin QR, prioridad ni responsable y con material completo", () => {
-  const model = buildWorkOrderModel(ORDER, ITEM);
-  for (const forbidden of ["qr", "qrDataUrl", "priority", "responsible", "quotedHours", "expectedHours"]) {
+test("Orden de trabajo incluye QR cuando se aporta y no expone prioridad ni responsable", () => {
+  const model = buildWorkOrderModel(ORDER, ITEM, {
+    qrUrl: "http://localhost:3000/produccion/escaneo/o1/i1",
+    qrDataUrl: "data:image/png;base64,abc",
+    qrBuffer: Buffer.from("abc"),
+  });
+  assert.equal(model.qrUrl.includes("/produccion/escaneo/"), true);
+  assert.ok(model.qrDataUrl);
+  assert.ok(model.qrBuffer);
+  for (const forbidden of ["priority", "responsible", "quotedHours", "expectedHours"]) {
     assert.equal(forbidden in model, false, `el modelo no debe exponer ${forbidden}`);
   }
   assert.equal(model.title, "ORDEN DE TRABAJO COTIZADO");

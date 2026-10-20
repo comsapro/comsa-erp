@@ -10,12 +10,25 @@ import { Can } from "@/components/permissions/Can";
 import { api, toQuery } from "@/lib/api/client";
 import { formatDate, formatMoney } from "@/lib/utils/format";
 import { toNumber } from "@/lib/quotes/calculations";
-import { PO_STATUS_LABELS } from "@/domains/purchase-orders/constants";
+import { Pencil } from "lucide-react";
+import { usePermissions } from "@/components/permissions/PermissionsProvider";
+import {
+  PO_STATUS_LABELS,
+  poCanEdit,
+  poCanPrint,
+} from "@/domains/purchase-orders/constants";
 import { remainingQuantity } from "@/domains/purchase-orders/calculations";
 import { MaterialPreload } from "@/components/purchase-orders/MaterialPreload";
-import { toPurchaseItemPayload } from "@/domains/purchase-orders/preload";
+import { PurchaseOrderEditor } from "@/components/purchase-orders/PurchaseOrderEditor";
+import { CostHint } from "@/components/purchase-orders/CostHint";
+import {
+  missingCostMessage,
+  toPurchaseItemPayload,
+} from "@/domains/purchase-orders/preload";
 
 export default function PurchaseOrderDetailClient({ id }) {
+  const { has } = usePermissions();
+  const [editing, setEditing] = useState(false);
   const [row, setRow] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -39,7 +52,7 @@ export default function PurchaseOrderDetailClient({ id }) {
       .then((res) => setWarehouses(res?.data || []));
   }, [load]);
 
-  const searchItems = useCallback(async (q) => {
+  const searchItems = useCallback(async (q, { signal } = {}) => {
     const res = await api.get(
       `/api/items${toQuery({
         status: "ACTIVE",
@@ -48,7 +61,8 @@ export default function PurchaseOrderDetailClient({ id }) {
         sort: "name",
         order: "asc",
         excludeLegacy: "1",
-      })}`
+      })}`,
+      { signal }
     );
     setCatalogItems(res?.data || []);
   }, []);
@@ -124,6 +138,16 @@ export default function PurchaseOrderDetailClient({ id }) {
   if (!row) return <p className="text-danger-700">{error}</p>;
 
   const canReceive = ["APPROVED", "PARTIALLY_RECEIVED"].includes(row.status);
+  const canEdit = poCanEdit(row, has) && (row.items || []).length > 0;
+  const costWarning = ["DRAFT", "PENDING_APPROVAL"].includes(row.status)
+    ? missingCostMessage(row.items || [])
+    : null;
+
+  async function saveEdit(payload) {
+    const updated = await api.patch(`/api/ordenes-compra/${id}`, payload);
+    setRow(updated);
+    setEditing(false);
+  }
 
   return (
     <div className="space-y-4">
@@ -135,16 +159,23 @@ export default function PurchaseOrderDetailClient({ id }) {
             <Button as={Link} href="/ordenes-compra" variant="secondary">
               Volver
             </Button>
-            <Can permission="purchase_orders.print">
-              <Button
-                as={Link}
-                href={`/api/ordenes-compra/${id}/pdf`}
-                variant="secondary"
-                target="_blank"
-              >
-                PDF
+            {poCanPrint(row) ? (
+              <Can permission="purchase_orders.print">
+                <Button
+                  as={Link}
+                  href={`/api/ordenes-compra/${id}/pdf`}
+                  variant="secondary"
+                  target="_blank"
+                >
+                  PDF
+                </Button>
+              </Can>
+            ) : null}
+            {canEdit && !editing ? (
+              <Button variant="secondary" onClick={() => setEditing(true)}>
+                <Pencil className="h-4 w-4" /> Editar
               </Button>
-            </Can>
+            ) : null}
             {row.status === "DRAFT" && (
               <Can permission="purchase_orders.submit">
                 <Button loading={busy} onClick={() => runAction("submit")}>
@@ -197,6 +228,24 @@ export default function PurchaseOrderDetailClient({ id }) {
         }
       />
       {error && <p className="text-sm text-danger-700">{error}</p>}
+      {!poCanPrint(row) && !["REJECTED", "CANCELLED"].includes(row.status) ? (
+        <p className="text-sm text-content-muted">
+          El PDF estara disponible cuando un supervisor apruebe la orden.
+        </p>
+      ) : null}
+      {costWarning ? (
+        <p className="text-sm font-medium text-danger-700" role="alert">
+          {costWarning}. No se puede enviar ni aprobar sin costo.
+        </p>
+      ) : null}
+      {editing ? (
+        <PurchaseOrderEditor
+          order={row}
+          requireCosts={row.status === "PENDING_APPROVAL"}
+          onSave={saveEdit}
+          onCancel={() => setEditing(false)}
+        />
+      ) : null}
       {row.status === "DRAFT" && !(row.items || []).length && (
         <Card className="space-y-3 p-5">
           <p className="text-sm font-medium text-content">Esta orden no tiene partidas</p>
@@ -317,7 +366,12 @@ export default function PurchaseOrderDetailClient({ id }) {
                 <td className="py-2">
                   {remainingQuantity(it.quantity, it.receivedQuantity)}
                 </td>
-                <td className="py-2">{formatMoney(it.unitPrice)}</td>
+                <td className="py-2">
+                  {formatMoney(it.unitPrice)}
+                  {["DRAFT", "PENDING_APPROVAL"].includes(row.status) ? (
+                    <CostHint unitPrice={it.unitPrice} quotedUnitPrice={it.quotedUnitPrice} />
+                  ) : null}
+                </td>
                 <td className="py-2">{formatMoney(it.total)}</td>
               </tr>
             ))}

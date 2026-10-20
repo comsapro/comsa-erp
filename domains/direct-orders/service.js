@@ -46,7 +46,29 @@ const DETAIL_INCLUDE = {
   approvedByUser: { select: { id: true, name: true } },
   rejectedByUser: { select: { id: true, name: true } },
   cancelledByUser: { select: { id: true, name: true } },
-  quote: { select: { id: true, folio: true, status: true } },
+  quote: {
+    select: {
+      id: true,
+      folio: true,
+      status: true,
+      items: {
+        where: { status: "ACTIVE" },
+        orderBy: { position: "asc" },
+        select: {
+          id: true,
+          position: true,
+          description: true,
+          quantity: true,
+          unit: true,
+          manufacturingTotal: true,
+          materialsTotal: true,
+          extrasTotal: true,
+          installationTotal: true,
+          total: true,
+        },
+      },
+    },
+  },
   productionOrder: { select: { id: true, folio: true, status: true } },
   items: {
     orderBy: { position: "asc" },

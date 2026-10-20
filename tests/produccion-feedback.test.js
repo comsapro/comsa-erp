@@ -77,7 +77,7 @@ test("Orden no puede quedar COMPLETED con item REWORK", () => {
   );
 });
 
-test("Precarga copia solo seleccionados y sin precio de venta", () => {
+test("Precarga copia solo seleccionados con el costo cotizado", () => {
   const available = [
     {
       id: "m1",
@@ -99,7 +99,8 @@ test("Precarga copia solo seleccionados y sin precio de venta", () => {
   const mapped = mapSelectedMaterials(available, ["m1"]);
   assert.equal(mapped.length, 1);
   assert.equal(mapped[0].descriptionSnapshot, "A-36");
-  assert.equal(mapped[0].unitPrice, 0);
+  assert.equal(mapped[0].unitPrice, 99);
+  assert.equal(mapped[0].quotedUnitPrice, 99);
   assert.equal(mapped[0].sourceMaterialId, "m1");
 });
 

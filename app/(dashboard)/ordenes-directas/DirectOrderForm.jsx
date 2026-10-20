@@ -38,6 +38,7 @@ export default function DirectOrderForm({
   onDeleteItem,
   saving,
   mode = "create",
+  hideSimpleItems = false,
 }) {
   const [clients, setClients] = useState([]);
   const [companies, setCompanies] = useState([]);
@@ -256,7 +257,7 @@ export default function DirectOrderForm({
         </form>
       </Card>
 
-      {mode === "edit" && onSaveItem && (
+      {mode === "edit" && onSaveItem && !hideSimpleItems && (
         <Card className="p-5">
           <h2 className="mb-1 text-base font-semibold text-content">Items simples</h2>
           <p className="mb-4 text-sm text-content-muted">

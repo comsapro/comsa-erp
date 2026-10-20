@@ -176,8 +176,11 @@ export default function SalesInvoiceFormClient({
   isAdmin = false,
   currentUserId,
   currentUserName,
+  invoice = null,
 }) {
   const router = useRouter();
+  const isEdit = Boolean(invoice?.id);
+  const firstQuoteLink = invoice?.quotes?.[0] || null;
   const pdfInputRef = useRef(null);
   const xmlInputRef = useRef(null);
   const [sellers, setSellers] = useState([]);
@@ -186,9 +189,25 @@ export default function SalesInvoiceFormClient({
   const [searching, setSearching] = useState(false);
   const [expandedQuoteId, setExpandedQuoteId] = useState(null);
   const [quoteDetailsById, setQuoteDetailsById] = useState({});
-  const [selectedQuote, setSelectedQuote] = useState(null);
-  const [itemIds, setItemIds] = useState([]);
-  const [skipQuoteLink, setSkipQuoteLink] = useState(false);
+  const [selectedQuote, setSelectedQuote] = useState(
+    firstQuoteLink?.quote
+      ? {
+          id: firstQuoteLink.quote.id,
+          folio: firstQuoteLink.quote.folio,
+          status: firstQuoteLink.quote.status,
+          total: firstQuoteLink.quote.total,
+          currency: firstQuoteLink.quote.currency,
+          client: firstQuoteLink.quote.client,
+          seller: firstQuoteLink.quote.seller,
+        }
+      : null
+  );
+  const [itemIds, setItemIds] = useState(
+    (firstQuoteLink?.items || []).map((row) => row.quoteItemId || row.quoteItem?.id).filter(Boolean)
+  );
+  const [skipQuoteLink, setSkipQuoteLink] = useState(
+    Boolean(invoice && !(invoice.quotes || []).length)
+  );
   const [pdfFile, setPdfFile] = useState(null);
   const [xmlFile, setXmlFile] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -203,14 +222,18 @@ export default function SalesInvoiceFormClient({
   } = useForm({
     resolver: zodResolver(salesInvoiceSchema),
     defaultValues: {
-      invoiceNumber: "",
-      netAmount: "",
-      invoiceDate: toDateInputValue(new Date()),
-      sellerId: currentUserId,
-      clientPoNumber: "",
-      receivedByClient: false,
-      receptionDate: null,
-      notes: "",
+      invoiceNumber: invoice?.invoiceNumber || "",
+      netAmount: invoice?.netAmount != null ? Number(invoice.netAmount) : "",
+      invoiceDate: toDateInputValue(
+        invoice?.invoiceDate ? new Date(invoice.invoiceDate) : new Date()
+      ),
+      sellerId: invoice?.sellerId || currentUserId,
+      clientPoNumber: invoice?.clientPoNumber || "",
+      receivedByClient: Boolean(invoice?.receivedByClient),
+      receptionDate: invoice?.receptionDate
+        ? toDateInputValue(new Date(invoice.receptionDate))
+        : null,
+      notes: invoice?.notes || "",
       quotes: [],
     },
   });
@@ -230,6 +253,26 @@ export default function SalesInvoiceFormClient({
       .then((res) => setSellers(res?.data || []))
       .catch(() => setSellers([]));
   }, [canViewTeam]);
+
+  useEffect(() => {
+    if (!isEdit || !firstQuoteLink?.quote?.id) return;
+    const items = (firstQuoteLink.items || []).map((row) => ({
+      id: row.quoteItemId || row.quoteItem?.id,
+      position: row.quoteItem?.position,
+      description: row.quoteItem?.description,
+      quantity: row.quoteItem?.quantity,
+      unit: row.quoteItem?.unit,
+      total: row.quoteItem?.total,
+    })).filter((row) => row.id);
+    setQuoteDetailsById((prev) => ({
+      ...prev,
+      [firstQuoteLink.quote.id]: {
+        loading: false,
+        error: null,
+        items,
+      },
+    }));
+  }, [isEdit, firstQuoteLink]);
 
   useEffect(() => {
     if (skipQuoteLink) {
@@ -403,22 +446,35 @@ export default function SalesInvoiceFormClient({
         throw new Error("No tienes permiso para facturar sin cotización");
       }
 
-      const created = await api.post("/api/ventas/facturas", {
+      const payload = {
         ...values,
-        sellerId: canViewTeam ? values.sellerId : currentUserId,
+        sellerId: canViewTeam
+          ? values.sellerId
+          : isEdit
+            ? invoice.sellerId
+            : currentUserId,
         receptionDate: values.receivedByClient ? values.receptionDate : null,
         quotes: skipQuoteLink
           ? []
           : [{ quoteId: selectedQuote.id, quoteItemIds: itemIds }],
-      });
+      };
 
-      if (pdfFile) await uploadInvoiceFile(created.id, "PDF", pdfFile);
-      if (xmlFile) await uploadInvoiceFile(created.id, "XML", xmlFile);
+      const saved = isEdit
+        ? await api.put(`/api/ventas/facturas/${invoice.id}`, payload)
+        : await api.post("/api/ventas/facturas", payload);
+
+      if (pdfFile) await uploadInvoiceFile(saved.id, "PDF", pdfFile);
+      if (xmlFile) await uploadInvoiceFile(saved.id, "XML", xmlFile);
 
       router.push("/ventas/facturas");
       router.refresh();
     } catch (err) {
-      setError(err.message || "No se pudo registrar la factura");
+      setError(
+        err.message ||
+          (isEdit
+            ? "No se pudo actualizar la factura"
+            : "No se pudo registrar la factura")
+      );
     } finally {
       setSaving(false);
     }
@@ -447,8 +503,12 @@ export default function SalesInvoiceFormClient({
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Registrar factura"
-        description="La factura se liga a una cotización; solo puedes seleccionar partidas de esa cotización."
+        title={isEdit ? `Editar factura ${invoice.invoiceNumber}` : "Registrar factura"}
+        description={
+          isEdit
+            ? "Corrige datos, recepción del cliente o la cotización ligada."
+            : "La factura se liga a una cotización; solo puedes seleccionar partidas de esa cotización."
+        }
       />
 
       {error && <Alert variant="danger">{error}</Alert>}
@@ -732,7 +792,7 @@ export default function SalesInvoiceFormClient({
 
         <div className="flex gap-2">
           <Button type="submit" loading={saving}>
-            Guardar factura
+            {isEdit ? "Guardar cambios" : "Guardar factura"}
           </Button>
           <Button type="button" variant="secondary" onClick={() => router.back()}>
             Cancelar

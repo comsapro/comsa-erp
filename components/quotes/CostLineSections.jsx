@@ -64,7 +64,7 @@ function SectionTotal({ rows, quantityKey = "quantity", priceKey = "unitPrice" }
   return (
     <p className="border-t border-border pt-2 text-sm font-medium text-content">
       Suma de conceptos: {formatMoney(sum)}{" "}
-      <span className="font-normal text-content-muted">antes de IVA</span>
+      <span className="font-normal text-content-muted">por pieza, antes de IVA</span>
     </p>
   );
 }
@@ -99,15 +99,15 @@ function SupplierLineSelect({
   );
 
   useEffect(() => {
-    setOptions(
+    setOptions((prev) =>
       withSelectedSupplier(
-        suppliers,
+        prev.length ? prev : suppliers,
         selectedId ? { id: selectedId, name: selectedName } : null
       )
     );
-  }, [suppliers, selectedId, selectedName]);
+  }, [selectedId, selectedName]);
 
-  const handleSearch = async (q) => {
+  const handleSearch = async (q, { signal } = {}) => {
     const res = await api.get(
       `/api/proveedores${toQuery({
         status: "ACTIVE",
@@ -115,18 +115,24 @@ function SupplierLineSelect({
         pageSize: 50,
         sort: "name",
         order: "asc",
-      })}`
+      })}`,
+      { signal }
     );
     const data = withSelectedSupplier(res?.data || [], selected);
     setOptions(data);
-    onSuppliersChange?.(data);
+  };
+
+  const handleChange = (id) => {
+    const found = options.find((row) => row.id === id) || null;
+    if (found) onSuppliersChange?.([found]);
+    onChange?.(id, found);
   };
 
   return (
     <CatalogCombobox
       label="Proveedor"
       value={value || ""}
-      onChange={onChange}
+      onChange={handleChange}
       options={options.map((s) => ({
         value: s.id,
         label: s.name || s.legalName,
@@ -442,12 +448,13 @@ export function CostLineSections({
                       }
                     : null
                 }
-                onChange={(id) => {
-                  const found = suppliers.find((row) => row.id === id);
+                onChange={(id, found) => {
+                  const row =
+                    found || suppliers.find((s) => s.id === id) || null;
                   setValue(`materials.${index}.supplierId`, id || null);
                   setValue(
                     `materials.${index}.supplierName`,
-                    found?.name || found?.legalName || ""
+                    row?.name || row?.legalName || ""
                   );
                 }}
                 suppliers={suppliers}
@@ -607,12 +614,13 @@ export function CostLineSections({
                       }
                     : null
                 }
-                onChange={(id) => {
-                  const found = suppliers.find((row) => row.id === id);
+                onChange={(id, found) => {
+                  const row =
+                    found || suppliers.find((s) => s.id === id) || null;
                   setValue(`extras.${index}.supplierId`, id || null);
                   setValue(
                     `extras.${index}.supplierName`,
-                    found?.name || found?.legalName || ""
+                    row?.name || row?.legalName || ""
                   );
                 }}
                 suppliers={suppliers}
