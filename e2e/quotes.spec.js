@@ -46,6 +46,7 @@ test.describe("Cotizaciones", () => {
     expect(body).toMatch(/\$\d/);
     const pdf = await fetchPdf(page, `/api/cotizaciones/${ids.commentQuoteId}/pdf`);
     expect(pdf.text).toContain(ids.commentToken);
+    expect(pdf.text).toMatch(/Comentarios:/);
     await ctx.close();
   });
 

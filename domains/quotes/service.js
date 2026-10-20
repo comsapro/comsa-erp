@@ -14,6 +14,9 @@ import { jsonOk, jsonCreated } from "@/lib/api/http";
 import { generateFolio } from "@/lib/folios";
 import { lineAmount, MIN_BENEFIT_SALES } from "@/lib/quotes/calculations";
 import { QUOTE_STATUSES, VALID_TRANSITIONS } from "./constants";
+import { quoteListCompanionWhere } from "./list-visibility";
+import { syncCompanionDirectOrderStatus } from "@/domains/direct-orders/status-sync";
+import { applyCompanionDirectOrderHeader } from "@/domains/direct-orders/header-sync";
 import {
   quoteCreateSchema,
   quoteUpdateSchema,
@@ -377,16 +380,7 @@ export async function listQuotes(request) {
     where.priceAfterProduction = true;
   }
 
-  where.AND = [
-    {
-      OR: [
-        {
-          AND: [{ priceAfterProduction: false }, { directOrderId: null }],
-        },
-        { status: "APPROVED" },
-      ],
-    },
-  ];
+  where.AND = [quoteListCompanionWhere()];
 
   if (params.q) {
     where.OR = [
@@ -670,14 +664,20 @@ export async function updateQuote(request, id) {
 
   const { sellerId: _sellerFromBody, priceAfterProduction: _flag, ...quoteFields } = data;
 
-  const record = await prisma.quote.update({
-    where: { id },
-    data: {
-      ...quoteFields,
-      sellerId,
-      updatedBy: actor.id,
-    },
-    include: DETAIL_INCLUDE,
+  const record = await prisma.$transaction(async (tx) => {
+    const updated = await tx.quote.update({
+      where: { id },
+      data: {
+        ...quoteFields,
+        sellerId,
+        updatedBy: actor.id,
+      },
+    });
+    await applyCompanionDirectOrderHeader(tx, updated, actor.id);
+    return tx.quote.findFirst({
+      where: { id },
+      include: DETAIL_INCLUDE,
+    });
   });
 
   await recordAudit({
@@ -1406,14 +1406,18 @@ async function transitionQuote(request, id, {
     ? await applyData({ actor, existing, bodyData })
     : {};
 
-  const record = await prisma.quote.update({
-    where: { id },
-    data: {
-      status: toStatus,
-      updatedBy: actor.id,
-      ...extra,
-    },
-    include: DETAIL_INCLUDE,
+  const record = await prisma.$transaction(async (tx) => {
+    const updated = await tx.quote.update({
+      where: { id },
+      data: {
+        status: toStatus,
+        updatedBy: actor.id,
+        ...extra,
+      },
+      include: DETAIL_INCLUDE,
+    });
+    await syncCompanionDirectOrderStatus(tx, updated, actor.id);
+    return updated;
   });
 
   await recordAudit({
@@ -1868,7 +1872,7 @@ export async function sendToProduction(request, id, options = {}) {
       actor.id
     );
 
-    return tx.quote.update({
+    const updated = await tx.quote.update({
       where: { id },
       data: {
         status: "IN_PRODUCTION",
@@ -1878,6 +1882,8 @@ export async function sendToProduction(request, id, options = {}) {
       },
       include: DETAIL_INCLUDE,
     });
+    await syncCompanionDirectOrderStatus(tx, updated, actor.id);
+    return updated;
   });
 
   await recordAudit({

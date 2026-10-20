@@ -166,9 +166,15 @@ export default function DirectOrderForm({
       )}
 
       <Card className="p-5">
-        <h2 className="mb-4 text-base font-semibold text-content">
+        <h2 className={`text-base font-semibold text-content ${initial?.quote ? "mb-1" : "mb-4"}`}>
           Datos generales
         </h2>
+        {initial?.quote ? (
+          <p className="mb-4 text-sm text-content-muted">
+            Estos datos se copian a la cotización {initial.quote.folio}. Cliente,
+            contacto, empresa, fechas y requisición quedan iguales en ambos.
+          </p>
+        ) : null}
         <form onSubmit={submitHeader} className="flex flex-col gap-4" noValidate>
           <div className="grid gap-4 sm:grid-cols-2">
             <SelectField

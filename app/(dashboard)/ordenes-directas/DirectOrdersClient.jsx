@@ -71,6 +71,21 @@ export default function DirectOrdersClient() {
         ),
       },
       {
+        key: "quote",
+        header: "Cotización",
+        render: (r) =>
+          r.quote?.folio ? (
+            <Link
+              href={`/cotizaciones/${r.quote.id}`}
+              className="text-brand-700 hover:underline"
+            >
+              {r.quote.folio}
+            </Link>
+          ) : (
+            "—"
+          ),
+      },
+      {
         key: "client",
         header: "Cliente",
         render: (r) => r.client?.commercialName || "-",
@@ -171,7 +186,7 @@ export default function DirectOrdersClient() {
       <TableToolbar
         q={list.q}
         onSearch={list.setQ}
-        searchPlaceholder="Buscar por folio, requisicion o cliente..."
+        searchPlaceholder="Buscar por folio, cotización, requisicion o cliente..."
         onRefresh={list.refresh}
         loading={list.loading}
       />
@@ -204,7 +219,9 @@ export default function DirectOrdersClient() {
           error={list.error}
           getStatus={(r) => r.status}
           getHref={(r) => `/ordenes-directas/${r.id}`}
-          getTitle={(r) => r.folio}
+          getTitle={(r) =>
+            r.quote?.folio ? `${r.folio} · ${r.quote.folio}` : r.folio
+          }
           getSubtitle={(r) => r.client?.commercialName || "Sin cliente"}
           getDate={(r) => r.requestDate}
           emptyTitle="Sin ordenes directas"

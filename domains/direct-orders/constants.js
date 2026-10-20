@@ -50,8 +50,32 @@ export const VALID_TRANSITIONS = {
   QUOTED: [],
   REJECTED: ["DRAFT"],
   CANCELLED: [],
-  IN_PRODUCTION: [],
+  IN_PRODUCTION: ["PENDING_APPROVAL"],
 };
+
+export function directStatusForQuote(quote) {
+  if (!quote) return "DRAFT";
+  if (quote.status === "CANCELLED") return "CANCELLED";
+  if (quote.status === "REJECTED") return "REJECTED";
+  if (quote.status === "PENDING_APPROVAL") return "PENDING_APPROVAL";
+  if (quote.status === "APPROVED") return "APPROVED";
+  if (quote.status === "IN_PRODUCTION" || quote.status === "SELLER_REVIEW") {
+    return "IN_PRODUCTION";
+  }
+  return "DRAFT";
+}
+
+export function directOrderSearchOr(q) {
+  if (!q) return null;
+  const contains = { contains: q, mode: "insensitive" };
+  return [
+    { folio: contains },
+    { requisition: contains },
+    { client: { commercialName: contains } },
+    { quote: { folio: contains } },
+    { productionOrder: { folio: contains } },
+  ];
+}
 
 /**
  * Se puede enviar a aprobacion si hay partidas en la cotizacion ligada

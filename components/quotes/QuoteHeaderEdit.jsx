@@ -240,7 +240,9 @@ export function QuoteHeaderEdit({ quote, onSaved }) {
             Informacion general
           </h2>
           <p className="text-xs text-content-muted">
-            Editable mientras la cotizacion este en borrador
+            {quote.directOrderId
+              ? "Estos datos se copian a la orden directa ligada"
+              : "Editable mientras la cotizacion este en borrador"}
           </p>
         </div>
         <Button type="button" size="sm" loading={saving} onClick={save}>

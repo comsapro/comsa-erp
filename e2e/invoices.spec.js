@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { INVOICE_NUMBER } from "./constants.js";
+import { FOLIOS, INVOICE_NUMBER } from "./constants.js";
 import { loadIds, storageState } from "./helpers.js";
 
 test("el vendedor ve facturas sin recepcion, edita y marca la recepcion", async ({
@@ -17,7 +17,11 @@ test("el vendedor ve facturas sin recepcion, edita y marca la recepcion", async 
   await expect(page.getByText(INVOICE_NUMBER)).toBeVisible();
 
   await page.getByRole("link", { name: "Editar" }).click();
+  await expect(page).toHaveURL(new RegExp(`/ventas/facturas/${ids.invoiceId}`));
+  await expect(page.getByRole("heading", { name: "Ocurrio un error" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: `Editar factura ${INVOICE_NUMBER}` })).toBeVisible();
+  await expect(page.getByText(FOLIOS.commentQuote)).toBeVisible();
+  await expect(page.getByText(/Partida 1 — Pieza E2E-CMT/)).toBeVisible();
   await page
     .getByText("Número de PO del cliente")
     .locator("xpath=..")
