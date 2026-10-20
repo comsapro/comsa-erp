@@ -1,3 +1,5 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { PrismaClient } from "@prisma/client";
 import { hashPassword } from "../lib/auth/password.js";
 import {
@@ -8,7 +10,7 @@ import {
 
 const prisma = new PrismaClient();
 
-async function seedPermissions() {
+export async function seedPermissions() {
   const permissions = buildPermissionList();
   for (const p of permissions) {
     await prisma.permission.upsert({
@@ -21,7 +23,7 @@ async function seedPermissions() {
   return prisma.permission.findMany();
 }
 
-async function seedRoles(allPermissions) {
+export async function seedRoles(allPermissions) {
   const byCode = new Map(allPermissions.map((p) => [p.code, p]));
 
   for (const role of SYSTEM_ROLES) {
@@ -96,7 +98,7 @@ async function seedAdmin() {
   console.log(`  Administrador creado: ${email}`);
 }
 
-async function seedHolidays() {
+export async function seedHolidays() {
   const year = new Date().getFullYear();
   const holidays = [
     { date: new Date(Date.UTC(year, 0, 1)), name: "Año Nuevo" },
@@ -127,11 +129,18 @@ async function main() {
   console.log("Seed completado.");
 }
 
-main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+const invokedAsScript =
+  process.argv[1] &&
+  path.normalize(fileURLToPath(import.meta.url)) ===
+    path.normalize(path.resolve(process.argv[1]));
+
+if (invokedAsScript) {
+  main()
+    .catch((e) => {
+      console.error(e);
+      process.exit(1);
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}

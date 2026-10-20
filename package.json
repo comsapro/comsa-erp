@@ -9,7 +9,10 @@
     "build": "node scripts/build.mjs",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test tests/permissions.test.js tests/etapa2.test.js tests/etapa3.test.js tests/quote-versions.test.js tests/quote-access.test.js tests/produccion-feedback.test.js tests/produccion-ops.test.js tests/produccion-formatos.test.js tests/purchase-order-pdf.test.js tests/sales-dashboard.test.js tests/teams.test.js tests/quality.test.js tests/calidad.test.js tests/quote-quantity.test.js tests/quote-pdf-layout.test.js tests/purchase-order-edit.test.js tests/catalog-search.test.js tests/sales-invoice-reception.test.js tests/work-order-qr.test.js",
+    "test": "node --test tests/permissions.test.js tests/etapa2.test.js tests/etapa3.test.js tests/quote-versions.test.js tests/quote-access.test.js tests/produccion-feedback.test.js tests/produccion-ops.test.js tests/produccion-formatos.test.js tests/purchase-order-pdf.test.js tests/sales-dashboard.test.js tests/teams.test.js tests/quality.test.js tests/calidad.test.js tests/quote-quantity.test.js tests/quote-pdf-layout.test.js tests/purchase-order-edit.test.js tests/catalog-search.test.js tests/sales-invoice-reception.test.js tests/work-order-qr.test.js tests/e2e-guard.test.js",
+    "test:e2e": "npx playwright test",
+    "test:e2e:install": "npx playwright install chrome",
+    "test:all": "npm test && npm run test:e2e",
     "verify:formatos": "node scripts/dev/verify-iso-forms.mjs",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -45,6 +48,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/postcss": "^4",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
