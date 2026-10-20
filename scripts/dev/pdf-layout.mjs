@@ -111,7 +111,7 @@ function decodeString(token) {
 function parseContentStream(text) {
   const tokens = text.match(TOKEN_RE) || [];
   const stack = [];
-  const items = { texts: [], rects: [] };
+  const items = { texts: [], rects: [], images: [] };
   const ctmStack = [];
   let ctm = [1, 0, 0, 1, 0, 0];
   let tm = [1, 0, 0, 1, 0, 0];
@@ -216,6 +216,19 @@ function parseContentStream(text) {
         const [x0, y0] = apply(ctm, x, y);
         const [x1, y1] = apply(ctm, x + w, y + h);
         items.rects.push({
+          x: round(Math.min(x0, x1)),
+          y: round(Math.min(y0, y1)),
+          w: round(Math.abs(x1 - x0)),
+          h: round(Math.abs(y1 - y0)),
+        });
+        break;
+      }
+      case "Do": {
+        // Una imagen ocupa el cuadrado unitario transformado por la CTM vigente.
+        const [x0, y0] = apply(ctm, 0, 0);
+        const [x1, y1] = apply(ctm, 1, 1);
+        items.images.push({
+          name: args[args.length - 1],
           x: round(Math.min(x0, x1)),
           y: round(Math.min(y0, y1)),
           w: round(Math.abs(x1 - x0)),

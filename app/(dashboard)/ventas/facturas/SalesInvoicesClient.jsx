@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { invoiceListHref } from "@/domains/sales/invoice-reception";
 import { Pencil, Plus } from "lucide-react";
 import { api, toQuery } from "@/lib/api/client";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -16,11 +18,17 @@ import { Input } from "@/components/ui/Input";
 import { Can } from "@/components/permissions/Can";
 import { formatDate, formatMoney, toDateInputValue } from "@/lib/utils/format";
 
-export default function SalesInvoicesClient() {
+export default function SalesInvoicesClient({ initialPendingOnly = false, sellerId = "" }) {
+  const router = useRouter();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [pendingOnly, setPendingOnly] = useState(false);
+  const [pendingOnly, setPendingOnlyState] = useState(initialPendingOnly);
+
+  const setPendingOnly = (next) => {
+    setPendingOnlyState(next);
+    router.replace(invoiceListHref({ pendingReception: next, sellerId }), { scroll: false });
+  };
   const [receptionModal, setReceptionModal] = useState({
     open: false,
     invoice: null,
@@ -35,6 +43,7 @@ export default function SalesInvoicesClient() {
       const res = await api.get(
         `/api/ventas/facturas${toQuery({
           pendingReception: pendingOnly ? "1" : undefined,
+          sellerId: sellerId || undefined,
         })}`
       );
       setRows(res?.data || []);
@@ -43,7 +52,11 @@ export default function SalesInvoicesClient() {
     } finally {
       setLoading(false);
     }
-  }, [pendingOnly]);
+  }, [pendingOnly, sellerId]);
+
+  const sellerName = sellerId
+    ? rows.find((r) => r.seller?.id === sellerId)?.seller?.name || "vendedor seleccionado"
+    : "";
 
   useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect */
@@ -105,6 +118,17 @@ export default function SalesInvoicesClient() {
             </Badge>
           ) : null}
         </Button>
+        {sellerId ? (
+          <span className="inline-flex items-center gap-2 text-sm text-content-muted">
+            Solo facturas de {sellerName}
+            <Link
+              href={invoiceListHref({ pendingReception: pendingOnly })}
+              className="text-brand-700 hover:underline"
+            >
+              Ver todos los vendedores
+            </Link>
+          </span>
+        ) : null}
       </div>
 
       {error && <Alert variant="danger">{error}</Alert>}
@@ -115,7 +139,9 @@ export default function SalesInvoicesClient() {
             <Skeleton className="h-32 w-full" />
           ) : rows.length === 0 ? (
             <p className="py-6 text-center text-sm text-content-muted">
-              No hay facturas registradas.
+              {pendingOnly
+                ? "No hay facturas pendientes de recepción."
+                : "No hay facturas registradas."}
             </p>
           ) : (
             <div className="overflow-x-auto">

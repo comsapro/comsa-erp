@@ -28,6 +28,7 @@ import {
   SALES_GOAL_PERIODS,
 } from "./constants";
 import { goalAssignmentsOverlap } from "./goal-overlap";
+import { pendingReceptionSummary } from "./invoice-reception";
 import {
   canManageSalesGoals,
   canViewTeamSales,
@@ -250,6 +251,7 @@ export async function getSalesDashboard(request) {
     pendingReceipt,
     receivedCount,
     commitmentsThisWeek,
+    pendingReceptionAgg,
   ] = await Promise.all([
     prisma.quote.count({
       where: { ...baseQuoteWhere, ...quoteDateFilter, status: "DRAFT" },
@@ -281,6 +283,12 @@ export async function getSalesDashboard(request) {
     countPendingReceiptMaterials(scope),
     countReceivedMaterials(scope),
     countCommitmentsThisWeek(scope),
+    prisma.salesInvoice.aggregate({
+      where: { deletedAt: null, receivedByClient: false, ...sellFilter },
+      _count: { _all: true },
+      _sum: { netAmount: true },
+      _min: { invoiceDate: true },
+    }),
   ]);
 
   let soldAmount = 0;
@@ -336,6 +344,13 @@ export async function getSalesDashboard(request) {
       pendingPurchase,
       pendingReceipt,
       received: receivedCount,
+    },
+    invoices: {
+      pendingReception: pendingReceptionSummary({
+        count: pendingReceptionAgg._count._all,
+        amount: toNumber(pendingReceptionAgg._sum.netAmount),
+        oldestDate: pendingReceptionAgg._min.invoiceDate,
+      }),
     },
     commitmentsThisWeek,
   });
