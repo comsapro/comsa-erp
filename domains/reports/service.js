@@ -19,6 +19,7 @@ import { QUOTE_STATUS_LABELS, quoteCanPrint } from "@/domains/quotes/constants";
 import { PRODUCTION_STATUS_LABELS } from "@/domains/production/constants";
 import { MOVEMENT_TYPE_LABELS } from "@/domains/inventory/constants";
 import { quotePdfResponse } from "@/lib/pdf/quote-pdf";
+import { ensureQuoteManufacturingHours } from "@/domains/quotes/after-production";
 import { assertQuoteInScope } from "@/domains/quotes/access";
 import { purchaseOrderPdfResponse } from "@/lib/pdf/purchase-order-pdf";
 
@@ -35,6 +36,7 @@ function filterList(searchParams) {
 export async function quotationPdf(request, id) {
   await requirePermission("quotes.print");
   const actor = await getActor(request);
+  await ensureQuoteManufacturingHours(id, actor.id);
   const quote = await prisma.quote.findFirst({
     where: { id, deletedAt: null },
     include: {

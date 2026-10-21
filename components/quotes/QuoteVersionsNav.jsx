@@ -3,136 +3,131 @@
 import Link from "next/link";
 import { GitBranch } from "lucide-react";
 import { QUOTE_STATUS_LABELS } from "@/domains/quotes/constants";
+import { parseFolioVersion } from "@/domains/quotes/versions";
 import { QuoteStatusBadge } from "@/components/ui/Badge";
 import { formatDate, formatMoney } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
 
+function versionLetter(row) {
+  return String(
+    row?.version || parseFolioVersion(row?.folio).letter || "A"
+  ).toUpperCase();
+}
+
+function summaryOf(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    folio: row.folio,
+    version: row.version,
+    status: row.status,
+    elaborationDate: row.elaborationDate,
+    total: row.total,
+    currency: row.currency,
+  };
+}
+
 /**
- * Navegacion entre versiones de una misma familia de cotizacion.
+ * Tab siempre visible para cambiar de version dentro de la misma cotizacion.
  */
 export function QuoteVersionsNav({
   currentId,
+  currentQuote = null,
   versions = [],
   parentQuote = null,
+  childRevisions = [],
 }) {
-  if (!versions?.length && !parentQuote) return null;
-
-  const list = versions?.length
-    ? versions
-    : parentQuote
-      ? [parentQuote]
-      : [];
-
-  if (list.length <= 1 && !parentQuote) {
-    // Una sola version: mostrar indicador discreto
-    return (
-      <div className="mt-4 border-t border-border pt-4">
-        <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-content-muted">
-          <GitBranch className="h-3.5 w-3.5" />
-          Versiones
-        </p>
-        <p className="text-sm text-content-muted">
-          Esta es la unica version de la cotizacion.
-        </p>
-      </div>
-    );
+  const byId = new Map();
+  if (parentQuote?.id) byId.set(parentQuote.id, summaryOf(parentQuote));
+  for (const row of childRevisions || []) {
+    if (row?.id) byId.set(row.id, summaryOf(row));
   }
+  for (const row of versions || []) {
+    if (row?.id) byId.set(row.id, summaryOf(row));
+  }
+  if (currentQuote?.id) byId.set(currentQuote.id, summaryOf(currentQuote));
+
+  const list = [...byId.values()].sort((a, b) =>
+    versionLetter(a).localeCompare(versionLetter(b))
+  );
+  if (!list.length) return null;
+
+  const current = list.find((row) => row.id === currentId) || list[0];
 
   return (
-    <div className="mt-4 border-t border-border pt-4">
-      <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-content-muted">
-        <GitBranch className="h-3.5 w-3.5" />
-        Versiones de esta cotizacion
-        <span className="font-normal normal-case tracking-normal">
-          ({list.length})
-        </span>
+    <nav aria-label="Versiones de la cotizacion" className="mb-6">
+      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-content-muted">
+        <GitBranch className="h-3.5 w-3.5" aria-hidden="true" />
+        Versiones
       </p>
-
-      <ul className="flex flex-col gap-2">
-        {list.map((v) => {
-          const isCurrent = v.id === currentId;
-          const letter = v.version || String(v.folio || "").split("-").pop();
-          return (
-            <li key={v.id}>
-              {isCurrent ? (
-                <div
-                  className={cn(
-                    "flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-md)] border border-brand-200 bg-brand-50 px-3 py-2"
-                  )}
-                  aria-current="page"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-brand-800">
-                      {v.folio}
-                      <span className="ml-2 text-xs font-medium text-brand-600">
-                        Version {letter} · actual
-                      </span>
-                    </p>
-                    {v.elaborationDate && (
-                      <p className="text-xs text-content-muted">
-                        {formatDate(v.elaborationDate)}
-                        {v.total != null
-                          ? ` · ${formatMoney(v.total, v.currency || "MXN")}`
-                          : ""}
-                      </p>
-                    )}
-                  </div>
-                  {v.status && (
-                    <QuoteStatusBadge
-                      status={v.status}
-                      label={QUOTE_STATUS_LABELS[v.status] || v.status}
-                    />
-                  )}
-                </div>
-              ) : (
-                <Link
-                  href={`/cotizaciones/${v.id}`}
-                  className={cn(
-                    "flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-md)] border border-border bg-white px-3 py-2 transition-colors",
-                    "hover:border-brand-300 hover:bg-brand-50/40"
-                  )}
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-brand-700">
-                      {v.folio}
-                      <span className="ml-2 text-xs font-normal text-content-muted">
-                        Version {letter}
-                      </span>
-                    </p>
-                    {v.elaborationDate && (
-                      <p className="text-xs text-content-muted">
-                        {formatDate(v.elaborationDate)}
-                        {v.total != null
-                          ? ` · ${formatMoney(v.total, v.currency || "MXN")}`
-                          : ""}
-                      </p>
-                    )}
-                  </div>
-                  {v.status && (
-                    <QuoteStatusBadge
-                      status={v.status}
-                      label={QUOTE_STATUS_LABELS[v.status] || v.status}
-                    />
-                  )}
-                </Link>
+      <div
+        role="tablist"
+        className="flex flex-wrap gap-1 border-b border-border"
+      >
+        {list.map((row) => {
+          const isCurrent = row.id === currentId;
+          const letter = versionLetter(row);
+          const className = cn(
+            "-mb-px inline-flex max-w-full flex-wrap items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+            isCurrent
+              ? "border-brand-600 text-brand-800"
+              : "border-transparent text-content-muted hover:border-border hover:text-content"
+          );
+          const label = (
+            <>
+              <span>Version {letter}</span>
+              <span className="font-normal">{row.folio}</span>
+              {row.status && (
+                <QuoteStatusBadge
+                  status={row.status}
+                  label={QUOTE_STATUS_LABELS[row.status] || row.status}
+                />
               )}
-            </li>
+            </>
+          );
+          if (isCurrent) {
+            return (
+              <button
+                key={row.id}
+                type="button"
+                role="tab"
+                aria-selected="true"
+                aria-current="page"
+                className={className}
+              >
+                {label}
+              </button>
+            );
+          }
+          return (
+            <Link
+              key={row.id}
+              href={`/cotizaciones/${row.id}`}
+              role="tab"
+              aria-selected="false"
+              className={className}
+            >
+              {label}
+            </Link>
           );
         })}
-      </ul>
-
-      {parentQuote && !list.some((v) => v.id === parentQuote.id) && (
-        <p className="mt-2 text-xs text-content-muted">
-          Origen inmediato:{" "}
-          <Link
-            href={`/cotizaciones/${parentQuote.id}`}
-            className="text-brand-700 hover:underline"
-          >
-            {parentQuote.folio}
-          </Link>
-        </p>
-      )}
-    </div>
+      </div>
+      <p className="mt-2 text-sm text-content-muted">
+        {list.length === 1
+          ? "Esta es la unica version de la cotizacion."
+          : [
+              `${list.length} versiones`,
+              current?.elaborationDate
+                ? formatDate(current.elaborationDate)
+                : null,
+              current?.total != null
+                ? formatMoney(current.total, current.currency || "MXN")
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+      </p>
+    </nav>
   );
 }
 

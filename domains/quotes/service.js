@@ -17,6 +17,7 @@ import { QUOTE_STATUSES, VALID_TRANSITIONS } from "./constants";
 import { quoteListCompanionWhere } from "./list-visibility";
 import { syncCompanionDirectOrderStatus } from "@/domains/direct-orders/status-sync";
 import { applyCompanionDirectOrderHeader } from "@/domains/direct-orders/header-sync";
+import { ensureQuoteManufacturingHours } from "./after-production";
 import {
   quoteCreateSchema,
   quoteUpdateSchema,
@@ -1484,6 +1485,11 @@ export async function approveQuote(request, id) {
         estimatedDeliveryDate: delivery,
       },
     });
+  }
+
+  if (existing.priceAfterProduction && existing.productionOrderId) {
+    const actor = await getActor(request);
+    await ensureQuoteManufacturingHours(existing.id, actor.id);
   }
 
   return transitionQuote(request, id, {

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { requirePagePermission } from "@/lib/auth/guard";
 import { prisma } from "@/lib/db";
 import { buildQuotePrintModel } from "@/domains/quotes/quote-print";
+import { ensureQuoteManufacturingHours } from "@/domains/quotes/after-production";
 import { quoteCanPrint } from "@/domains/quotes/constants";
 import { assertQuoteInScope } from "@/domains/quotes/access";
 import { NotFoundError } from "@/lib/permissions/errors";
@@ -36,8 +37,9 @@ async function getQuoteForPrint(id) {
 }
 
 export default async function ImprimirCotizacionPage({ params }) {
-  await requirePagePermission("quotes.print");
+  const user = await requirePagePermission("quotes.print");
   const { id } = await params;
+  await ensureQuoteManufacturingHours(id, user.id);
   const quote = await getQuoteForPrint(id);
   if (!quote) notFound();
   try {
