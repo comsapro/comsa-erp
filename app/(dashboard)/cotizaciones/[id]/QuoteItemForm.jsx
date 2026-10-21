@@ -469,7 +469,7 @@ export default function QuoteItemForm({
             name="clientObservations"
             register={register}
             error={errors.clientObservations?.message}
-            hint="Se imprimen en el PDF de la cotización"
+            hint="Se imprimen en el PDF, en esta partida. Hasta 20,000 caracteres."
           />
           <TextareaField
             label="Observaciones internas"

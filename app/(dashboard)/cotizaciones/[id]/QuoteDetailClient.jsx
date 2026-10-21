@@ -641,6 +641,14 @@ export default function QuoteDetailClient({ quoteId }) {
         )}
       </div>
 
+      <QuoteVersionsNav
+        currentId={quote.id}
+        currentQuote={quote}
+        versions={quote.versions || []}
+        parentQuote={quote.parentQuote}
+        childRevisions={quote.childRevisions || []}
+      />
+
       <div className="mb-6 grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardBody>
@@ -680,11 +688,6 @@ export default function QuoteDetailClient({ quoteId }) {
                 </div>
               </div>
             )}
-            <QuoteVersionsNav
-              currentId={quote.id}
-              versions={quote.versions || []}
-              parentQuote={quote.parentQuote}
-            />
           </CardBody>
         </Card>
 

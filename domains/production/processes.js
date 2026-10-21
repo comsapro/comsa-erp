@@ -20,6 +20,7 @@ import { manufacturingToProcessData, getActiveHandicapPercent } from "./process-
 import { recalculateProductionState, getDetailInclude } from "./recalc";
 import { recordProductionActivity } from "./activity";
 import { canCompleteProcess } from "./close-rules";
+import { reportedProductionHours } from "@/domains/quotes/production-hours";
 
 async function loadItemContext(orderId, itemId) {
   const order = await prisma.productionOrder.findFirst({
@@ -176,22 +177,41 @@ export async function completeProcess(request, orderId, itemId, processId) {
     throw new ConflictError("El proceso ya fue reemplazado");
   }
   const ownerId = process.assignedToUserId || item.assignedToUserId || actor.id;
-  const check = canCompleteProcess(
-    {
-      ...process,
-      assignedToUserId: ownerId,
-    },
-    {
-      requireHours:
-        Number(process.quotedHours) > 0 || Number(process.expectedHours) > 0,
+  let typedHours = 0;
+  try {
+    const body = await request.json();
+    if (body?.realHours != null && body.realHours !== "") {
+      typedHours = Number(body.realHours) || 0;
     }
-  );
+  } catch {
+    typedHours = 0;
+  }
+  const sessions = await prisma.productionTimeSession.findMany({
+    where: { processId },
+  });
+  const reported = reportedProductionHours({
+    ...process,
+    sessions,
+    typedHours,
+  });
+  if (reported <= 0) {
+    throw new ConflictError(
+      "Registra las horas reales antes de completar el proceso"
+    );
+  }
+  const check = canCompleteProcess({
+    ...process,
+    sessions,
+    realHours: reported,
+    assignedToUserId: ownerId,
+  });
   if (!check.ok) throw new ConflictError(check.reason);
 
   await prisma.productionItemProcess.update({
     where: { id: processId },
     data: {
       status: "COMPLETED",
+      realHours: toDecimal(reported),
       completedAt: new Date(),
       startedAt: process.startedAt || new Date(),
       assignedToUserId: ownerId,

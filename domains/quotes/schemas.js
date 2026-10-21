@@ -2,6 +2,7 @@ import { z } from "zod";
 import { requiredString, optionalString } from "@/lib/validations/common";
 import { PROCESS_UNITS } from "@/domains/catalogs/schemas";
 import { ORDER_TYPES, CURRENCIES, DELIVERY_TIME_UNITS, normalizeDeliveryTimeUnit } from "./constants";
+import { quoteItemNoteSchema } from "./observations";
 
 const DELIVERY_DAYS_TYPES = ["BUSINESS", "CALENDAR"];
 
@@ -137,8 +138,8 @@ export const quoteItemUpsertSchema = z.object({
     (v) => (v === "" || v == null ? null : v),
     z.enum(DELIVERY_DAYS_TYPES).nullable().optional()
   ),
-  clientObservations: optionalString,
-  internalObservations: optionalString,
+  clientObservations: quoteItemNoteSchema,
+  internalObservations: quoteItemNoteSchema,
   benefitPercentage: z.preprocess(
     (value) => (value === "" || value == null ? 30 : value),
     z.coerce.number().min(0).max(1000)

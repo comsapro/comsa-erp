@@ -148,7 +148,7 @@ export default function ProductionDetailClient({ id }) {
       if (type === "add-process") updated = await api.post(base, payload);
       else if (type === "hours") updated = await api.patch(`${base}/${processId}`, payload);
       else if (type === "complete-process") {
-        updated = await api.post(`${base}/${processId}/acciones/completar`);
+        updated = await api.post(`${base}/${processId}/acciones/completar`, payload || {});
       } else if (type === "reopen-process") {
         updated = await api.post(`${base}/${processId}/acciones/reabrir`);
       } else if (type === "replace-process") {

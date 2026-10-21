@@ -241,7 +241,11 @@ export function ProductionProcessesPanel({
                             <Button
                               size="sm"
                               loading={acting}
-                              onClick={() => onChanged("complete-process", proc.id)}
+                              onClick={() =>
+                                onChanged("complete-process", proc.id, {
+                                  realHours: Number(hoursDraft[proc.id] || 0),
+                                })
+                              }
                             >
                               Completar proceso
                             </Button>
