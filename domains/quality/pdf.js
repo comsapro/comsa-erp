@@ -33,7 +33,21 @@ const DETAIL_INCLUDE = {
   annotations: {
     where: { deletedAt: null },
     orderBy: { createdAt: "asc" },
-    include: { measurement: true },
+    include: {
+      measurement: {
+        include: {
+          instrument: {
+            select: {
+              code: true,
+              type: true,
+              serialNumber: true,
+              lastCalibrationAt: true,
+              nextCalibrationAt: true,
+            },
+          },
+        },
+      },
+    },
   },
 };
 
@@ -76,26 +90,57 @@ export async function inspectionReportPdf(request, id) {
 
   const rows = inspection.annotations.map((row) => {
     const m = row.measurement;
+    const readings = Array.isArray(m?.readings) ? m.readings : [];
+    const measuredText = readings.length
+      ? readings
+          .map(
+            (r) =>
+              `M${r.index}:${fmt(r.value)}${r.result === "PASS" ? " OK" : r.result === "FAIL" ? " NO" : ""}`
+          )
+          .join(" | ")
+      : m
+        ? fmt(m.measuredValue)
+        : "";
+    const instrument = m?.instrument
+      ? `${m.instrument.code}${m.instrument.serialNumber ? ` (${m.instrument.serialNumber})` : ""}`
+      : "";
     return {
       label: row.label,
       page: String(row.pageNumber),
-      type: ANNOTATION_TYPE_LABELS[row.annotationType] || row.annotationType,
-      nominal: m ? fmt(m.nominalValue) : "",
-      measured: m ? fmt(m.measuredValue) : "",
+      nominal: m ? `${fmt(m.nominalValue)} ${m.unit || ""}`.trim() : "",
       tolerance: toleranceText(m),
-      result: m ? m.result : row.status === "OPEN" ? "" : row.status,
-      comment: row.comment || row.title || "",
+      instrument,
+      measured: measuredText,
+      result: m
+        ? m.result === "PASS"
+          ? "OK"
+          : m.result === "FAIL"
+            ? "NO OK"
+            : m.result
+        : row.status === "OPEN"
+          ? ""
+          : row.status,
+      comment: row.title || row.comment || "",
     };
   });
 
+  const instrumentsUsed = [
+    ...new Map(
+      inspection.annotations
+        .map((row) => row.measurement?.instrument)
+        .filter(Boolean)
+        .map((row) => [row.code, row])
+    ).values(),
+  ];
+
   const buffer = await buildPdfBuffer((doc) => {
     drawReportHeader(doc, {
-      title: "COMSA PRO - Inspeccion de calidad",
+      title: "COMSA PRO - Reporte de inspeccion dimensional",
       generatedBy: actor.name,
     });
     doc.fontSize(10);
     doc.text(`Folio inspeccion: ${inspection.inspectionNumber}`);
-    doc.text(`Orden de produccion: ${inspection.productionOrder.folio}`);
+    doc.text(`Codigo de trabajo: ${inspection.productionOrder.folio}`);
     doc.text(
       `Partida: #${inspection.productionItem.position} ${inspection.productionItem.description}`
     );
@@ -109,17 +154,38 @@ export async function inspectionReportPdf(request, id) {
     );
     doc.moveDown();
 
+    if (instrumentsUsed.length) {
+      doc.font("Helvetica-Bold").text("Instrumentos utilizados");
+      doc.font("Helvetica");
+      for (const instrument of instrumentsUsed) {
+        doc.text(
+          `${instrument.code} · ${instrument.type || ""}${
+            instrument.serialNumber ? ` · Serie ${instrument.serialNumber}` : ""
+          } · Ult. cal. ${
+            instrument.lastCalibrationAt
+              ? new Date(instrument.lastCalibrationAt).toLocaleDateString("es-MX")
+              : "-"
+          } · Prox. ${
+            instrument.nextCalibrationAt
+              ? new Date(instrument.nextCalibrationAt).toLocaleDateString("es-MX")
+              : "-"
+          }`
+        );
+      }
+      doc.moveDown(0.5);
+    }
+
     drawTable(
       doc,
       [
-        { header: "Inciso", width: 40 },
+        { header: "Int.", width: 28 },
         { header: "Pag", width: 28 },
-        { header: "Tipo", width: 70 },
-        { header: "Nominal", width: 55 },
-        { header: "Medido", width: 55 },
-        { header: "Tol.", width: 70 },
+        { header: "Nominal", width: 70 },
+        { header: "Tol.", width: 55 },
+        { header: "Instrumento", width: 90 },
+        { header: "Mediciones", width: 150 },
         { header: "Res.", width: 40 },
-        { header: "Comentario", width: 154 },
+        { header: "Descripcion", width: 91 },
       ],
       rows
     );
@@ -128,7 +194,7 @@ export async function inspectionReportPdf(request, id) {
     doc.fontSize(10).font("Helvetica-Bold").text("Resumen");
     doc.font("Helvetica");
     doc.text(
-      `Mediciones: ${summary.measurementsPassed + summary.measurementsFailed}  |  Pasa: ${summary.measurementsPassed}  |  No pasa: ${summary.measurementsFailed}`
+      `Intervalos: ${summary.measurementsPassed + summary.measurementsFailed}  |  OK: ${summary.measurementsPassed}  |  NO OK: ${summary.measurementsFailed}`
     );
     doc.text(`Comentarios: ${summary.comments}`);
     doc.text(`Observaciones: ${summary.observations}`);
@@ -232,4 +298,134 @@ export async function annotatedDrawingPdf(request, id) {
     stamped,
     `calidad-${inspection.inspectionNumber}-plano.pdf`
   );
+}
+
+export async function reworkOrderPdf(request, reworkOrderId) {
+  await requirePermission("quality.print");
+  const actor = await getActor(request);
+  const record = await prisma.qualityReworkOrder.findFirst({
+    where: { id: reworkOrderId },
+    include: {
+      productionOrder: {
+        include: {
+          client: { select: { commercialName: true, legalName: true } },
+        },
+      },
+      productionItem: {
+        select: { position: true, description: true, quantity: true },
+      },
+      pieces: {
+        include: {
+          qualityPiece: {
+            select: { label: true, pieceNumber: true, status: true },
+          },
+        },
+      },
+      createdByUser: { select: { name: true } },
+      responsible: { select: { name: true } },
+      hours: { orderBy: { createdAt: "asc" } },
+    },
+  });
+  if (!record) throw new NotFoundError("Orden de retrabajo no encontrada");
+
+  const processes = Array.isArray(record.selectedProcesses)
+    ? record.selectedProcesses
+    : String(record.processName || "")
+        .split(",")
+        .map((name) => name.trim())
+        .filter(Boolean)
+        .map((name) => ({ name }));
+
+  const clientName =
+    record.productionOrder?.client?.commercialName ||
+    record.productionOrder?.client?.legalName ||
+    "—";
+
+  const buffer = await buildPdfBuffer((doc) => {
+    drawReportHeader(doc, {
+      title: `Orden de retrabajo ${record.folio}`,
+      generatedBy: actor?.name || record.createdByUser?.name,
+    });
+
+    doc.fontSize(11).font("Helvetica-Bold").text("Datos generales");
+    doc.font("Helvetica").fontSize(10);
+    doc.text(`OP: ${record.productionOrder?.folio || "—"}`);
+    doc.text(`Cliente: ${clientName}`);
+    doc.text(
+      `Partida: #${record.productionItem?.position ?? "—"} · ${
+        record.productionItem?.description || ""
+      }`
+    );
+    doc.text(`Estatus: ${record.status}`);
+    doc.text(
+      `Solicitado: ${new Date(record.requestedAt).toLocaleString("es-MX")}`
+    );
+    if (record.responsible?.name) {
+      doc.text(`Responsable: ${record.responsible.name}`);
+    }
+    doc.moveDown(0.6);
+
+    doc.font("Helvetica-Bold").text("Motivo");
+    doc.font("Helvetica").text(record.cause || "—");
+    doc.moveDown(0.4);
+
+    if (record.instructions) {
+      doc.font("Helvetica-Bold").text("Instrucciones");
+      doc.font("Helvetica").text(record.instructions);
+      doc.moveDown(0.4);
+    }
+
+    doc.font("Helvetica-Bold").text("Procesos requeridos");
+    doc.font("Helvetica");
+    if (processes.length === 0) {
+      doc.text("Sin procesos indicados");
+    } else {
+      for (const [idx, row] of processes.entries()) {
+        doc.text(`${idx + 1}. ${row.name || row}`);
+      }
+    }
+    doc.moveDown(0.6);
+
+    const pieceRows = (record.pieces || []).map((row) => [
+      row.qualityPiece?.label || `Pieza ${row.qualityPiece?.pieceNumber || ""}`,
+      row.qualityPiece?.status || "",
+    ]);
+    doc.font("Helvetica-Bold").text("Piezas");
+    doc.moveDown(0.2);
+    drawTable(
+      doc,
+      [
+        { header: "Pieza", width: 280 },
+        { header: "Estatus", width: 200 },
+      ],
+      pieceRows.length ? pieceRows : [["—", "—"]]
+    );
+
+    if (record.hours?.length) {
+      doc.moveDown(0.8);
+      doc.font("Helvetica-Bold").text("Horas registradas");
+      doc.moveDown(0.2);
+      drawTable(
+        doc,
+        [
+          { header: "Proceso", width: 280 },
+          { header: "Horas", width: 200 },
+        ],
+        record.hours.map((h) => [h.processName, String(h.hours)])
+      );
+    }
+  });
+
+  await recordAudit({
+    actor,
+    module: "quality",
+    entity: "QualityReworkOrder",
+    entityId: record.id,
+    action: AUDIT_ACTIONS.PDF_GENERATE,
+    newData: { kind: "rework_order", folio: record.folio },
+  });
+
+  return pdfResponse(buffer, `retrabajo-${record.folio}.pdf`, {
+    disposition: "inline",
+  });
 }

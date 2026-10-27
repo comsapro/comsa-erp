@@ -20,7 +20,10 @@ import {
   QUALITY_ITEM_STATUS_LABELS,
   QUALITY_PIECE_STATUS_LABELS,
   QUALITY_RESULT_LABELS,
+  piecesForReview,
 } from "@/domains/quality/constants";
+import { StartInspectionModal } from "@/components/quality/StartInspectionModal";
+import { ReworkOrderModal } from "@/components/quality/ReworkOrderModal";
 
 export default function QualityOrderClient({ orderId }) {
   const { toast } = useToast();
@@ -29,6 +32,17 @@ export default function QualityOrderClient({ orderId }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [drafts, setDrafts] = useState({});
+  const [inspectModal, setInspectModal] = useState({
+    open: false,
+    itemId: null,
+    piece: null,
+    type: "PIECE",
+  });
+  const [reworkModal, setReworkModal] = useState({
+    open: false,
+    item: null,
+    piece: null,
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -70,6 +84,29 @@ export default function QualityOrderClient({ orderId }) {
     }
   }
 
+  /** Guarda la modalidad del borrador y luego genera piezas, para no perder el N. */
+  async function generatePiecesWithDraft(itemId) {
+    const draft = drafts[itemId] || {};
+    setBusy(true);
+    try {
+      await api.post(`/api/calidad/partidas/${itemId}?action=sampling`, {
+        inspectionMode: draft.inspectionMode || "FULL",
+        sampleEveryN:
+          draft.inspectionMode === "SAMPLE"
+            ? Number(draft.sampleEveryN) || null
+            : null,
+        requiresFirstPiece: Boolean(draft.requiresFirstPiece),
+      });
+      await api.post(`/api/calidad/partidas/${itemId}?action=pieces`, {});
+      toast({ variant: "success", title: "Piezas generadas" });
+      await load();
+    } catch (err) {
+      toast({ variant: "error", title: "Error", description: err.message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function closeInspection(inspectionId, result) {
     setBusy(true);
     try {
@@ -87,16 +124,34 @@ export default function QualityOrderClient({ orderId }) {
     }
   }
 
-  async function createRework(item, pieceIds) {
+  function openRework(item, piece) {
+    setReworkModal({ open: true, item, piece });
+  }
+
+  async function submitRework({ cause, instructions, processes }) {
+    const item = reworkModal.item;
+    const piece = reworkModal.piece;
+    if (!item || !piece) return;
     setBusy(true);
     try {
-      await api.post("/api/calidad/retrabajos", {
+      const created = await api.post("/api/calidad/retrabajos", {
         productionItemId: item.id,
-        qualityPieceIds: pieceIds,
-        cause: "No conformidad detectada en inspeccion",
-        instructions: "Seguir hoja viajera de retrabajo",
+        qualityPieceIds: [piece.id],
+        cause,
+        instructions,
+        processes,
       });
-      toast({ variant: "success", title: "Orden de retrabajo creada" });
+      toast({
+        variant: "success",
+        title: "Orden de retrabajo creada",
+        description: created?.folio
+          ? `${created.folio} · notificado a Produccion`
+          : "Notificado a Produccion",
+      });
+      setReworkModal({ open: false, item: null, piece: null });
+      if (created?.id) {
+        window.open(`/api/calidad/retrabajos/${created.id}/pdf`, "_blank");
+      }
       await load();
     } catch (err) {
       toast({ variant: "error", title: "Error", description: err.message });
@@ -162,7 +217,13 @@ export default function QualityOrderClient({ orderId }) {
         const cfg = item.qualityConfig;
         const draft = drafts[item.id] || {};
         const pieces = cfg?.pieces || [];
+        const visiblePieces = piecesForReview(pieces, cfg?.inspectionMode || "FULL");
         const inspections = cfg?.inspections || [];
+        const sampleEvery = Number(cfg?.sampleEveryN) || Number(draft.sampleEveryN) || 0;
+        const sampleExpected =
+          cfg?.inspectionMode === "SAMPLE" && sampleEvery > 0
+            ? Math.floor(Number(cfg?.fabricatedQty || item.quantity || 0) / sampleEvery)
+            : null;
         return (
           <Card key={item.id}>
             <CardHeader>
@@ -187,7 +248,7 @@ export default function QualityOrderClient({ orderId }) {
                     "Sin modalidad"}
                 </Badge>
                 <Button as={Link} href={`/calidad/partida/${item.id}`} size="sm" variant="secondary">
-                  Revisar plano
+                  Planos
                 </Button>
               </div>
             </CardHeader>
@@ -305,19 +366,23 @@ export default function QualityOrderClient({ orderId }) {
                     size="sm"
                     variant="secondary"
                     loading={busy}
-                    onClick={() => run(item.id, "pieces", {})}
+                    onClick={() => generatePiecesWithDraft(item.id)}
                   >
                     Generar piezas
                   </Button>
                   <Button
                     size="sm"
                     loading={busy}
+                    disabled={!visiblePieces[0]}
                     onClick={() =>
-                      run(item.id, "start-inspection", {
-                        type: cfg?.requiresFirstPiece && !cfg?.firstPieceReleased
-                          ? "FIRST_PIECE"
-                          : "PIECE",
-                        qualityPieceId: pieces[0]?.id || null,
+                      setInspectModal({
+                        open: true,
+                        itemId: item.id,
+                        piece: visiblePieces[0] || null,
+                        type:
+                          cfg?.requiresFirstPiece && !cfg?.firstPieceReleased
+                            ? "FIRST_PIECE"
+                            : "PIECE",
                       })
                     }
                   >
@@ -326,11 +391,19 @@ export default function QualityOrderClient({ orderId }) {
                 </Can>
               </div>
 
-              {pieces.length > 0 && (
+              {visiblePieces.length > 0 && (
                 <div>
-                  <p className="mb-2 text-sm font-medium">Piezas</p>
+                  <p className="mb-2 text-sm font-medium">
+                    Piezas a revisar
+                    {cfg?.inspectionMode === "SAMPLE" ? (
+                      <span className="ml-2 font-normal text-content-muted">
+                        · muestreo 1 de cada {sampleEvery || "N"}
+                        {sampleExpected != null ? ` · ${visiblePieces.length} de ${pieces.length}` : ""}
+                      </span>
+                    ) : null}
+                  </p>
                   <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {pieces.map((p) => (
+                    {visiblePieces.map((p) => (
                       <li
                         key={p.id}
                         className="rounded border border-border px-3 py-2 text-sm"
@@ -353,9 +426,11 @@ export default function QualityOrderClient({ orderId }) {
                               variant="subtle"
                               loading={busy}
                               onClick={() =>
-                                run(item.id, "start-inspection", {
+                                setInspectModal({
+                                  open: true,
+                                  itemId: item.id,
+                                  piece: p,
                                   type: p.isFirstPiece ? "FIRST_PIECE" : "PIECE",
-                                  qualityPieceId: p.id,
                                 })
                               }
                             >
@@ -367,7 +442,7 @@ export default function QualityOrderClient({ orderId }) {
                               size="sm"
                               variant="ghost"
                               loading={busy}
-                              onClick={() => createRework(item, [p.id])}
+                              onClick={() => openRework(item, p)}
                             >
                               Retrabajo
                             </Button>
@@ -519,29 +594,13 @@ export default function QualityOrderClient({ orderId }) {
                       size="sm"
                       variant="ghost"
                       loading={busy}
-                      onClick={async () => {
-                        setBusy(true);
-                        try {
-                          await api.post("/api/calidad/retrabajos?action=simple", {
-                            productionItemId: item.id,
-                            errorDescription: "Retrabajo simplificado",
-                            hoursUsed: 0.5,
-                            area: "Piso",
-                            processName: "Ajuste",
-                          });
-                          toast({ variant: "success", title: "Retrabajo simple" });
-                        } catch (err) {
-                          toast({
-                            variant: "error",
-                            title: "Error",
-                            description: err.message,
-                          });
-                        } finally {
-                          setBusy(false);
-                        }
+                      disabled={!item.qualityConfig?.pieces?.[0]}
+                      onClick={() => {
+                        const piece = item.qualityConfig?.pieces?.[0];
+                        if (piece) openRework(item, piece);
                       }}
                     >
-                      Retrabajo simple
+                      Retrabajo (partida)
                     </Button>
                   </div>
                 </div>
@@ -550,6 +609,37 @@ export default function QualityOrderClient({ orderId }) {
           </Card>
         );
       })}
+
+      <StartInspectionModal
+        open={inspectModal.open}
+        onClose={() =>
+          setInspectModal({
+            open: false,
+            itemId: null,
+            piece: null,
+            type: "PIECE",
+          })
+        }
+        itemId={inspectModal.itemId}
+        productionOrderId={orderId}
+        piece={inspectModal.piece}
+        inspectionType={inspectModal.type}
+        onStarted={async () => {
+          toast({ variant: "success", title: "Inspeccion iniciada" });
+          await load();
+        }}
+      />
+
+      <ReworkOrderModal
+        open={reworkModal.open}
+        onClose={() =>
+          setReworkModal({ open: false, item: null, piece: null })
+        }
+        loading={busy}
+        pieceLabel={reworkModal.piece?.label || ""}
+        processes={reworkModal.item?.processes || []}
+        onSubmit={submitRework}
+      />
     </div>
   );
 }

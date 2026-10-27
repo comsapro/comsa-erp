@@ -2343,6 +2343,8 @@ model QualityReworkOrder {
   instructions      String?
   area              String?
   processName       String?             @map("process_name")
+  /// [{ id?, name }] procesos que requiere la pieza en el retrabajo
+  selectedProcesses Json?               @map("selected_processes")
   operatorName      String?             @map("operator_name")
   materialUsed      String?             @map("material_used")
   requestedAt       DateTime            @default(now()) @map("requested_at")
@@ -2455,6 +2457,7 @@ model MeasuringInstrument {
   calibrations  InstrumentCalibration[]
   inspections   QualityInspection[]
   specialChecks QualitySpecialCheck[]
+  drawingMeasurements QualityDrawingMeasurement[]
 
   @@index([status])
   @@index([deletedAt])
@@ -2743,14 +2746,18 @@ model QualityDrawingMeasurement {
   lowerTolerance Decimal                        @map("lower_tolerance") @db.Decimal(14, 4)
   unit           String
   result         QualityDrawingMeasurementResult
+  instrumentId   String?                        @map("instrument_id")
+  readings       Json?
   comments       String?
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  annotation QualityAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+  annotation QualityAnnotation    @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+  instrument MeasuringInstrument? @relation(fields: [instrumentId], references: [id], onDelete: SetNull)
 
   @@index([annotationId])
+  @@index([instrumentId])
   @@map("quality_drawing_measurements")
 }
 

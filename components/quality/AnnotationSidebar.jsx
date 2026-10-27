@@ -15,17 +15,21 @@ function resultTone(row) {
 }
 
 function resultLabel(row) {
-  if (row.measurement?.result === "PASS") return "PASA";
-  if (row.measurement?.result === "FAIL") return "NO PASA";
-  if (row.status === "PASS") return "PASA";
-  if (row.status === "FAIL") return "NO PASA";
-  if (row.annotationType === "MEASUREMENT") return "MEDICION";
+  if (row.measurement?.result === "PASS") return "OK";
+  if (row.measurement?.result === "FAIL") return "NO OK";
+  if (row.status === "PASS") return "OK";
+  if (row.status === "FAIL") return "NO OK";
+  if (row.annotationType === "MEASUREMENT") return "INTERVALO";
   return ANNOTATION_TYPE_LABELS[row.annotationType] || row.annotationType;
 }
 
 function measurementSummary(row) {
   const m = row.measurement;
   if (!m) return row.comment || row.title || "";
+  const readings = Array.isArray(m.readings) ? m.readings : [];
+  if (readings.length > 1) {
+    return `${readings.length} mediciones · nom ${m.nominalValue} ${m.unit || ""}`.trim();
+  }
   return `${m.measuredValue} / ${m.nominalValue} ${m.unit || ""}`.trim();
 }
 
@@ -46,7 +50,7 @@ export function AnnotationSidebar({
   if (!annotations.length) {
     return (
       <p className="px-4 py-8 text-center text-sm text-content-muted">
-        Sin incisos en esta inspeccion.
+        Sin intervalos en esta inspeccion. Coloca nodos numerados sobre el plano.
       </p>
     );
   }

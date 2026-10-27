@@ -18,12 +18,14 @@ import { usePermissions } from "@/components/permissions/PermissionsProvider";
 import { useToast } from "@/components/feedback/ToastProvider";
 import { ConfirmDialog } from "@/components/feedback/ConfirmDialog";
 import { PdfViewer } from "@/components/quality/PdfViewer";
+import { ImageDrawingViewer } from "@/components/quality/ImageDrawingViewer";
 import { AnnotationOverlay } from "@/components/quality/AnnotationOverlay";
 import { AnnotationSidebar } from "@/components/quality/AnnotationSidebar";
 import { AnnotationForm } from "@/components/quality/AnnotationForm";
 import { InspectionSummary } from "@/components/quality/InspectionSummary";
 import { CompleteInspectionModal } from "@/components/quality/CompleteInspectionModal";
 import { EDITABLE_INSPECTION_STATUSES } from "@/domains/quality/drawing-constants";
+import { isImageFile, isPdfFile } from "@/domains/quality/calculations";
 
 function blobUrl(pathname) {
   return `/api/blob?pathname=${encodeURIComponent(pathname)}`;
@@ -77,8 +79,21 @@ export default function InspectionWorkspace({ id }) {
     [annotations, page]
   );
   const selected = annotations.find((row) => row.id === selectedId) || null;
-  const pathname = inspection?.qualityDocumentVersion?.pathname;
-  const pdfUrl = pathname ? blobUrl(pathname) : null;
+  const version = inspection?.qualityDocumentVersion;
+  const pathname = version?.pathname;
+  const fileUrl = pathname ? blobUrl(pathname) : null;
+  const drawingIsImage = isImageFile(
+    version?.originalFilename,
+    version?.contentType
+  );
+  const drawingIsPdf = isPdfFile(
+    version?.originalFilename,
+    version?.contentType
+  );
+
+  useEffect(() => {
+    if (drawingIsImage && page !== 1) setPage(1);
+  }, [drawingIsImage, page]);
 
   const handlePlace = (coords) => {
     if (!canAnnotate) return;
@@ -194,7 +209,7 @@ export default function InspectionWorkspace({ id }) {
                 setTempMarker(null);
               }}
             >
-              <Plus className="h-4 w-4" /> Agregar inciso
+              <Plus className="h-4 w-4" /> Agregar intervalo
             </Button>
           </Can>
           <Can permission="quality.complete">
@@ -214,17 +229,19 @@ export default function InspectionWorkspace({ id }) {
               href={`/api/calidad/inspecciones/${id}/pdf`}
               target="_blank"
             >
-              <FileText className="h-4 w-4" /> Reporte
+              <FileText className="h-4 w-4" /> Exportar reporte
             </Button>
-            <Button
-              size="sm"
-              variant="subtle"
-              as="a"
-              href={`/api/calidad/inspecciones/${id}/pdf/plano`}
-              target="_blank"
-            >
-              <FileDown className="h-4 w-4" /> Plano anotado
-            </Button>
+            {drawingIsPdf ? (
+              <Button
+                size="sm"
+                variant="subtle"
+                as="a"
+                href={`/api/calidad/inspecciones/${id}/pdf/plano`}
+                target="_blank"
+              >
+                <FileDown className="h-4 w-4" /> Plano anotado
+              </Button>
+            ) : null}
           </Can>
         </div>
       </div>
@@ -235,15 +252,41 @@ export default function InspectionWorkspace({ id }) {
 
       {placing ? (
         <Alert variant="info" title="Modo colocacion">
-          Haz clic sobre el plano para colocar el inciso.
+          Haz clic sobre el plano para colocar el intervalo numerado.
         </Alert>
       ) : null}
 
       <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
         <Card className="flex min-h-[520px] flex-col overflow-hidden">
-          {pdfUrl ? (
+          {fileUrl && drawingIsImage ? (
+            <ImageDrawingViewer
+              url={fileUrl}
+              page={1}
+              placementMode={placing}
+              onPlace={handlePlace}
+            >
+              {({ width, height }) => (
+                <AnnotationOverlay
+                  width={width}
+                  height={height}
+                  annotations={pageAnnotations}
+                  selectedId={selectedId}
+                  onSelect={(row) => {
+                    setSelectedId(row.id);
+                    setPlacing(false);
+                  }}
+                  onMove={moveAnnotation}
+                  canMove={canMove}
+                  tempMarker={
+                    tempMarker?.pageNumber === page ? tempMarker : null
+                  }
+                  placementMode={placing}
+                />
+              )}
+            </ImageDrawingViewer>
+          ) : fileUrl && drawingIsPdf ? (
             <PdfViewer
-              url={pdfUrl}
+              url={fileUrl}
               page={page}
               onPageChange={setPage}
               placementMode={placing}
@@ -269,13 +312,15 @@ export default function InspectionWorkspace({ id }) {
               )}
             </PdfViewer>
           ) : (
-            <p className="p-6 text-sm text-content-muted">Sin archivo PDF.</p>
+            <p className="p-6 text-sm text-content-muted">
+              Sin archivo de plano (PDF o imagen).
+            </p>
           )}
         </Card>
 
         <Card className="flex min-h-[520px] flex-col overflow-hidden">
           <div className="border-b border-border px-4 py-3">
-            <h2 className="text-sm font-semibold">Incisos</h2>
+            <h2 className="text-sm font-semibold">Intervalos</h2>
           </div>
           <div className="min-h-0 flex-1 overflow-auto">
             <AnnotationSidebar

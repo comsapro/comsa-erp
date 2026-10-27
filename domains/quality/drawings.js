@@ -17,10 +17,10 @@ import {
   VALID_INSPECTION_TRANSITIONS,
 } from "./drawing-constants";
 import {
-  calculateMeasurementResult,
   clampNormalized,
   computeQualityStatus,
-  isPdfFile,
+  evaluateIntervalReadings,
+  isDrawingFile,
   nextAnnotationLabel,
   summarizeAnnotations,
 } from "./calculations";
@@ -57,6 +57,7 @@ const INSPECTION_LIST_INCLUDE = {
       versionNumber: true,
       originalFilename: true,
       pathname: true,
+      contentType: true,
       qualityDocumentId: true,
     },
   },
@@ -75,11 +76,49 @@ const INSPECTION_DETAIL_INCLUDE = {
     where: { deletedAt: null },
     orderBy: { createdAt: "asc" },
     include: {
-      measurement: true,
+      measurement: {
+        include: {
+          instrument: {
+            select: {
+              id: true,
+              code: true,
+              type: true,
+              brand: true,
+              model: true,
+              serialNumber: true,
+              lastCalibrationAt: true,
+              nextCalibrationAt: true,
+              status: true,
+            },
+          },
+        },
+      },
       createdByUser: USER,
       updatedByUser: USER,
     },
   },
+};
+
+const MEASUREMENT_INCLUDE = {
+  measurement: {
+    include: {
+      instrument: {
+        select: {
+          id: true,
+          code: true,
+          type: true,
+          brand: true,
+          model: true,
+          serialNumber: true,
+          lastCalibrationAt: true,
+          nextCalibrationAt: true,
+          status: true,
+        },
+      },
+    },
+  },
+  createdByUser: USER,
+  updatedByUser: USER,
 };
 
 function assertTransition(from, to) {
@@ -119,16 +158,36 @@ function measurementUnit(payload) {
 }
 
 function buildMeasurementData(payload) {
-  const calc = calculateMeasurementResult(payload);
+  const readingsInput =
+    Array.isArray(payload.readings) && payload.readings.length
+      ? payload.readings
+      : [{ index: 1, value: payload.measuredValue }];
+  const evaluated = evaluateIntervalReadings({
+    nominalValue: payload.nominalValue,
+    upperTolerance: payload.upperTolerance,
+    lowerTolerance: payload.lowerTolerance,
+    readings: readingsInput,
+  });
   return {
     nominalValue: new Prisma.Decimal(payload.nominalValue),
-    measuredValue: new Prisma.Decimal(payload.measuredValue),
+    measuredValue: new Prisma.Decimal(evaluated.measuredValue),
     upperTolerance: new Prisma.Decimal(payload.upperTolerance),
     lowerTolerance: new Prisma.Decimal(payload.lowerTolerance),
     unit: measurementUnit(payload),
-    result: calc.result,
+    result: evaluated.result,
+    instrumentId: payload.instrumentId || null,
+    readings: evaluated.readings,
     comments: payload.comments || null,
   };
+}
+
+async function assertInstrumentExists(instrumentId) {
+  if (!instrumentId) return;
+  const row = await prisma.measuringInstrument.findFirst({
+    where: { id: instrumentId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!row) throw new NotFoundError("Instrumento no encontrado");
 }
 
 function annotationStatusFromType(type, measurementResult, requested) {
@@ -275,7 +334,7 @@ export async function listQualityItems(request) {
 
   const data = rows.map((item) => {
     const pdfs = (item.attachments || []).filter((file) =>
-      isPdfFile(file.fileName, file.contentType)
+      isDrawingFile(file.fileName, file.contentType)
     );
     const inspections = item.drawingInspections || [];
     const latest = inspections[0] || null;
@@ -596,6 +655,7 @@ export async function createAnnotation(request, inspectionId) {
 
   let measurementData = null;
   if (body.annotationType === "MEASUREMENT") {
+    await assertInstrumentExists(body.measurement?.instrumentId);
     measurementData = buildMeasurementData(body.measurement);
   }
 
@@ -621,7 +681,7 @@ export async function createAnnotation(request, inspectionId) {
       updatedBy: actor.id,
       measurement: measurementData ? { create: measurementData } : undefined,
     },
-    include: { measurement: true, createdByUser: USER, updatedByUser: USER },
+    include: MEASUREMENT_INCLUDE,
   });
 
   await recordAudit({
@@ -665,6 +725,7 @@ export async function updateAnnotation(request, inspectionId, annotationId) {
       throw new ValidationError("Los datos de medicion son obligatorios");
     }
     if (payload) {
+      await assertInstrumentExists(payload.instrumentId);
       const data = buildMeasurementData(payload);
       measurementResult = data.result;
       measurementUpdate = existing.measurement
@@ -692,7 +753,7 @@ export async function updateAnnotation(request, inspectionId, annotationId) {
       updatedBy: actor.id,
       measurement: measurementUpdate,
     },
-    include: { measurement: true, createdByUser: USER, updatedByUser: USER },
+    include: MEASUREMENT_INCLUDE,
   });
 
   await recordAudit({

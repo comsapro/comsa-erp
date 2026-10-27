@@ -35,11 +35,16 @@ export const ensurePiecesSchema = z.object({
   count: z.coerce.number().int().positive().optional(),
 });
 
+export const QUALITY_REVIEW_KINDS = ["DIMENSIONAL", "ATTRIBUTE"];
+
 export const startInspectionSchema = z.object({
   type: z.enum(QUALITY_INSPECTION_TYPES),
   qualityPieceId: z.string().optional().nullable(),
   instrumentId: z.string().optional().nullable(),
   allowExpiredInstrument: z.boolean().optional().default(false),
+  reviewKind: z.enum(QUALITY_REVIEW_KINDS).optional().nullable(),
+  includeLiquidPenetrant: z.boolean().optional().default(false),
+  observations: z.string().optional().nullable(),
 });
 
 export const measurementSchema = z.object({
@@ -92,18 +97,38 @@ export const missingProcessSchema = z.object({
   notes: z.string().optional().nullable(),
 });
 
-export const reworkOrderSchema = z.object({
-  productionItemId: z.string().min(1),
-  qualityPieceIds: z.array(z.string()).min(1),
-  cause: z.string().min(1),
-  instructions: z.string().optional().nullable(),
-  area: z.string().optional().nullable(),
-  processName: z.string().optional().nullable(),
-  operatorName: z.string().optional().nullable(),
-  materialUsed: z.string().optional().nullable(),
-  expectedEndAt: z.coerce.date().optional().nullable(),
-  responsibleId: z.string().optional().nullable(),
+const reworkProcessSchema = z.object({
+  id: z.string().optional().nullable(),
+  name: z.string().trim().min(1),
 });
+
+export const reworkOrderSchema = z
+  .object({
+    productionItemId: z.string().min(1),
+    qualityPieceIds: z.array(z.string()).min(1),
+    cause: z.string().trim().min(3, "Indica el motivo del retrabajo"),
+    instructions: z.string().optional().nullable(),
+    area: z.string().optional().nullable(),
+    processName: z.string().optional().nullable(),
+    processes: z.array(reworkProcessSchema).optional().default([]),
+    operatorName: z.string().optional().nullable(),
+    materialUsed: z.string().optional().nullable(),
+    expectedEndAt: z.coerce.date().optional().nullable(),
+    responsibleId: z.string().optional().nullable(),
+    printAfterCreate: z.boolean().optional().default(true),
+  })
+  .superRefine((data, ctx) => {
+    const hasProcesses =
+      (data.processes && data.processes.length > 0) ||
+      Boolean(String(data.processName || "").trim());
+    if (!hasProcesses) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Selecciona al menos un proceso para el retrabajo",
+        path: ["processes"],
+      });
+    }
+  });
 
 export const reworkSimpleSchema = z.object({
   productionItemId: z.string().min(1),

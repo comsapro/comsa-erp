@@ -14,6 +14,7 @@ import {
 import {
   OPEN_QUALITY_ITEM_STATUSES,
   calcSampleCount,
+  isPieceInSample,
   pieceLabel,
 } from "./constants";
 import {
@@ -227,6 +228,16 @@ export async function getOrderQuality(request, orderId) {
       items: {
         orderBy: { position: "asc" },
         include: {
+          processes: {
+            orderBy: { sortOrder: "asc" },
+            select: {
+              id: true,
+              processNameSnapshot: true,
+              status: true,
+              manufacturingProcessId: true,
+              sortOrder: true,
+            },
+          },
           qualityConfig: {
             include: {
               pieces: { orderBy: { pieceNumber: "asc" } },
@@ -332,6 +343,23 @@ export async function configureSampling(request, itemId) {
     },
   });
 
+  const existingPieces = await prisma.qualityPiece.findMany({
+    where: { qualityConfigId: config.id },
+    select: { id: true, pieceNumber: true, isSample: true },
+  });
+  for (const piece of existingPieces) {
+    const nextSample =
+      data.inspectionMode === "FULL"
+        ? true
+        : isPieceInSample(piece.pieceNumber, data.sampleEveryN);
+    if (piece.isSample !== nextSample) {
+      await prisma.qualityPiece.update({
+        where: { id: piece.id },
+        data: { isSample: nextSample, updatedBy: actor.id },
+      });
+    }
+  }
+
   await recordAudit({
     actor,
     module: "quality",
@@ -363,28 +391,41 @@ export async function ensurePieces(request, itemId) {
   const existing = await prisma.qualityPiece.count({
     where: { qualityConfigId: config.id },
   });
+  const sampleEvery = config.inspectionMode === "SAMPLE" ? config.sampleEveryN : null;
+
   if (existing >= count) {
     const pieces = await prisma.qualityPiece.findMany({
       where: { qualityConfigId: config.id },
       orderBy: { pieceNumber: "asc" },
     });
+    for (const piece of pieces) {
+      const nextSample =
+        config.inspectionMode === "FULL"
+          ? true
+          : isPieceInSample(piece.pieceNumber, sampleEvery);
+      if (piece.isSample !== nextSample) {
+        await prisma.qualityPiece.update({
+          where: { id: piece.id },
+          data: { isSample: nextSample, updatedBy: actor.id },
+        });
+        piece.isSample = nextSample;
+      }
+    }
     return jsonOk({ pieces, created: 0 });
   }
 
-  const sampleEvery = config.inspectionMode === "SAMPLE" ? config.sampleEveryN : null;
   const toCreate = [];
   for (let n = existing + 1; n <= count; n += 1) {
-    const isSample =
-      config.inspectionMode === "SAMPLE" &&
-      sampleEvery > 0 &&
-      n % sampleEvery === 1;
     toCreate.push({
       productionItemId: itemId,
       qualityConfigId: config.id,
       pieceNumber: n,
       label: pieceLabel(n),
       isFirstPiece: n === 1 && config.requiresFirstPiece,
-      isSample: config.inspectionMode === "FULL" ? true : Boolean(isSample),
+      isSample:
+        config.inspectionMode === "FULL"
+          ? true
+          : isPieceInSample(n, sampleEvery),
       status: "PENDING",
       createdBy: actor.id,
       updatedBy: actor.id,
@@ -436,6 +477,29 @@ export async function startInspection(request, itemId) {
     throw new ValidationError("Esta partida no requiere liberacion de primera pieza");
   }
 
+  const specialChecks = [];
+  if (data.reviewKind === "DIMENSIONAL") {
+    specialChecks.push({
+      checkType: "DIMENSIONAL",
+      required: true,
+      observations: data.observations || null,
+    });
+  }
+  if (data.reviewKind === "ATTRIBUTE") {
+    specialChecks.push({
+      checkType: "VISUAL",
+      required: true,
+      observations: data.observations || null,
+    });
+    if (data.includeLiquidPenetrant) {
+      specialChecks.push({
+        checkType: "LIQUID_PENETRANT",
+        required: true,
+        observations: "Requiere evidencia fotografica del procedimiento",
+      });
+    }
+  }
+
   const inspection = await prisma.qualityInspection.create({
     data: {
       qualityConfigId: config.id,
@@ -446,12 +510,17 @@ export async function startInspection(request, itemId) {
       startedAt: new Date(),
       instrumentId: data.instrumentId || null,
       instrumentWarned,
+      observations: data.observations || null,
       createdBy: actor.id,
       updatedBy: actor.id,
+      specialChecks: specialChecks.length
+        ? { create: specialChecks }
+        : undefined,
     },
     include: {
       inspector: { select: { id: true, name: true } },
       qualityPiece: true,
+      specialChecks: true,
     },
   });
 
@@ -810,8 +879,29 @@ export async function createReworkOrder(request) {
   const data = reworkOrderSchema.parse(await request.json());
   const item = await prisma.productionItem.findFirst({
     where: { id: data.productionItemId },
+    include: {
+      productionOrder: { select: { id: true, folio: true } },
+      processes: {
+        orderBy: { sortOrder: "asc" },
+        select: { id: true, processNameSnapshot: true },
+      },
+    },
   });
   if (!item) throw new NotFoundError("Partida no encontrada");
+
+  const selectedProcesses =
+    data.processes?.length > 0
+      ? data.processes.map((row) => ({
+          id: row.id || null,
+          name: String(row.name).trim(),
+        }))
+      : String(data.processName || "")
+          .split(",")
+          .map((name) => name.trim())
+          .filter(Boolean)
+          .map((name) => ({ id: null, name }));
+
+  const processNameJoined = selectedProcesses.map((p) => p.name).join(", ");
 
   const record = await prisma.$transaction(async (tx) => {
     const folio = await generateFolio(tx, "QUALITY_REWORK");
@@ -820,10 +910,11 @@ export async function createReworkOrder(request) {
         folio,
         productionOrderId: item.productionOrderId,
         productionItemId: item.id,
-        cause: data.cause,
+        cause: data.cause.trim(),
         instructions: data.instructions || null,
         area: data.area || null,
-        processName: data.processName || null,
+        processName: processNameJoined || null,
+        selectedProcesses,
         operatorName: data.operatorName || null,
         materialUsed: data.materialUsed || null,
         expectedEndAt: data.expectedEndAt || null,
@@ -835,7 +926,13 @@ export async function createReworkOrder(request) {
           })),
         },
       },
-      include: { pieces: true },
+      include: {
+        pieces: {
+          include: {
+            qualityPiece: { select: { id: true, label: true, pieceNumber: true } },
+          },
+        },
+      },
     });
 
     await tx.qualityPiece.updateMany({
@@ -853,8 +950,14 @@ export async function createReworkOrder(request) {
 
   await createAlert({
     audience: "PRODUCTION",
-    title: `Retrabajo ${record.folio}`,
-    body: data.cause,
+    title: `Retrabajo ${record.folio} · OP ${item.productionOrder?.folio || ""}`,
+    body: [
+      `Motivo: ${data.cause.trim()}`,
+      processNameJoined ? `Procesos: ${processNameJoined}` : null,
+      data.instructions ? `Instrucciones: ${data.instructions}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n"),
     eventType: "REWORK_CREATED",
     productionOrderId: item.productionOrderId,
     entityType: "QualityReworkOrder",
@@ -862,7 +965,94 @@ export async function createReworkOrder(request) {
     createdBy: actor.id,
   });
 
+  await recordAudit({
+    actor,
+    module: "quality",
+    entity: "QualityReworkOrder",
+    entityId: record.id,
+    action: AUDIT_ACTIONS.CREATE,
+    newData: {
+      folio: record.folio,
+      cause: record.cause,
+      processes: selectedProcesses,
+      qualityPieceIds: data.qualityPieceIds,
+    },
+  });
+
   return jsonCreated(record);
+}
+
+export async function getReworkOrder(request, reworkOrderId) {
+  await requirePermission("quality.view");
+  const record = await prisma.qualityReworkOrder.findFirst({
+    where: { id: reworkOrderId },
+    include: {
+      productionOrder: {
+        select: {
+          id: true,
+          folio: true,
+          client: { select: { commercialName: true, legalName: true } },
+        },
+      },
+      productionItem: {
+        select: { id: true, position: true, description: true, quantity: true },
+      },
+      pieces: {
+        include: {
+          qualityPiece: {
+            select: { id: true, label: true, pieceNumber: true, status: true },
+          },
+        },
+      },
+      hours: { orderBy: { createdAt: "asc" } },
+      createdByUser: { select: { id: true, name: true } },
+      responsible: { select: { id: true, name: true } },
+    },
+  });
+  if (!record) throw new NotFoundError("Orden de retrabajo no encontrada");
+  return jsonOk(record);
+}
+
+/** Resumen diario de NC / rechazos / retrabajos abiertos (para cron/correo). */
+export async function getQualityDailyDigest(request) {
+  await requirePermission("quality.view");
+  const openReworks = await prisma.qualityReworkOrder.findMany({
+    where: { status: { in: ["REQUESTED", "IN_PROGRESS"] } },
+    orderBy: { requestedAt: "desc" },
+    take: 200,
+    include: {
+      productionOrder: { select: { folio: true } },
+      productionItem: { select: { position: true, description: true } },
+      pieces: {
+        include: {
+          qualityPiece: { select: { label: true } },
+        },
+      },
+    },
+  });
+  const openAlerts = await prisma.qualityAlert.findMany({
+    where: {
+      status: { in: ["OPEN", "ACKNOWLEDGED"] },
+      audience: { in: ["PRODUCTION", "MANAGEMENT"] },
+      eventType: {
+        in: [
+          "REWORK_CREATED",
+          "NON_CONFORMING",
+          "NCR_CREATED",
+          "QTY_SHORTAGE",
+        ],
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 200,
+  });
+  return jsonOk({
+    generatedAt: new Date().toISOString(),
+    openReworkCount: openReworks.length,
+    openAlertCount: openAlerts.length,
+    openReworks,
+    openAlerts,
+  });
 }
 
 export async function createReworkSimple(request) {
@@ -1215,7 +1405,7 @@ export function qualityOrderQrPath(orderId) {
 }
 
 export async function registerEvidence(request) {
-  await requireAnyPermission(request, [
+  await requireAnyPermission([
     "quality.inspect",
     "quality.record_ncr",
     "quality.create_rework",
