@@ -8,6 +8,8 @@ import {
 import { buildMenu } from "../lib/navigation/menu.js";
 import {
   calcSampleCount,
+  isPieceInSample,
+  piecesForReview,
   pieceLabel,
   OPEN_QUALITY_ITEM_STATUSES,
 } from "../domains/quality/constants.js";
@@ -36,17 +38,40 @@ test("rol Calidad tiene all quality", () => {
   assert.ok(role.permissions.includes("quality.create_rework"));
 });
 
-test("menu muestra Calidad con permiso", () => {
+test("menu muestra Calidad con permiso y sin Planos globales", () => {
   const menu = buildMenu(["dashboard.view", "quality.view"]);
   const hrefs = menu.flatMap((s) => s.items.map((i) => i.href));
   assert.ok(hrefs.includes("/calidad"));
+  assert.ok(!hrefs.includes("/calidad/planos"));
 });
 
 test("calcSampleCount calcula 1 de cada N", () => {
   assert.equal(calcSampleCount(20, 5), 4);
-  assert.equal(calcSampleCount(21, 5), 5);
+  assert.equal(calcSampleCount(15, 4), 3);
+  assert.equal(calcSampleCount(21, 5), 4);
   assert.equal(calcSampleCount(0, 5), 0);
   assert.equal(calcSampleCount(10, 0), 0);
+});
+
+test("isPieceInSample marca cada N-esima pieza", () => {
+  assert.equal(isPieceInSample(4, 4), true);
+  assert.equal(isPieceInSample(8, 4), true);
+  assert.equal(isPieceInSample(12, 4), true);
+  assert.equal(isPieceInSample(1, 4), false);
+  assert.equal(isPieceInSample(15, 4), false);
+});
+
+test("piecesForReview en muestreo oculta piezas fuera de muestra", () => {
+  const pieces = [
+    { id: "1", isSample: false, isFirstPiece: true },
+    { id: "2", isSample: false, isFirstPiece: false },
+    { id: "4", isSample: true, isFirstPiece: false },
+  ];
+  assert.equal(piecesForReview(pieces, "FULL").length, 3);
+  assert.deepEqual(
+    piecesForReview(pieces, "SAMPLE").map((p) => p.id),
+    ["1", "4"]
+  );
 });
 
 test("pieceLabel formatea numero", () => {

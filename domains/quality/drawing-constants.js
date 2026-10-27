@@ -77,14 +77,17 @@ export const ANNOTATION_STATUS_LABELS = {
   NOT_APPLICABLE: "N/A",
 };
 
-export const MEASUREMENT_UNITS = ["mm", "in", "deg", "other"];
+export const MEASUREMENT_UNITS = ["mm", "in", "ft", "deg", "other"];
 
 export const MEASUREMENT_UNIT_LABELS = {
   mm: "mm",
   in: "in",
+  ft: "ft",
   deg: "deg",
   other: "Otro",
 };
+
+export const MAX_INTERVAL_READINGS = 8;
 
 export const VALID_INSPECTION_TRANSITIONS = {
   DRAFT: ["IN_PROGRESS"],

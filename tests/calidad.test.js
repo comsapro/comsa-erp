@@ -8,6 +8,8 @@ import {
   computeQualityStatus,
   summarizeAnnotations,
   isPdfFile,
+  isImageFile,
+  isDrawingFile,
 } from "../domains/quality/calculations.js";
 import { SYSTEM_ROLES, ALL_PERMISSION_CODES } from "../lib/permissions/catalog.js";
 import { buildMenu } from "../lib/navigation/menu.js";
@@ -19,8 +21,13 @@ test("excelColumnLabel genera A, Z, AA, AB", () => {
   assert.equal(excelColumnLabel(27), "AB");
 });
 
-test("nextAnnotationLabel no reutiliza etiquetas existentes", () => {
-  assert.equal(nextAnnotationLabel([]), "A");
+test("nextAnnotationLabel usa intervalos numericos por defecto", () => {
+  assert.equal(nextAnnotationLabel([]), "1");
+  assert.equal(nextAnnotationLabel(["1", "2"]), "3");
+  assert.equal(nextAnnotationLabel(["1", "3"]), "2");
+});
+
+test("nextAnnotationLabel conserva familia de letras si ya existia", () => {
   assert.equal(nextAnnotationLabel(["A", "B"]), "C");
   assert.equal(nextAnnotationLabel(["A", "B", "C"]), "D");
   assert.equal(nextAnnotationLabel(["A", "Z"]), "B");
@@ -28,6 +35,24 @@ test("nextAnnotationLabel no reutiliza etiquetas existentes", () => {
   const used = [];
   for (let i = 0; i < 26; i += 1) used.push(excelColumnLabel(i));
   assert.equal(nextAnnotationLabel(used), "AA");
+});
+
+test("evaluateIntervalReadings marca OK/NO OK por medicion", async () => {
+  const { evaluateIntervalReadings } = await import(
+    "../domains/quality/calculations.js"
+  );
+  const result = evaluateIntervalReadings({
+    nominalValue: 3.625,
+    upperTolerance: 0.001,
+    lowerTolerance: 0.001,
+    readings: [
+      { index: 1, value: 3.6246 },
+      { index: 2, value: 3.62 },
+    ],
+  });
+  assert.equal(result.result, "FAIL");
+  assert.equal(result.readings[0].result, "PASS");
+  assert.equal(result.readings[1].result, "FAIL");
 });
 
 test("calculateMeasurementResult marca PASS dentro de tolerancia", () => {
@@ -134,6 +159,14 @@ test("isPdfFile reconoce PDF por tipo o extension", () => {
   assert.equal(isPdfFile("pieza.step", "application/octet-stream"), false);
 });
 
+test("isDrawingFile acepta PDF e imagenes de plano", () => {
+  assert.equal(isImageFile("foto.jpg", "image/jpeg"), true);
+  assert.equal(isImageFile("plano.PNG", "application/octet-stream"), true);
+  assert.equal(isDrawingFile("plano.pdf", "application/pdf"), true);
+  assert.equal(isDrawingFile("foto.webp", "image/webp"), true);
+  assert.equal(isDrawingFile("modelo.step", "application/octet-stream"), false);
+});
+
 test("catalogo incluye permisos quality.*", () => {
   const expected = [
     "quality.view",
@@ -174,6 +207,7 @@ test("buildMenu muestra Calidad con quality.view", () => {
   const withPerm = buildMenu(["dashboard.view", "quality.view"]);
   const hrefs = withPerm.flatMap((s) => s.items.map((i) => i.href));
   assert.ok(hrefs.includes("/calidad"));
+  assert.ok(!hrefs.includes("/calidad/planos"));
 
   const without = buildMenu(["dashboard.view", "production.view"]);
   const hrefsNo = without.flatMap((s) => s.items.map((i) => i.href));

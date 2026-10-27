@@ -3,7 +3,12 @@ import { createHash } from "node:crypto";
 import { handleUpload } from "@vercel/blob/client";
 import { get, del } from "@vercel/blob";
 import { prisma } from "@/lib/db";
-import { requirePermission } from "@/lib/permissions/require-permission";
+import {
+  requirePermission,
+  requireAnyPermission,
+} from "@/lib/permissions/require-permission";
+
+const QUALITY_DOC_UPLOAD_PERMS = ["quality.create", "quality.inspect"];
 import { getActor } from "@/lib/api/actor";
 import { jsonOk, jsonCreated } from "@/lib/api/http";
 import { recordAudit, AUDIT_ACTIONS } from "@/lib/audit/logger";
@@ -22,6 +27,8 @@ import {
 } from "./drawing-constants";
 import {
   computeQualityStatus,
+  isDrawingFile,
+  isImageFile,
   isPdfFile,
 } from "./calculations";
 import {
@@ -69,6 +76,14 @@ export async function getBlobBuffer(pathname) {
 function assertPdf(fileName, contentType) {
   if (!isPdfFile(fileName, contentType)) {
     throw new ValidationError("Solo se pueden inspeccionar archivos PDF");
+  }
+}
+
+function assertDrawingFile(fileName, contentType) {
+  if (!isDrawingFile(fileName, contentType)) {
+    throw new ValidationError(
+      "Solo se aceptan PDF o imagenes del plano (JPG, PNG, WEBP)"
+    );
   }
 }
 
@@ -151,7 +166,7 @@ async function resolveQualityUpload(item, body) {
   const fileName =
     body.fileName || sanitizeFileName(pathname.split("/").pop()) || "plano.pdf";
   const contentType = body.contentType || PDF_CONTENT_TYPE;
-  assertPdf(fileName, contentType);
+  assertDrawingFile(fileName, contentType);
   return {
     sourceKind: "QUALITY_UPLOAD",
     quoteItemAttachmentId: null,
@@ -345,6 +360,8 @@ export async function listItemQualityDocuments(request, productionItemId) {
         contentType: row.contentType,
         sizeBytes: row.sizeBytes,
         isPdf: isPdfFile(row.fileName, row.contentType),
+        isImage: isImageFile(row.fileName, row.contentType),
+        isDrawing: isDrawingFile(row.fileName, row.contentType),
         sourceKind: "QUOTE_ATTACHMENT",
       });
     }
@@ -391,6 +408,8 @@ export async function listItemQualityDocuments(request, productionItemId) {
         contentType: row.contentType,
         sizeBytes: row.sizeBytes,
         isPdf: isPdfFile(row.fileName, row.contentType),
+        isImage: isImageFile(row.fileName, row.contentType),
+        isDrawing: isDrawingFile(row.fileName, row.contentType),
         sourceKind: "PRODUCTION_ATTACHMENT",
         productionItemId: row.productionItemId,
       },
@@ -449,7 +468,7 @@ function attachInspectionLinks(file, documents, inspections) {
 }
 
 export async function handleQualityDocumentUpload(request) {
-  await requirePermission("quality.create");
+  await requireAnyPermission(QUALITY_DOC_UPLOAD_PERMS);
   const actor = await getActor(request);
   const { searchParams } = new URL(request.url);
   const productionItemId = searchParams.get("productionItemId");
@@ -480,7 +499,7 @@ export async function handleQualityDocumentUpload(request) {
     }),
     onUploadCompleted: async ({ blob }) => {
       const fileName = blob.pathname?.split("/").pop() || "plano.pdf";
-      if (!isPdfFile(fileName, blob.contentType)) {
+      if (!isDrawingFile(fileName, blob.contentType)) {
         try {
           await del(blob.url || blob.pathname, {
             token: process.env.BLOB_READ_WRITE_TOKEN,
@@ -488,7 +507,9 @@ export async function handleQualityDocumentUpload(request) {
         } catch {
           /* ignore */
         }
-        throw new ValidationError("Solo se aceptan archivos PDF");
+        throw new ValidationError(
+          "Solo se aceptan PDF o imagenes del plano (JPG, PNG, WEBP)"
+        );
       }
     },
   });
@@ -556,7 +577,7 @@ async function persistQualityUpload({
 }
 
 export async function registerQualityUpload(request) {
-  await requirePermission("quality.create");
+  await requireAnyPermission(QUALITY_DOC_UPLOAD_PERMS);
   const actor = await getActor(request);
   const body = registerQualityUploadSchema.parse(await request.json());
   const item = await findProductionItemOrThrow(body.productionItemId);
@@ -570,7 +591,7 @@ export async function registerQualityUpload(request) {
   }
   const fileName =
     body.fileName || sanitizeFileName(pathname.split("/").pop()) || "plano.pdf";
-  assertPdf(fileName, body.contentType || PDF_CONTENT_TYPE);
+  assertDrawingFile(fileName, body.contentType || PDF_CONTENT_TYPE);
 
   const result = await persistQualityUpload({
     actor,

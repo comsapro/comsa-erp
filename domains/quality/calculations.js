@@ -21,11 +21,25 @@ export function excelColumnLabel(index) {
 /**
  * Siguiente etiqueta disponible. No reutiliza etiquetas existentes
  * (incluye las de incisos eliminados logicamente).
+ * Prefiere intervalos numericos (1, 2, 3...). Si ya hay letras A/B/C
+ * sin numeros, sigue con letras para no mezclar familias.
  */
 export function nextAnnotationLabel(existingLabels = []) {
-  const used = new Set(
-    (existingLabels || []).map((label) => String(label || "").toUpperCase())
-  );
+  const labels = (existingLabels || []).map((label) => String(label || "").trim());
+  const used = new Set(labels.map((label) => label.toUpperCase()));
+  const hasNumeric = labels.some((label) => /^\d+$/.test(label));
+  const hasAlphaOnly = labels.some((label) => /^[A-Z]+$/i.test(label));
+
+  if (!labels.length || hasNumeric || !hasAlphaOnly) {
+    let n = 1;
+    while (n < 10000) {
+      const label = String(n);
+      if (!used.has(label)) return label;
+      n += 1;
+    }
+    throw new Error("No hay etiquetas disponibles");
+  }
+
   let index = 0;
   while (index < 10000) {
     const label = excelColumnLabel(index);
@@ -33,6 +47,48 @@ export function nextAnnotationLabel(existingLabels = []) {
     index += 1;
   }
   throw new Error("No hay etiquetas disponibles");
+}
+
+/**
+ * Evalua varias mediciones del mismo intervalo.
+ * El resultado global es FAIL si alguna sale fuera de tolerancia.
+ */
+export function evaluateIntervalReadings({
+  nominalValue,
+  upperTolerance,
+  lowerTolerance,
+  readings = [],
+}) {
+  const list = (readings || [])
+    .map((row, index) => {
+      const value = row?.value;
+      if (value === null || value === undefined || value === "") return null;
+      const calc = calculateMeasurementResult({
+        nominalValue,
+        measuredValue: value,
+        upperTolerance,
+        lowerTolerance,
+      });
+      return {
+        index: Number(row.index) || index + 1,
+        value: Number(value),
+        result: calc.result,
+        minimum: calc.minimum,
+        maximum: calc.maximum,
+      };
+    })
+    .filter(Boolean);
+
+  if (!list.length) {
+    throw new Error("Captura al menos una medicion del intervalo");
+  }
+
+  const overall = list.every((row) => row.result === "PASS") ? "PASS" : "FAIL";
+  return {
+    readings: list,
+    result: overall,
+    measuredValue: list[0].value,
+  };
 }
 
 function toNumber(value, field) {
@@ -128,4 +184,16 @@ export function isPdfFile(fileName, contentType) {
   const type = String(contentType || "").toLowerCase();
   const name = String(fileName || "").toLowerCase();
   return type === "application/pdf" || name.endsWith(".pdf");
+}
+
+export function isImageFile(fileName, contentType) {
+  const type = String(contentType || "").toLowerCase();
+  const name = String(fileName || "").toLowerCase();
+  if (type.startsWith("image/")) return true;
+  return /\.(jpe?g|png|webp|gif|heic|heif)$/i.test(name);
+}
+
+/** Planos inspeccionables: PDF o foto del plano. */
+export function isDrawingFile(fileName, contentType) {
+  return isPdfFile(fileName, contentType) || isImageFile(fileName, contentType);
 }

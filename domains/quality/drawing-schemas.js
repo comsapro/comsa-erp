@@ -16,15 +16,33 @@ const coordinate = z.coerce
 
 const decimalValue = z.coerce.number().finite();
 
-const measurementFields = z.object({
-  nominalValue: decimalValue,
-  measuredValue: decimalValue,
-  upperTolerance: decimalValue,
-  lowerTolerance: decimalValue,
-  unit: z.enum(MEASUREMENT_UNITS),
-  unitOther: optionalString,
-  comments: optionalString,
+const readingField = z.object({
+  index: z.coerce.number().int().min(1).max(8).optional(),
+  value: decimalValue,
 });
+
+const measurementFields = z
+  .object({
+    nominalValue: decimalValue,
+    measuredValue: decimalValue.optional().nullable(),
+    upperTolerance: decimalValue,
+    lowerTolerance: decimalValue,
+    unit: z.enum(MEASUREMENT_UNITS),
+    unitOther: optionalString,
+    comments: optionalString,
+    instrumentId: z.string().min(1).optional().nullable(),
+    readings: z.array(readingField).min(1).max(8).optional(),
+  })
+  .superRefine((value, ctx) => {
+    const hasReadings = Array.isArray(value.readings) && value.readings.length > 0;
+    if (!hasReadings && (value.measuredValue == null || value.measuredValue === "")) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Captura al menos una medicion",
+        path: ["measuredValue"],
+      });
+    }
+  });
 
 export const createInspectionSchema = z
   .object({

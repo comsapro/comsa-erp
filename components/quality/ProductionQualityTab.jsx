@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, FileText } from "lucide-react";
+import { upload } from "@vercel/blob/client";
 import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -10,6 +11,7 @@ import { Can } from "@/components/permissions/Can";
 import { useToast } from "@/components/feedback/ToastProvider";
 import { Alert } from "@/components/feedback/Alert";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { FileDropSquare } from "@/components/quality/FileDropSquare";
 import {
   QUALITY_INSPECTION_STATUS_LABELS,
   QUALITY_INSPECTION_STATUS_TONES,
@@ -33,6 +35,7 @@ export function ProductionQualityTab({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [acting, setActing] = useState(false);
+  const [uploadingPlano, setUploadingPlano] = useState(false);
 
   const load = useCallback(async () => {
     const result = await api.get(`/api/calidad/partidas/${id}/documentos`);
@@ -98,6 +101,47 @@ export function ProductionQualityTab({
     }
   };
 
+  const uploadPlano = async (file) => {
+    if (!file) return;
+    const isPdf =
+      file.type === "application/pdf" || /\.pdf$/i.test(String(file.name || ""));
+    if (!isPdf) {
+      toast({
+        variant: "error",
+        title: "Solo PDF",
+        description: "Los planos deben cargarse en PDF para poder anotarlos.",
+      });
+      return;
+    }
+    setUploadingPlano(true);
+    try {
+      const orderId = data?.item?.productionOrderId || productionId || "op";
+      const safeName = String(file.name || "plano.pdf").replace(/[^\w.\-]+/g, "_");
+      const pathname = `quality/${orderId}/${id}/${Date.now()}-${safeName}`;
+      const blob = await upload(pathname, file, {
+        access: "private",
+        handleUploadUrl: `/api/calidad/documentos/upload?productionItemId=${encodeURIComponent(id)}`,
+      });
+      await api.post("/api/calidad/documentos/registro", {
+        productionItemId: id,
+        pathname: blob.pathname,
+        fileName: safeName,
+        contentType: file.type || "application/pdf",
+        sizeBytes: file.size || blob.size || 0,
+      });
+      toast({ variant: "success", title: "Plano guardado" });
+      await load();
+    } catch (err) {
+      toast({
+        variant: "error",
+        title: "No se pudo guardar el plano",
+        description: err.message,
+      });
+    } finally {
+      setUploadingPlano(false);
+    }
+  };
+
   if (loading) {
     return <p className="text-sm text-content-muted">Cargando calidad...</p>;
   }
@@ -133,24 +177,22 @@ export function ProductionQualityTab({
           Documentos de la partida
         </h3>
         <p className="mb-3 text-sm text-content-muted">
-          Se anotan los PDFs subidos en Produccion, en Evidencias de esta
-          partida.
+          Sube el plano en PDF aqui, o usa los PDFs de Produccion → Evidencias.
         </p>
-        {!productionFiles.length ? (
+        <Can anyOf={["quality.create", "quality.inspect"]}>
+          <div className="mb-4">
+            <FileDropSquare
+              label="Cargar plano (PDF)"
+              hint="Soltar PDF"
+              accept="application/pdf,.pdf"
+              loading={uploadingPlano}
+              onFile={uploadPlano}
+            />
+          </div>
+        </Can>
+        {!productionFiles.length && !extraDocuments.length ? (
           <Alert variant="info" title="Sin archivos en la partida">
-            Sube el plano o documento en{" "}
-            <Link
-              href={`/produccion/${orderId}`}
-              className="font-medium text-brand-700 hover:underline"
-            >
-              Produccion → Evidencias
-            </Link>{" "}
-            de esta partida. Solo los PDF se pueden anotar.
-          </Alert>
-        ) : !pdfs.length ? (
-          <Alert variant="info" title="No hay PDF para anotar">
-            Hay archivos en la partida, pero solo se pueden anotar documentos
-            PDF. Sube el plano en{" "}
+            Arrastra un PDF al recuadro de arriba, o subelo en{" "}
             <Link
               href={`/produccion/${orderId}`}
               className="font-medium text-brand-700 hover:underline"
@@ -159,7 +201,12 @@ export function ProductionQualityTab({
             </Link>
             .
           </Alert>
-        ) : (
+        ) : productionFiles.length && !pdfs.length ? (
+          <Alert variant="info" title="No hay PDF para anotar">
+            Hay archivos en la partida, pero solo se pueden anotar documentos
+            PDF. Usa el recuadro de arriba para subir un PDF.
+          </Alert>
+        ) : pdfs.length ? (
           <ul className="space-y-2">
             {pdfs.map((file) => (
               <li
@@ -181,7 +228,7 @@ export function ProductionQualityTab({
                   >
                     Ver
                   </Button>
-                  <Can permission="quality.create">
+                  <Can anyOf={["quality.create", "quality.inspect"]}>
                     <Button
                       size="sm"
                       loading={acting}
@@ -204,7 +251,7 @@ export function ProductionQualityTab({
               </li>
             ))}
           </ul>
-        )}
+        ) : null}
         {otherFiles.length ? (
           <ul className="mt-2 space-y-2">
             {otherFiles.map((file) => (
@@ -227,7 +274,7 @@ export function ProductionQualityTab({
 
       {extraDocuments.length ? (
         <div>
-          <h3 className="mb-2 text-sm font-semibold">Otros documentos de calidad</h3>
+          <h3 className="mb-2 text-sm font-semibold">Planos cargados en Calidad</h3>
           <ul className="space-y-2">
             {extraDocuments.map((doc) => {
               const current =
@@ -243,14 +290,14 @@ export function ProductionQualityTab({
                     {doc.originalFilename} · rev. {doc.currentVersionNumber}
                   </span>
                   {current ? (
-                    <Can permission="quality.create">
+                    <Can anyOf={["quality.create", "quality.inspect"]}>
                       <Button
                         size="sm"
                         variant="secondary"
                         loading={acting}
                         onClick={() => startFromVersion(current.id)}
                       >
-                        Anotar de nuevo
+                        Anotar
                       </Button>
                     </Can>
                   ) : null}

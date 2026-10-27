@@ -121,7 +121,24 @@ export function calcSampleCount(fabricatedQty, everyN) {
   const qty = Number(fabricatedQty) || 0;
   const n = Number(everyN) || 0;
   if (qty <= 0 || n <= 0) return 0;
-  return Math.ceil(qty / n);
+  return Math.floor(qty / n);
+}
+
+/** 1 de cada N: piezas N, 2N, 3N... (ej. cada 4 → 4, 8, 12). */
+export function isPieceInSample(pieceNumber, everyN) {
+  const num = Number(pieceNumber) || 0;
+  const n = Number(everyN) || 0;
+  if (num <= 0 || n <= 0) return false;
+  return num % n === 0;
+}
+
+/**
+ * En muestreo solo se muestran las piezas a revisar (muestra o 1a pieza).
+ * En 100% se muestran todas.
+ */
+export function piecesForReview(pieces = [], inspectionMode = "FULL") {
+  if (inspectionMode !== "SAMPLE") return pieces || [];
+  return (pieces || []).filter((p) => p.isSample || p.isFirstPiece);
 }
 
 export function pieceLabel(num) {
