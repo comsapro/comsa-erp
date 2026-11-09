@@ -4,6 +4,8 @@ import {
   excelColumnLabel,
   nextAnnotationLabel,
   calculateMeasurementResult,
+  measurementTolerancesFromLimits,
+  resolveMeasurementTolerances,
   clampNormalized,
   computeQualityStatus,
   summarizeAnnotations,
@@ -13,6 +15,7 @@ import {
 } from "../domains/quality/calculations.js";
 import { SYSTEM_ROLES, ALL_PERMISSION_CODES } from "../lib/permissions/catalog.js";
 import { buildMenu } from "../lib/navigation/menu.js";
+import { closeInspectionSchema } from "../domains/quality/schemas.js";
 
 test("excelColumnLabel genera A, Z, AA, AB", () => {
   assert.equal(excelColumnLabel(0), "A");
@@ -35,6 +38,21 @@ test("nextAnnotationLabel conserva familia de letras si ya existia", () => {
   const used = [];
   for (let i = 0; i < 26; i += 1) used.push(excelColumnLabel(i));
   assert.equal(nextAnnotationLabel(used), "AA");
+});
+
+test("closeInspectionSchema permite resolver controles especiales existentes", () => {
+  const parsed = closeInspectionSchema.safeParse({
+    result: "CONFORMING",
+    specialChecks: [
+      {
+        id: "check-1",
+        checkType: "VISUAL",
+        required: true,
+        result: "CONFORMING",
+      },
+    ],
+  });
+  assert.equal(parsed.success, true);
 });
 
 test("evaluateIntervalReadings marca OK/NO OK por medicion", async () => {
@@ -114,6 +132,84 @@ test("calculateMeasurementResult usa valor absoluto de tolerancias negativas", (
   });
   assert.equal(result.minimum, 9.95);
   assert.equal(result.result, "PASS");
+});
+
+test("los limites 249-251 alrededor de nominal 250 rechazan una medicion de 4", () => {
+  const tolerances = resolveMeasurementTolerances({
+    mode: "ABSOLUTE",
+    nominalValue: 250,
+    lowerLimit: 249,
+    upperLimit: 251,
+  });
+  assert.deepEqual(tolerances, { upperTolerance: 1, lowerTolerance: 1 });
+  assert.equal(
+    calculateMeasurementResult({
+      nominalValue: 250,
+      measuredValue: 4,
+      ...tolerances,
+    }).result,
+    "FAIL"
+  );
+});
+
+test("las tolerancias relativas generan rango alrededor del nominal", () => {
+  const tolerances = resolveMeasurementTolerances({
+    mode: "NOMINAL",
+    nominalValue: 2,
+    upperTolerance: 0.05,
+    lowerTolerance: -0.05,
+  });
+  assert.deepEqual(tolerances, { upperTolerance: 0.05, lowerTolerance: 0.05 });
+  assert.deepEqual(
+    calculateMeasurementResult({
+      nominalValue: 2,
+      measuredValue: 2,
+      ...tolerances,
+    }),
+    { minimum: 1.95, maximum: 2.05, result: "PASS" }
+  );
+});
+
+test("modo absoluto y modo nominal tienen validacion separada", () => {
+  assert.throws(
+    () =>
+      resolveMeasurementTolerances({
+        mode: "ABSOLUTE",
+        nominalValue: 2,
+        lowerLimit: 2.1,
+        upperLimit: 3,
+      }),
+    /deben incluir el valor nominal/
+  );
+  assert.throws(
+    () =>
+      resolveMeasurementTolerances({
+        mode: "INVALID",
+        nominalValue: 2,
+      }),
+    /Selecciona el tipo de rango/
+  );
+});
+
+test("los limites aceptables deben incluir el valor nominal", () => {
+  assert.throws(
+    () =>
+      measurementTolerancesFromLimits({
+        nominalValue: 250,
+        lowerLimit: 249,
+        upperLimit: 249,
+      }),
+    /deben incluir el valor nominal/
+  );
+  assert.throws(
+    () =>
+      measurementTolerancesFromLimits({
+        nominalValue: 250,
+        lowerLimit: 251,
+        upperLimit: 252,
+      }),
+    /deben incluir el valor nominal/
+  );
 });
 
 test("clampNormalized acepta 0..1 y rechaza fuera de rango", () => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Field } from "@/components/forms/Field";
@@ -19,7 +19,10 @@ import {
   MEASUREMENT_UNIT_LABELS,
   MAX_INTERVAL_READINGS,
 } from "@/domains/quality/drawing-constants";
-import { evaluateIntervalReadings } from "@/domains/quality/calculations";
+import {
+  evaluateIntervalReadings,
+  resolveMeasurementTolerances,
+} from "@/domains/quality/calculations";
 import { formatDate } from "@/lib/utils/format";
 
 function readingDefaults(count = 1, existing = []) {
@@ -43,10 +46,17 @@ function previewResult(values) {
         value: Number(row.value),
       }));
     if (!readings.length) return null;
-    return evaluateIntervalReadings({
+    const tolerances = resolveMeasurementTolerances({
+      mode: values.rangeMode,
       nominalValue: values.nominalValue,
       upperTolerance: values.upperTolerance,
       lowerTolerance: values.lowerTolerance,
+      upperLimit: values.upperLimit,
+      lowerLimit: values.lowerLimit,
+    });
+    return evaluateIntervalReadings({
+      nominalValue: values.nominalValue,
+      ...tolerances,
       readings,
     });
   } catch {
@@ -60,8 +70,11 @@ const DEFAULTS = {
   comment: "",
   status: "OPEN",
   nominalValue: "",
+  rangeMode: "NOMINAL",
   upperTolerance: "",
   lowerTolerance: "",
+  upperLimit: "",
+  lowerLimit: "",
   unit: "mm",
   unitOther: "",
   instrumentId: "",
@@ -78,15 +91,23 @@ export function AnnotationForm({
   loading = false,
   mode = "create",
 }) {
-  const { register, handleSubmit, watch, reset, setValue, getValues } = useForm({
-    defaultValues: DEFAULTS,
-  });
+  const {
+    register,
+    handleSubmit,
+    control,
+    reset,
+    setValue,
+    getValues,
+    formState: { errors },
+  } = useForm({ defaultValues: DEFAULTS, shouldUnregister: true });
   const [instruments, setInstruments] = useState([]);
-  const type = watch("annotationType");
-  const readingCount = Number(watch("readingCount") || 1);
-  const instrumentId = watch("instrumentId");
-  const readings = watch("readings") || [];
-  const preview = previewResult(watch());
+  const values = useWatch({ control });
+  const type = values.annotationType;
+  const nominalValue = values.nominalValue;
+  const readingCount = Number(values.readingCount || 1);
+  const instrumentId = values.instrumentId;
+  const readings = values.readings || [];
+  const preview = previewResult(values);
   const selectedInstrument = instruments.find((row) => row.id === instrumentId);
 
   useEffect(() => {
@@ -111,10 +132,17 @@ export function AnnotationForm({
       ...DEFAULTS,
       ...(initial || {}),
       nominalValue: initial?.measurement?.nominalValue ?? initial?.nominalValue ?? "",
+      rangeMode: "NOMINAL",
       upperTolerance:
-        initial?.measurement?.upperTolerance ?? initial?.upperTolerance ?? "",
+        initial?.measurement?.upperTolerance != null
+          ? Number(initial.measurement.upperTolerance)
+          : "",
       lowerTolerance:
-        initial?.measurement?.lowerTolerance ?? initial?.lowerTolerance ?? "",
+        initial?.measurement?.lowerTolerance != null
+          ? Number(initial.measurement.lowerTolerance)
+          : "",
+      upperLimit: "",
+      lowerLimit: "",
       unit:
         initial?.measurement?.unit && MEASUREMENT_UNITS.includes(initial.measurement.unit)
           ? initial.measurement.unit
@@ -149,6 +177,14 @@ export function AnnotationForm({
       status: values.status,
     };
     if (values.annotationType === "MEASUREMENT") {
+      const tolerances = resolveMeasurementTolerances({
+        mode: values.rangeMode,
+        nominalValue: values.nominalValue,
+        upperTolerance: values.upperTolerance,
+        lowerTolerance: values.lowerTolerance,
+        upperLimit: values.upperLimit,
+        lowerLimit: values.lowerLimit,
+      });
       const readingsPayload = (values.readings || [])
         .map((row, index) => ({
           index: index + 1,
@@ -158,8 +194,7 @@ export function AnnotationForm({
       payload.measurement = {
         nominalValue: Number(values.nominalValue),
         measuredValue: readingsPayload[0]?.value,
-        upperTolerance: Number(values.upperTolerance),
-        lowerTolerance: Number(values.lowerTolerance),
+        ...tolerances,
         unit: values.unit,
         unitOther: values.unitOther,
         instrumentId: values.instrumentId || null,
@@ -201,12 +236,19 @@ export function AnnotationForm({
         {type === "MEASUREMENT" ? (
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Valor nominal" htmlFor="nominalValue" required>
+              <Field
+                label="Valor nominal"
+                htmlFor="nominalValue"
+                required
+                error={errors.nominalValue?.message}
+              >
                 <Input
                   id="nominalValue"
                   type="number"
                   step="any"
-                  {...register("nominalValue")}
+                  {...register("nominalValue", {
+                    required: "El valor nominal es obligatorio",
+                  })}
                 />
               </Field>
               <Field label="Unidad" htmlFor="unit">
@@ -218,23 +260,106 @@ export function AnnotationForm({
                   ))}
                 </Select>
               </Field>
-              <Field label="Tol. superior" htmlFor="upperTolerance" required>
-                <Input
-                  id="upperTolerance"
-                  type="number"
-                  step="any"
-                  {...register("upperTolerance")}
-                />
+              <Field
+                label="Tipo de rango"
+                htmlFor="rangeMode"
+                className="col-span-2"
+                required
+              >
+                <Select id="rangeMode" {...register("rangeMode")}>
+                  <option value="NOMINAL">Tolerancias respecto al nominal</option>
+                  <option value="ABSOLUTE">Límites aceptables absolutos</option>
+                </Select>
               </Field>
-              <Field label="Tol. inferior" htmlFor="lowerTolerance" required>
-                <Input
-                  id="lowerTolerance"
-                  type="number"
-                  step="any"
-                  {...register("lowerTolerance")}
-                />
-              </Field>
-              {watch("unit") === "other" ? (
+              <p className="col-span-2 -mt-2 text-xs text-content-muted">
+                {values.rangeMode === "ABSOLUTE"
+                  ? "Captura los valores mínimo y máximo aceptables. Ejemplo: 249 a 251."
+                  : "Captura cuánto puede variar el valor nominal. Ejemplo: nominal 2 y tolerancias 0.05 y -0.05."}
+              </p>
+              {values.rangeMode === "ABSOLUTE" ? (
+                <>
+                  <Field
+                    label="Límite superior aceptable"
+                    htmlFor="upperLimit"
+                    required
+                    error={errors.upperLimit?.message}
+                  >
+                    <Input
+                      id="upperLimit"
+                      type="number"
+                      step="any"
+                      {...register("upperLimit", {
+                        required: "El límite superior es obligatorio",
+                        validate: (value) =>
+                          Number.isFinite(Number(value)) &&
+                          Number(value) >= Number(nominalValue) ||
+                          "El límite superior debe ser mayor o igual al valor nominal",
+                      })}
+                    />
+                  </Field>
+                  <Field
+                    label="Límite inferior aceptable"
+                    htmlFor="lowerLimit"
+                    required
+                    error={errors.lowerLimit?.message}
+                  >
+                    <Input
+                      id="lowerLimit"
+                      type="number"
+                      step="any"
+                      {...register("lowerLimit", {
+                        required: "El límite inferior es obligatorio",
+                        validate: (value) =>
+                          Number.isFinite(Number(value)) &&
+                          Number(value) <= Number(nominalValue) ||
+                          "El límite inferior debe ser menor o igual al valor nominal",
+                      })}
+                    />
+                  </Field>
+                </>
+              ) : (
+                <>
+                  <Field
+                    label="Tol. superior"
+                    htmlFor="upperTolerance"
+                    required
+                    error={errors.upperTolerance?.message}
+                  >
+                    <Input
+                      id="upperTolerance"
+                      type="number"
+                      step="any"
+                      placeholder="Ej. 0.05"
+                      {...register("upperTolerance", {
+                        required: "La tolerancia superior es obligatoria",
+                        validate: (value) =>
+                          Number.isFinite(Number(value)) ||
+                          "Ingresa una tolerancia válida",
+                      })}
+                    />
+                  </Field>
+                  <Field
+                    label="Tol. inferior"
+                    htmlFor="lowerTolerance"
+                    required
+                    error={errors.lowerTolerance?.message}
+                  >
+                    <Input
+                      id="lowerTolerance"
+                      type="number"
+                      step="any"
+                      placeholder="Ej. -0.05"
+                      {...register("lowerTolerance", {
+                        required: "La tolerancia inferior es obligatoria",
+                        validate: (value) =>
+                          Number.isFinite(Number(value)) ||
+                          "Ingresa una tolerancia válida",
+                      })}
+                    />
+                  </Field>
+                </>
+              )}
+              {values.unit === "other" ? (
                 <Field label="Unidad (otro)" htmlFor="unitOther" className="col-span-2">
                   <Input id="unitOther" {...register("unitOther")} />
                 </Field>

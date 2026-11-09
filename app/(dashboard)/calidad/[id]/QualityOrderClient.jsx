@@ -7,6 +7,7 @@ import { api } from "@/lib/api/client";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
@@ -20,6 +21,7 @@ import {
   QUALITY_ITEM_STATUS_LABELS,
   QUALITY_PIECE_STATUS_LABELS,
   QUALITY_RESULT_LABELS,
+  QUALITY_SPECIAL_CHECK_TYPE_LABELS,
   piecesForReview,
 } from "@/domains/quality/constants";
 import { StartInspectionModal } from "@/components/quality/StartInspectionModal";
@@ -43,6 +45,14 @@ export default function QualityOrderClient({ orderId }) {
     item: null,
     piece: null,
   });
+  const [missingProcessModal, setMissingProcessModal] = useState({
+    open: false,
+    item: null,
+    inspectionId: null,
+  });
+  const [processCatalog, setProcessCatalog] = useState([]);
+  const [selectedMissingProcessIds, setSelectedMissingProcessIds] = useState([]);
+  const [missingProcessNotes, setMissingProcessNotes] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -107,13 +117,20 @@ export default function QualityOrderClient({ orderId }) {
     }
   }
 
-  async function closeInspection(inspectionId, result) {
+  async function closeInspection(inspection, result) {
     setBusy(true);
     try {
-      await api.post(`/api/calidad/inspecciones/${inspectionId}/cerrar`, {
+      await api.post(`/api/calidad/inspecciones/${inspection.id}/cerrar`, {
         result,
         measurements: [],
-        specialChecks: [],
+        specialChecks: (inspection.specialChecks || [])
+          .filter((check) => check.required && check.result === "PENDING")
+          .map((check) => ({
+            id: check.id,
+            checkType: check.checkType,
+            required: check.required,
+            result,
+          })),
       });
       toast({ variant: "success", title: "Inspeccion cerrada" });
       await load();
@@ -126,6 +143,61 @@ export default function QualityOrderClient({ orderId }) {
 
   function openRework(item, piece) {
     setReworkModal({ open: true, item, piece });
+  }
+
+  async function openMissingProcessRequest(item, inspection) {
+    setBusy(true);
+    try {
+      const result = await api.get("/api/produccion/procesos-catalogo");
+      setProcessCatalog(Array.isArray(result) ? result : result?.data || []);
+      setSelectedMissingProcessIds([]);
+      setMissingProcessNotes("");
+      setMissingProcessModal({
+        open: true,
+        item,
+        inspectionId: inspection.id,
+      });
+    } catch (err) {
+      toast({
+        variant: "error",
+        title: "No se pudieron cargar los procesos",
+        description: err.message,
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitMissingProcessRequest() {
+    const item = missingProcessModal.item;
+    if (!item || !missingProcessModal.inspectionId) return;
+    if (!selectedMissingProcessIds.length) {
+      toast({
+        variant: "error",
+        title: "Selecciona al menos un proceso faltante",
+      });
+      return;
+    }
+    setBusy(true);
+    try {
+      const result = await api.post("/api/calidad/ncr?action=missing-process", {
+        qualityInspectionId: missingProcessModal.inspectionId,
+        productionItemId: item.id,
+        manufacturingProcessIds: selectedMissingProcessIds,
+        notes: missingProcessNotes || null,
+      });
+      toast({
+        variant: "success",
+        title: "Procesos solicitados a Produccion",
+        description: `${result.processes.length} proceso(s) agregado(s). Se creo una alerta interna; el correo esta pendiente de configurar.`,
+      });
+      setMissingProcessModal({ open: false, item: null, inspectionId: null });
+      await load();
+    } catch (err) {
+      toast({ variant: "error", title: "No se pudo solicitar el proceso", description: err.message });
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function submitRework({ cause, instructions, processes }) {
@@ -468,140 +540,148 @@ export default function QualityOrderClient({ orderId }) {
                 <div>
                   <p className="mb-2 text-sm font-medium">Inspecciones recientes</p>
                   <ul className="space-y-2">
-                    {inspections.map((ins) => (
-                      <li
-                        key={ins.id}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded border border-border px-3 py-2 text-sm"
-                      >
-                        <span>
-                          {ins.type} · {ins.status} ·{" "}
-                          {QUALITY_RESULT_LABELS[ins.result] || ins.result}
-                          {ins.inspector?.name ? ` · ${ins.inspector.name}` : ""}
-                        </span>
-                        {ins.status !== "CLOSED" && (
-                          <Can permission="quality.close_inspection">
-                            <div className="flex gap-1">
-                              <Button
-                                size="sm"
-                                loading={busy}
-                                onClick={() => closeInspection(ins.id, "CONFORMING")}
-                              >
-                                Conforme
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="secondary"
-                                loading={busy}
-                                onClick={() =>
-                                  closeInspection(ins.id, "NON_CONFORMING")
-                                }
-                              >
-                                No conforme
-                              </Button>
-                            </div>
-                          </Can>
-                        )}
-                        {ins.type === "FIRST_PIECE" &&
-                          ins.status === "CLOSED" &&
-                          ins.result === "CONFORMING" &&
-                          !cfg?.firstPieceReleased && (
-                            <Can permission="quality.release_first_piece">
-                              <Button
-                                size="sm"
-                                loading={busy}
-                                onClick={() =>
-                                  run(item.id, "release-first-piece", {
-                                    qualityPieceId: ins.qualityPieceId,
-                                    qualityInspectionId: ins.id,
-                                  })
-                                }
-                              >
-                                Liberar 1a pieza
-                              </Button>
+                    {inspections.map((ins) => {
+                      const pendingChecks = (ins.specialChecks || []).filter(
+                        (check) => check.required && check.result === "PENDING"
+                      );
+                      return (
+                        <li
+                          key={ins.id}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded border border-border px-3 py-2 text-sm"
+                        >
+                          <div>
+                            <span>
+                              {ins.type} · {ins.status} ·{" "}
+                              {QUALITY_RESULT_LABELS[ins.result] || ins.result}
+                              {ins.inspector?.name ? ` · ${ins.inspector.name}` : ""}
+                            </span>
+                            {pendingChecks.length > 0 && (
+                              <p className="mt-1 text-xs text-content-muted">
+                                El resultado elegido también cerrará:{" "}
+                                {pendingChecks
+                                  .map(
+                                    (check) =>
+                                      QUALITY_SPECIAL_CHECK_TYPE_LABELS[
+                                        check.checkType
+                                      ] || check.checkType
+                                  )
+                                  .join(", ")}
+                              </p>
+                            )}
+                          </div>
+                          {ins.status !== "CLOSED" && (
+                            <Can permission="quality.close_inspection">
+                              <div className="flex gap-1">
+                                <Button
+                                  size="sm"
+                                  loading={busy}
+                                  onClick={() =>
+                                    closeInspection(ins, "CONFORMING")
+                                  }
+                                >
+                                  Conforme
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  loading={busy}
+                                  onClick={() =>
+                                    closeInspection(ins, "NON_CONFORMING")
+                                  }
+                                >
+                                  No conforme
+                                </Button>
+                              </div>
                             </Can>
                           )}
-                      </li>
-                    ))}
+                          {ins.type === "FIRST_PIECE" &&
+                            ins.status === "CLOSED" &&
+                            ins.result === "CONFORMING" &&
+                            !cfg?.firstPieceReleased && (
+                              <Can permission="quality.release_first_piece">
+                                <Button
+                                  size="sm"
+                                  loading={busy}
+                                  onClick={() =>
+                                    run(item.id, "release-first-piece", {
+                                      qualityPieceId: ins.qualityPieceId,
+                                      qualityInspectionId: ins.id,
+                                    })
+                                  }
+                                >
+                                  Liberar 1a pieza
+                                </Button>
+                              </Can>
+                            )}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
 
-              <Can permission="quality.record_ncr">
+              <Can anyOf={["quality.record_ncr", "quality.inspect", "quality.create_rework"]}>
                 <div className="rounded border border-dashed border-border p-3">
                   <p className="mb-2 text-sm font-medium">Registrar NCR / proceso faltante</p>
                   <div className="flex flex-wrap gap-2">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      loading={busy}
-                      disabled={!inspections[0]}
-                      onClick={async () => {
-                        if (!inspections[0]) return;
-                        setBusy(true);
-                        try {
-                          await api.post("/api/calidad/ncr", {
-                            qualityInspectionId: inspections[0].id,
-                            description: "No conformidad registrada desde UI",
-                            area: "Calidad",
-                          });
-                          toast({ variant: "success", title: "NCR registrado" });
-                        } catch (err) {
-                          toast({
-                            variant: "error",
-                            title: "Error",
-                            description: err.message,
-                          });
-                        } finally {
-                          setBusy(false);
+                    <Can permission="quality.record_ncr">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        loading={busy}
+                        disabled={!inspections[0]}
+                        onClick={async () => {
+                          if (!inspections[0]) return;
+                          setBusy(true);
+                          try {
+                            await api.post("/api/calidad/ncr", {
+                              qualityInspectionId: inspections[0].id,
+                              description: "No conformidad registrada desde UI",
+                              area: "Calidad",
+                            });
+                            toast({ variant: "success", title: "NCR registrado" });
+                          } catch (err) {
+                            toast({
+                              variant: "error",
+                              title: "Error",
+                              description: err.message,
+                            });
+                          } finally {
+                            setBusy(false);
+                          }
+                        }}
+                      >
+                        NCR rapido
+                      </Button>
+                    </Can>
+                    <Can permission="quality.inspect">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        loading={busy}
+                        disabled={!inspections[0]}
+                        onClick={() =>
+                          inspections[0] &&
+                          openMissingProcessRequest(item, inspections[0])
                         }
-                      }}
-                    >
-                      NCR rapido
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      loading={busy}
-                      disabled={!inspections[0]}
-                      onClick={async () => {
-                        if (!inspections[0]) return;
-                        setBusy(true);
-                        try {
-                          await api.post("/api/calidad/ncr?action=missing-process", {
-                            qualityInspectionId: inspections[0].id,
-                            productionItemId: item.id,
-                            processName: "Proceso adicional Calidad",
-                            notes: "Detectado en inspeccion",
-                          });
-                          toast({
-                            variant: "success",
-                            title: "Proceso solicitado a Produccion",
-                          });
-                        } catch (err) {
-                          toast({
-                            variant: "error",
-                            title: "Error",
-                            description: err.message,
-                          });
-                        } finally {
-                          setBusy(false);
-                        }
-                      }}
-                    >
-                      Proceso faltante
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      loading={busy}
-                      disabled={!item.qualityConfig?.pieces?.[0]}
-                      onClick={() => {
-                        const piece = item.qualityConfig?.pieces?.[0];
-                        if (piece) openRework(item, piece);
-                      }}
-                    >
-                      Retrabajo (partida)
-                    </Button>
+                      >
+                        Seleccionar procesos faltantes
+                      </Button>
+                    </Can>
+                    <Can permission="quality.create_rework">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        loading={busy}
+                        disabled={!item.qualityConfig?.pieces?.[0]}
+                        onClick={() => {
+                          const piece = item.qualityConfig?.pieces?.[0];
+                          if (piece) openRework(item, piece);
+                        }}
+                      >
+                        Retrabajo (partida)
+                      </Button>
+                    </Can>
                   </div>
                 </div>
               </Can>
@@ -609,6 +689,101 @@ export default function QualityOrderClient({ orderId }) {
           </Card>
         );
       })}
+
+      <Modal
+        open={missingProcessModal.open}
+        onClose={() =>
+          setMissingProcessModal({ open: false, item: null, inspectionId: null })
+        }
+        title="Solicitar procesos faltantes"
+        description={
+          missingProcessModal.item
+            ? `Partida ${missingProcessModal.item.position} · ${missingProcessModal.item.description}`
+            : ""
+        }
+        size="md"
+      >
+        <div className="space-y-4">
+          {(() => {
+            const existingIds = new Set(
+              (missingProcessModal.item?.processes || [])
+                .map((process) => process.manufacturingProcessId)
+                .filter(Boolean)
+            );
+            const available = processCatalog.filter(
+              (process) => !existingIds.has(process.id)
+            );
+            if (!available.length) {
+              return (
+                <Alert variant="info" title="No hay procesos faltantes disponibles">
+                  Todos los procesos activos del catalogo ya estan asignados a esta partida.
+                </Alert>
+              );
+            }
+            return (
+              <fieldset className="space-y-2">
+                <legend className="text-sm font-medium">
+                  Selecciona uno o varios procesos
+                </legend>
+                <ul className="max-h-64 space-y-1 overflow-y-auto rounded border border-border p-2">
+                  {available.map((process) => (
+                    <li key={process.id}>
+                      <label className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 text-sm hover:bg-surface-muted">
+                        <input
+                          type="checkbox"
+                          checked={selectedMissingProcessIds.includes(process.id)}
+                          onChange={(event) =>
+                            setSelectedMissingProcessIds((current) =>
+                              event.target.checked
+                                ? [...current, process.id]
+                                : current.filter((id) => id !== process.id)
+                            )
+                          }
+                        />
+                        <span className="font-medium">{process.name}</span>
+                        <span className="text-xs text-content-muted">
+                          {process.code} · {process.unit}
+                        </span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              </fieldset>
+            );
+          })()}
+          <label className="block text-sm">
+            <span className="mb-1 block font-medium">Notas para Produccion</span>
+            <Textarea
+              value={missingProcessNotes}
+              onChange={(event) => setMissingProcessNotes(event.target.value)}
+              rows={3}
+              placeholder="Indica por que se requieren estos procesos"
+            />
+          </label>
+          <p className="text-xs text-content-muted">
+            Se agregaran a la partida y se enviara una alerta interna a Produccion.
+            La notificacion por correo queda pendiente de configurar el dominio.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="secondary"
+              disabled={busy}
+              onClick={() =>
+                setMissingProcessModal({ open: false, item: null, inspectionId: null })
+              }
+            >
+              Cancelar
+            </Button>
+            <Button
+              loading={busy}
+              disabled={!selectedMissingProcessIds.length}
+              onClick={submitMissingProcessRequest}
+            >
+              Solicitar a Produccion
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <StartInspectionModal
         open={inspectModal.open}

@@ -79,6 +79,25 @@ const DETAIL_INCLUDE = {
       status: true,
       materialsReadyAt: true,
       createdAt: true,
+      items: {
+        select: {
+          sourceItemId: true,
+          status: true,
+          qualityConfig: {
+            select: { inspectionStatus: true },
+          },
+          qualityPieces: {
+            orderBy: { pieceNumber: "asc" },
+            select: {
+              id: true,
+              pieceNumber: true,
+              label: true,
+              status: true,
+              result: true,
+            },
+          },
+        },
+      },
     },
   },
   parentQuote: { select: { id: true, folio: true, version: true } },
@@ -388,6 +407,7 @@ export async function listQuotes(request) {
       { folio: { contains: params.q, mode: "insensitive" } },
       { purchaseOrder: { contains: params.q, mode: "insensitive" } },
       { requisition: { contains: params.q, mode: "insensitive" } },
+      { internalObservations: { contains: params.q, mode: "insensitive" } },
       {
         client: {
           commercialName: { contains: params.q, mode: "insensitive" },

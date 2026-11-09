@@ -33,6 +33,7 @@ import { api, isAbortError, toQuery } from "@/lib/api/client";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { QuoteVersionsNav } from "@/components/quotes/QuoteVersionsNav";
 import { Input } from "@/components/ui/Input";
@@ -51,8 +52,32 @@ import {
   PartidaDetailView,
   partidaLineCounts,
 } from "@/components/quotes/PartidaDetailView";
+import {
+  QUALITY_ITEM_STATUS_LABELS,
+  QUALITY_PIECE_STATUS_LABELS,
+} from "@/domains/quality/constants";
+import {
+  PRODUCTION_STATUS_LABELS,
+  PRODUCTION_STATUS_TONES,
+} from "@/domains/production/constants";
 import { QuoteHeaderEdit } from "@/components/quotes/QuoteHeaderEdit";
 import QuoteItemForm from "./QuoteItemForm";
+
+function findProductionItem(quote, quoteItemId) {
+  for (const order of quote?.productionOrders || []) {
+    const item = order.items?.find((row) => row.sourceItemId === quoteItemId);
+    if (item) return { ...item, orderFolio: order.folio };
+  }
+  return null;
+}
+
+function qualityPieceTone(status) {
+  if (status === "CONFORMING" || status === "RELEASED") return "success";
+  if (status === "NON_CONFORMING") return "danger";
+  if (status === "IN_INSPECTION") return "brand";
+  if (status === "REWORK") return "warning";
+  return "neutral";
+}
 
 export default function QuoteDetailClient({ quoteId }) {
   const router = useRouter();
@@ -789,6 +814,7 @@ export default function QuoteDetailClient({ quoteId }) {
                     counts.extras +
                     counts.installations;
                   const inactive = item.status === "INACTIVE";
+                  const productionItem = findProductionItem(quote, item.id);
                   return (
                     <Fragment key={item.id}>
                       <tr
@@ -830,6 +856,51 @@ export default function QuoteDetailClient({ quoteId }) {
                               : "Sin líneas de costo"}
                             {item.isUrgent ? " · Urgente" : ""}
                           </p>
+                          {productionItem ? (
+                            <div className="mt-2 space-y-1">
+                              <p className="text-xs text-content-muted">
+                                OP {productionItem.orderFolio} · Produccion:{" "}
+                                <Badge
+                                  tone={
+                                    PRODUCTION_STATUS_TONES[productionItem.status] ||
+                                    "neutral"
+                                  }
+                                >
+                                  {PRODUCTION_STATUS_LABELS[productionItem.status] ||
+                                    productionItem.status}
+                                </Badge>
+                                {productionItem.qualityConfig?.inspectionStatus ? (
+                                  <>
+                                    {" "}· Calidad:{" "}
+                                    <Badge>
+                                      {QUALITY_ITEM_STATUS_LABELS[
+                                        productionItem.qualityConfig.inspectionStatus
+                                      ] ||
+                                        productionItem.qualityConfig.inspectionStatus}
+                                    </Badge>
+                                  </>
+                                ) : null}
+                              </p>
+                              {productionItem.qualityPieces?.length ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {productionItem.qualityPieces.map((piece) => (
+                                    <Badge
+                                      key={piece.id}
+                                      tone={qualityPieceTone(piece.status)}
+                                    >
+                                      {piece.label || `Pieza ${piece.pieceNumber}`} ·{" "}
+                                      {QUALITY_PIECE_STATUS_LABELS[piece.status] ||
+                                        piece.status}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="text-xs text-content-muted">
+                                  Sin piezas de calidad registradas
+                                </p>
+                              )}
+                            </div>
+                          ) : null}
                         </td>
                         <td className="px-4 py-3">{Number(item.quantity)}</td>
                         <td className="px-4 py-3">{item.unit || "-"}</td>

@@ -106,6 +106,53 @@ function round4(value) {
   return Math.round((Number(value) + Number.EPSILON) * 10000) / 10000;
 }
 
+export function measurementTolerancesFromLimits({
+  nominalValue,
+  upperLimit,
+  lowerLimit,
+}) {
+  const nominal = toNumber(nominalValue, "Valor nominal");
+  const upper = toNumber(upperLimit, "Limite superior aceptable");
+  const lower = toNumber(lowerLimit, "Limite inferior aceptable");
+  if (lower > nominal || upper < nominal) {
+    throw new Error(
+      "Los limites aceptables deben incluir el valor nominal"
+    );
+  }
+  return {
+    upperTolerance: round4(upper - nominal),
+    lowerTolerance: round4(nominal - lower),
+  };
+}
+
+export function resolveMeasurementTolerances({
+  mode,
+  nominalValue,
+  upperTolerance,
+  lowerTolerance,
+  upperLimit,
+  lowerLimit,
+}) {
+  if (mode === "ABSOLUTE") {
+    return measurementTolerancesFromLimits({
+      nominalValue,
+      upperLimit,
+      lowerLimit,
+    });
+  }
+  if (mode !== "NOMINAL") {
+    throw new Error("Selecciona el tipo de rango");
+  }
+  return {
+    upperTolerance: round4(
+      Math.abs(toNumber(upperTolerance, "Tolerancia superior"))
+    ),
+    lowerTolerance: round4(
+      Math.abs(toNumber(lowerTolerance, "Tolerancia inferior"))
+    ),
+  };
+}
+
 /**
  * Calcula el resultado dimensional. Las tolerancias se tratan como magnitudes
  * (valor absoluto): min = nominal - |inferior|, max = nominal + |superior|.

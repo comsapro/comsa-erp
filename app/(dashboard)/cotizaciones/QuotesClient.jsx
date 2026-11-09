@@ -131,6 +131,27 @@ export default function QuotesClient() {
         render: (r) => r.client?.commercialName || "-",
       },
       {
+        key: "requisition",
+        header: "Requisición",
+        render: (r) => r.requisition || "-",
+      },
+      {
+        key: "purchaseOrder",
+        header: "Orden de compra",
+        render: (r) => r.purchaseOrder || "-",
+      },
+      {
+        key: "internalObservations",
+        header: "Observaciones",
+        className: "max-w-64 truncate",
+        render: (r) =>
+          r.internalObservations ? (
+            <span title={r.internalObservations}>{r.internalObservations}</span>
+          ) : (
+            "-"
+          ),
+      },
+      {
         key: "status",
         header: "Estatus",
         sortable: true,
@@ -290,7 +311,7 @@ export default function QuotesClient() {
       <TableToolbar
         q={list.q}
         onSearch={list.setQ}
-        searchPlaceholder="Buscar por folio, cliente u OC..."
+        searchPlaceholder="Buscar por folio, cliente, requisición, OC u observaciones..."
         onRefresh={list.refresh}
         loading={list.loading}
       />
