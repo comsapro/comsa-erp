@@ -573,7 +573,12 @@ export async function closeInspection(request, inspectionId) {
   const requiredOpen = (inspection.specialChecks || []).filter(
     (c) => c.required && c.result === "PENDING"
   );
-  if (requiredOpen.length) {
+  const resolvedRequiredIds = new Set(
+    (data.specialChecks || [])
+      .filter((check) => check.id && check.result !== "PENDING")
+      .map((check) => check.id)
+  );
+  if (requiredOpen.some((check) => !resolvedRequiredIds.has(check.id))) {
     throw new ValidationError(
       "Hay inspecciones especiales obligatorias pendientes"
     );
@@ -594,14 +599,47 @@ export async function closeInspection(request, inspectionId) {
     }
 
     for (const check of data.specialChecks || []) {
-      await tx.qualitySpecialCheck.create({
-        data: {
-          qualityInspectionId: inspectionId,
-          ...check,
-          completedAt: check.result !== "PENDING" ? new Date() : null,
-          completedBy: actor.id,
-        },
-      });
+      const { id, ...checkData } = check;
+      if (id) {
+        const existingCheck = inspection.specialChecks.find(
+          (existing) => existing.id === id
+        );
+        if (!existingCheck) {
+          throw new ValidationError(
+            "La inspeccion especial no pertenece a esta inspeccion"
+          );
+        }
+        if (
+          checkData.checkType !== existingCheck.checkType ||
+          (checkData.required != null &&
+            checkData.required !== existingCheck.required)
+        ) {
+          throw new ValidationError(
+            "No se puede cambiar el tipo o requisito de una inspeccion especial"
+          );
+        }
+        const updateData = { ...checkData };
+        delete updateData.checkType;
+        delete updateData.required;
+        await tx.qualitySpecialCheck.update({
+          where: { id },
+          data: {
+            ...updateData,
+            completedAt: check.result !== "PENDING" ? new Date() : null,
+            completedBy: actor.id,
+          },
+        });
+      } else {
+        await tx.qualitySpecialCheck.create({
+          data: {
+            qualityInspectionId: inspectionId,
+            ...checkData,
+            completedAt: check.result !== "PENDING" ? new Date() : null,
+            completedBy: actor.id,
+            required: check.required ?? false,
+          },
+        });
+      }
     }
 
     const closed = await tx.qualityInspection.update({
@@ -810,67 +848,121 @@ export async function requestMissingProcess(request) {
 
   const item = await prisma.productionItem.findFirst({
     where: { id: data.productionItemId },
+    include: {
+      processes: {
+        select: { manufacturingProcessId: true, sortOrder: true },
+      },
+    },
   });
   if (!item) throw new NotFoundError("Partida no encontrada");
 
-  const maxSort = await prisma.productionItemProcess.aggregate({
-    where: { productionItemId: item.id },
-    _max: { sortOrder: true },
-  });
-
-  const process = await prisma.productionItemProcess.create({
-    data: {
-      productionItemId: item.id,
-      sourceType: "PRODUCTION",
-      manufacturingProcessId: data.manufacturingProcessId || null,
-      processNameSnapshot: data.processName,
-      unitSnapshot: "HOUR",
-      quotedHours: 0,
-      expectedHours: 0,
-      realHours: 0,
-      sortOrder: (maxSort._max.sortOrder || 0) + 1,
-      notes: data.notes
-        ? `Solicitado por Calidad: ${data.notes}`
-        : "Solicitado por Calidad",
-      createdBy: actor.id,
-      updatedBy: actor.id,
+  const inspection = await prisma.qualityInspection.findFirst({
+    where: {
+      id: data.qualityInspectionId,
+      qualityConfig: { productionItemId: item.id },
     },
+    select: { id: true },
   });
+  if (!inspection) {
+    throw new ValidationError("La inspeccion no pertenece a la partida seleccionada");
+  }
 
-  const reqRow = await prisma.qualityMissingProcessRequest.create({
-    data: {
-      qualityInspectionId: data.qualityInspectionId,
-      productionOrderId: item.productionOrderId,
-      productionItemId: item.id,
-      processName: data.processName,
-      manufacturingProcessId: data.manufacturingProcessId || null,
-      notes: data.notes || null,
-      productionProcessId: process.id,
-      createdBy: actor.id,
+  const catalogProcesses = await prisma.manufacturingProcess.findMany({
+    where: {
+      id: { in: data.manufacturingProcessIds },
+      deletedAt: null,
+      status: "ACTIVE",
     },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, unit: true },
+  });
+  if (catalogProcesses.length !== data.manufacturingProcessIds.length) {
+    throw new ValidationError("Uno o mas procesos ya no estan disponibles");
+  }
+
+  const existingProcessIds = new Set(
+    item.processes.map((process) => process.manufacturingProcessId).filter(Boolean)
+  );
+  const duplicateProcesses = catalogProcesses.filter((process) =>
+    existingProcessIds.has(process.id)
+  );
+  if (duplicateProcesses.length) {
+    throw new ConflictError(
+      `La partida ya tiene estos procesos: ${duplicateProcesses.map((p) => p.name).join(", ")}`
+    );
+  }
+
+  const firstSortOrder =
+    Math.max(-1, ...item.processes.map((process) => process.sortOrder)) + 1;
+  const { requests, alert } = await prisma.$transaction(async (tx) => {
+    const created = [];
+    for (const [index, catalog] of catalogProcesses.entries()) {
+      const process = await tx.productionItemProcess.create({
+        data: {
+          productionItemId: item.id,
+          sourceType: "PRODUCTION",
+          manufacturingProcessId: catalog.id,
+          processNameSnapshot: catalog.name,
+          unitSnapshot: catalog.unit,
+          quotedHours: 0,
+          expectedHours: 0,
+          realHours: 0,
+          sortOrder: firstSortOrder + index,
+          notes: data.notes
+            ? `Solicitado por Calidad: ${data.notes}`
+            : "Solicitado por Calidad",
+          createdBy: actor.id,
+          updatedBy: actor.id,
+        },
+      });
+
+      const requestRow = await tx.qualityMissingProcessRequest.create({
+        data: {
+          qualityInspectionId: data.qualityInspectionId,
+          productionOrderId: item.productionOrderId,
+          productionItemId: item.id,
+          processName: catalog.name,
+          manufacturingProcessId: catalog.id,
+          notes: data.notes || null,
+          productionProcessId: process.id,
+          createdBy: actor.id,
+        },
+      });
+      created.push({ request: requestRow, process });
+    }
+    const alertRow = await tx.qualityAlert.create({
+      data: {
+        audience: "PRODUCTION",
+        title: "Proceso faltante detectado por Calidad",
+        body: `Partida ${item.position} - ${item.description}: Calidad solicito ${catalogProcesses.map((process) => process.name).join(", ")}. Alerta interna; el correo no esta configurado.`,
+        eventType: "MISSING_PROCESS",
+        productionOrderId: item.productionOrderId,
+        entityType: "QualityMissingProcessRequest",
+        entityId: created[0].request.id,
+        createdBy: actor.id,
+      },
+    });
+    return { requests: created, alert: alertRow };
   });
 
-  await createAlert({
-    audience: "PRODUCTION",
-    title: "Proceso faltante detectado por Calidad",
-    body: `Se agrego el proceso "${data.processName}" a la partida.`,
-    eventType: "MISSING_PROCESS",
-    productionOrderId: item.productionOrderId,
-    entityType: "QualityMissingProcessRequest",
-    entityId: reqRow.id,
-    createdBy: actor.id,
-  });
+  await Promise.all(
+    requests.map(({ request: requestRow }) =>
+      recordAudit({
+        actor,
+        module: "quality",
+        entity: "QualityMissingProcessRequest",
+        entityId: requestRow.id,
+        action: AUDIT_ACTIONS.CREATE,
+        newData: requestRow,
+      })
+    )
+  );
 
-  await recordAudit({
-    actor,
-    module: "quality",
-    entity: "QualityMissingProcessRequest",
-    entityId: reqRow.id,
-    action: AUDIT_ACTIONS.CREATE,
-    newData: reqRow,
+  return jsonCreated({
+    requests: requests.map(({ request: requestRow }) => requestRow),
+    processes: requests.map(({ process }) => process),
+    alert,
   });
-
-  return jsonCreated({ request: reqRow, process });
 }
 
 export async function createReworkOrder(request) {

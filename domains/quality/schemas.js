@@ -8,7 +8,7 @@ import {
   INSTRUMENT_STATUSES,
   QUALITY_ALERT_STATUS,
   QUALITY_EVIDENCE_STAGES,
-} from "./constants";
+} from "./constants.js";
 
 export const quantityUpdateSchema = z.object({
   fabricatedQty: z.coerce.number().min(0),
@@ -60,8 +60,9 @@ export const measurementSchema = z.object({
 });
 
 export const specialCheckSchema = z.object({
+  id: z.string().min(1).optional(),
   checkType: z.enum(QUALITY_SPECIAL_CHECK_TYPES),
-  required: z.boolean().optional().default(false),
+  required: z.boolean().optional(),
   method: z.string().optional().nullable(),
   unit: z.string().optional().nullable(),
   expectedValue: z.string().optional().nullable(),
@@ -92,9 +93,16 @@ export const ncrSchema = z.object({
 export const missingProcessSchema = z.object({
   qualityInspectionId: z.string().min(1),
   productionItemId: z.string().min(1),
-  processName: z.string().min(1),
-  manufacturingProcessId: z.string().optional().nullable(),
+  manufacturingProcessIds: z.array(z.string().min(1)).min(1).max(20),
   notes: z.string().optional().nullable(),
+}).superRefine((data, ctx) => {
+  if (new Set(data.manufacturingProcessIds).size !== data.manufacturingProcessIds.length) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "No repitas procesos",
+      path: ["manufacturingProcessIds"],
+    });
+  }
 });
 
 const reworkProcessSchema = z.object({
