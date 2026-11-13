@@ -36,6 +36,21 @@ export const QUALITY_PIECE_STATUS_LABELS = {
   RELEASED: "Liberada",
 };
 
+export function filterQualityInboxRows(rows, filter) {
+  if (filter === "first-piece-pending") {
+    return rows.filter(
+      (row) => row.requiresFirstPiece && !row.firstPieceReleased
+    );
+  }
+  if (filter === "first-piece-released") {
+    return rows.filter((row) => row.requiresFirstPiece && row.firstPieceReleased);
+  }
+  if (filter === "no-first-piece") {
+    return rows.filter((row) => !row.requiresFirstPiece);
+  }
+  return rows;
+}
+
 export const QUALITY_EVIDENCE_STAGES = [
   "INSPECTION",
   "DEFECT",

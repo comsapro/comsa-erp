@@ -6,7 +6,10 @@ import {
   canViewAllQuotes,
 } from "../domains/quotes/access-rules.js";
 import { assertSellerReviewEdit } from "../domains/quotes/seller-review.js";
-import { quoteCanPrint } from "../domains/quotes/constants.js";
+import {
+  getQuoteObservations,
+  quoteCanPrint,
+} from "../domains/quotes/constants.js";
 import { poCanPrint } from "../domains/purchase-orders/constants.js";
 import { directOrderCanSubmit } from "../domains/direct-orders/constants.js";
 
@@ -46,6 +49,24 @@ test("administrador ve todas aunque no liste el permiso", () => {
   const admin = { roles: [{ name: "Administrador" }], permissions: [] };
   assert.equal(canViewAllQuotes(admin), true);
   assert.equal(canAssignQuoteSeller(admin), true);
+});
+
+test("muestra la observacion legada sin identificador ni metadatos de importacion", () => {
+  assert.equal(
+    getQuoteObservations({
+      internalObservations:
+        "[legacy:abc-123] Comentario original | aprobadoPor:Persona",
+    }),
+    "Comentario original"
+  );
+  assert.equal(
+    getQuoteObservations({ internalObservations: "[legacy:abc-123]" }),
+    ""
+  );
+  assert.equal(
+    getQuoteObservations({ internalObservations: "Observacion normal" }),
+    "Observacion normal"
+  );
 });
 
 test("orden directa no se imprime hasta la aprobacion comercial", () => {

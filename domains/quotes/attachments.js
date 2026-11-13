@@ -530,6 +530,28 @@ export async function servePrivateBlob(request) {
     return streamBlob(pathname, productionAttachment);
   }
 
+  const calibration = await prisma.instrumentCalibration.findFirst({
+    where: { certificatePathname: pathname },
+  });
+  if (calibration) {
+    const certificateFileName = calibration.certificateFileName || "";
+    const contentType = /\.jpe?g$/i.test(certificateFileName)
+      ? "image/jpeg"
+      : /\.png$/i.test(certificateFileName)
+        ? "image/png"
+        : "application/pdf";
+    await requireAnyPermission([
+      "quality.manage_instruments",
+      "quality.manage_calibrations",
+      "quality.inspect",
+      "quality.view",
+    ]);
+    return streamBlob(pathname, {
+      fileName: certificateFileName,
+      contentType,
+    });
+  }
+
   throw new NotFoundError("Archivo no encontrado");
 }
 

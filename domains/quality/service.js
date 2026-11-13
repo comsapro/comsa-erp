@@ -660,18 +660,8 @@ export async function closeInspection(request, inspectionId) {
           result: data.result,
           status:
             data.result === "CONFORMING"
-              ? inspection.type === "FIRST_PIECE"
-                ? "RELEASED"
-                : "CONFORMING"
+              ? "CONFORMING"
               : "NON_CONFORMING",
-          releasedAt:
-            data.result === "CONFORMING" && inspection.type === "FIRST_PIECE"
-              ? new Date()
-              : undefined,
-          releasedBy:
-            data.result === "CONFORMING" && inspection.type === "FIRST_PIECE"
-              ? actor.id
-              : undefined,
           updatedBy: actor.id,
         },
       });
@@ -679,7 +669,7 @@ export async function closeInspection(request, inspectionId) {
 
     const inspectedQty = dec(inspection.qualityConfig.inspectedQty) + 1;
     const releasedQty =
-      data.result === "CONFORMING"
+      data.result === "CONFORMING" && inspection.type !== "FIRST_PIECE"
         ? dec(inspection.qualityConfig.releasedQty) + 1
         : dec(inspection.qualityConfig.releasedQty);
 
@@ -697,13 +687,8 @@ export async function closeInspection(request, inspectionId) {
         inspectedQty,
         releasedQty,
         firstPieceReleased:
-          inspection.type === "FIRST_PIECE" && data.result === "CONFORMING"
-            ? true
-            : inspection.qualityConfig.firstPieceReleased,
-        firstPieceReleasedAt:
-          inspection.type === "FIRST_PIECE" && data.result === "CONFORMING"
-            ? new Date()
-            : inspection.qualityConfig.firstPieceReleasedAt,
+          inspection.qualityConfig.firstPieceReleased,
+        firstPieceReleasedAt: inspection.qualityConfig.firstPieceReleasedAt,
         inspectionStatus: nextStatus,
         updatedBy: actor.id,
       },
@@ -753,10 +738,31 @@ export async function releaseFirstPiece(request, itemId) {
   const actor = await getActor(request);
   const data = releaseFirstPieceSchema.parse(await request.json());
   const config = await ensureItemConfig(itemId, actor.id);
+  if (!config.requiresFirstPiece) {
+    throw new ValidationError("Esta partida no requiere liberar primera pieza");
+  }
+  if (config.firstPieceReleased) {
+    throw new ConflictError("La primera pieza ya fue liberada");
+  }
+  const piece = await prisma.qualityPiece.findFirst({
+    where: {
+      id: data.qualityPieceId,
+      qualityConfigId: config.id,
+      isFirstPiece: true,
+      status: "CONFORMING",
+      result: "CONFORMING",
+    },
+  });
+  if (!piece) {
+    throw new ValidationError(
+      "La pieza indicada no es la primera pieza conforme pendiente de liberar"
+    );
+  }
   const inspection = await prisma.qualityInspection.findFirst({
     where: {
       id: data.qualityInspectionId,
       qualityConfigId: config.id,
+      qualityPieceId: piece.id,
       type: "FIRST_PIECE",
       status: "CLOSED",
       result: "CONFORMING",
@@ -768,36 +774,66 @@ export async function releaseFirstPiece(request, itemId) {
     );
   }
 
-  const updated = await prisma.qualityItemConfig.update({
-    where: { id: config.id },
-    data: {
-      firstPieceReleased: true,
-      firstPieceReleasedAt: new Date(),
-      inspectionStatus: "IN_PROGRESS",
-      notes: data.observations || config.notes,
-      updatedBy: actor.id,
-    },
+  const { updated, releasedPiece } = await prisma.$transaction(async (tx) => {
+    const configUpdate = await tx.qualityItemConfig.updateMany({
+      where: { id: config.id, firstPieceReleased: false },
+      data: {
+        firstPieceReleased: true,
+        firstPieceReleasedAt: new Date(),
+        inspectionStatus: "IN_PROGRESS",
+        releasedQty: { increment: 1 },
+        notes: data.observations || config.notes,
+        updatedBy: actor.id,
+      },
+    });
+    if (configUpdate.count !== 1) {
+      throw new ConflictError("La primera pieza ya fue liberada");
+    }
+
+    const releasedPiece = await tx.qualityPiece.update({
+      where: { id: piece.id },
+      data: {
+        status: "RELEASED",
+        releasedAt: new Date(),
+        releasedBy: actor.id,
+        updatedBy: actor.id,
+      },
+    });
+    const updated = await tx.qualityItemConfig.findUnique({
+      where: { id: config.id },
+    });
+    await tx.qualityAlert.create({
+      data: {
+        audience: "PRODUCTION",
+        title: "Primera pieza liberada",
+        body: "Calidad libero la primera pieza; puede continuar el lote.",
+        eventType: "FIRST_PIECE_RELEASED",
+        productionOrderId: config.productionOrderId,
+        entityType: "QualityItemConfig",
+        entityId: config.id,
+        createdBy: actor.id,
+      },
+    });
+    return { updated, releasedPiece };
   });
 
-  await prisma.qualityPiece.updateMany({
-    where: { id: data.qualityPieceId },
-    data: {
-      status: "RELEASED",
-      releasedAt: new Date(),
-      releasedBy: actor.id,
-      result: "CONFORMING",
-    },
-  });
-
-  await createAlert({
-    audience: "PRODUCTION",
-    title: "Primera pieza liberada",
-    body: "Calidad libero la primera pieza; puede continuar el lote.",
-    eventType: "FIRST_PIECE_RELEASED",
-    productionOrderId: config.productionOrderId,
-    entityType: "QualityItemConfig",
+  await recordAudit({
+    actor,
+    module: "quality",
+    entity: "QualityItemConfig",
     entityId: config.id,
-    createdBy: actor.id,
+    action: AUDIT_ACTIONS.UPDATE,
+    previousData: config,
+    newData: updated,
+  });
+  await recordAudit({
+    actor,
+    module: "quality",
+    entity: "QualityPiece",
+    entityId: releasedPiece.id,
+    action: AUDIT_ACTIONS.UPDATE,
+    previousData: piece,
+    newData: releasedPiece,
   });
 
   return jsonOk(updated);
@@ -1254,36 +1290,58 @@ export async function addCalibration(request, instrumentId) {
   await requirePermission("quality.manage_calibrations");
   const actor = await getActor(request);
   const data = calibrationSchema.parse(await request.json());
+  const { calibrationPeriodDays, ...calibrationData } = data;
   const instrument = await prisma.measuringInstrument.findFirst({
     where: { id: instrumentId, deletedAt: null },
   });
   if (!instrument) throw new NotFoundError("Instrumento no encontrado");
 
-  const cal = await prisma.instrumentCalibration.create({
-    data: {
-      instrumentId,
-      ...data,
-      createdBy: actor.id,
-    },
+  let status = "ACTIVE";
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const soon = new Date(today);
+  soon.setUTCDate(soon.getUTCDate() + 30);
+  if (data.nextDueAt < today) status = "EXPIRED";
+  else if (data.nextDueAt <= soon) status = "DUE_SOON";
+
+  const { cal, updatedInstrument } = await prisma.$transaction(async (tx) => {
+    const cal = await tx.instrumentCalibration.create({
+      data: {
+        instrumentId,
+        ...calibrationData,
+        createdBy: actor.id,
+      },
+    });
+    const updatedInstrument = await tx.measuringInstrument.update({
+      where: { id: instrumentId },
+      data: {
+        calibrationPeriodDays:
+          calibrationPeriodDays ?? instrument.calibrationPeriodDays,
+        lastCalibrationAt: data.calibratedAt,
+        nextCalibrationAt: data.nextDueAt,
+        status,
+        updatedBy: actor.id,
+      },
+    });
+    return { cal, updatedInstrument };
   });
 
-  let status = "ACTIVE";
-  const nextDue = data.nextDueAt || null;
-  if (nextDue) {
-    const soon = new Date();
-    soon.setDate(soon.getDate() + 30);
-    if (nextDue < new Date()) status = "EXPIRED";
-    else if (nextDue <= soon) status = "DUE_SOON";
-  }
-
-  await prisma.measuringInstrument.update({
-    where: { id: instrumentId },
-    data: {
-      lastCalibrationAt: data.calibratedAt,
-      nextCalibrationAt: nextDue,
-      status,
-      updatedBy: actor.id,
-    },
+  await recordAudit({
+    actor,
+    module: "quality",
+    entity: "InstrumentCalibration",
+    entityId: cal.id,
+    action: AUDIT_ACTIONS.CREATE,
+    newData: cal,
+  });
+  await recordAudit({
+    actor,
+    module: "quality",
+    entity: "MeasuringInstrument",
+    entityId: instrumentId,
+    action: AUDIT_ACTIONS.UPDATE,
+    previousData: instrument,
+    newData: updatedInstrument,
   });
 
   return jsonCreated(cal);

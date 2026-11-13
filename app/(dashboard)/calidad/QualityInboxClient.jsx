@@ -6,16 +6,21 @@ import { api, toQuery } from "@/lib/api/client";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Alert } from "@/components/feedback/Alert";
 import { Skeleton } from "@/components/feedback/Skeleton";
 import { Badge } from "@/components/ui/Badge";
 import { formatDate } from "@/lib/utils/format";
-import { QUALITY_ITEM_STATUS_LABELS } from "@/domains/quality/constants";
+import {
+  filterQualityInboxRows,
+  QUALITY_ITEM_STATUS_LABELS,
+} from "@/domains/quality/constants";
 
 export default function QualityInboxClient() {
   const [rows, setRows] = useState([]);
   const [q, setQ] = useState("");
+  const [firstPieceFilter, setFirstPieceFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -36,13 +41,15 @@ export default function QualityInboxClient() {
     load();
   }, [load]);
 
+  const visibleRows = filterQualityInboxRows(rows, firstPieceFilter);
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Bandeja de Calidad"
         description="Ordenes con partidas pendientes de inspeccion."
         actions={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Input
               className="w-56"
               value={q}
@@ -52,6 +59,17 @@ export default function QualityInboxClient() {
                 if (e.key === "Enter") load();
               }}
             />
+            <Select
+              className="w-56"
+              value={firstPieceFilter}
+              onChange={(e) => setFirstPieceFilter(e.target.value)}
+              aria-label="Filtrar por estado de primera pieza"
+            >
+              <option value="all">Todas las piezas</option>
+              <option value="first-piece-pending">Pendiente de liberación</option>
+              <option value="first-piece-released">Primera pieza liberada</option>
+              <option value="no-first-piece">No requiere primera pieza</option>
+            </Select>
             <Button variant="secondary" onClick={load} loading={loading}>
               Buscar
             </Button>
@@ -65,9 +83,9 @@ export default function QualityInboxClient() {
         <CardBody>
           {loading ? (
             <Skeleton className="h-40 w-full" />
-          ) : rows.length === 0 ? (
+          ) : visibleRows.length === 0 ? (
             <p className="py-8 text-center text-sm text-content-muted">
-              No hay partidas pendientes de Calidad.
+              No hay partidas para este filtro.
             </p>
           ) : (
             <div className="overflow-x-auto">
@@ -89,7 +107,7 @@ export default function QualityInboxClient() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {rows.map((r) => (
+                  {visibleRows.map((r) => (
                     <tr key={`${r.productionOrderId}-${r.productionItemId}`}>
                       <td className="px-2 py-2 font-medium">{r.folio}</td>
                       <td className="px-2 py-2">{r.clientName}</td>

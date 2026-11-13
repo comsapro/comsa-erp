@@ -81,11 +81,11 @@ export default function QualityOrderClient({ orderId }) {
     load();
   }, [load]);
 
-  async function run(itemId, action, body) {
+  async function run(itemId, action, body, successTitle = "Actualizado") {
     setBusy(true);
     try {
       await api.post(`/api/calidad/partidas/${itemId}?action=${action}`, body);
-      toast({ variant: "success", title: "Actualizado" });
+      toast({ variant: "success", title: successTitle });
       await load();
     } catch (err) {
       toast({ variant: "error", title: "Error", description: err.message });
@@ -475,63 +475,114 @@ export default function QualityOrderClient({ orderId }) {
                     ) : null}
                   </p>
                   <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {visiblePieces.map((p) => (
-                      <li
-                        key={p.id}
-                        className="rounded border border-border px-3 py-2 text-sm"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-medium">{p.label}</span>
-                          <Badge>
-                            {QUALITY_PIECE_STATUS_LABELS[p.status] || p.status}
-                          </Badge>
-                        </div>
-                        <p className="text-xs text-content-muted">
-                          {QUALITY_RESULT_LABELS[p.result] || p.result}
-                          {p.isFirstPiece ? " · 1a pieza" : ""}
-                          {p.isSample ? " · muestra" : ""}
-                        </p>
-                        <div className="mt-2 flex flex-wrap gap-1">
-                          <Can permission="quality.inspect">
-                            <Button
-                              size="sm"
-                              variant="subtle"
-                              loading={busy}
-                              onClick={() =>
-                                setInspectModal({
-                                  open: true,
-                                  itemId: item.id,
-                                  piece: p,
-                                  type: p.isFirstPiece ? "FIRST_PIECE" : "PIECE",
-                                })
-                              }
-                            >
-                              Inspeccionar
-                            </Button>
-                          </Can>
-                          <Can permission="quality.create_rework">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              loading={busy}
-                              onClick={() => openRework(item, p)}
-                            >
-                              Retrabajo
-                            </Button>
-                          </Can>
-                          <Can permission="quality.generate_external_qr">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              loading={busy}
-                              onClick={() => sharePiece(p.id)}
-                            >
-                              QR externo
-                            </Button>
-                          </Can>
-                        </div>
-                      </li>
-                    ))}
+                    {visiblePieces.map((p) => {
+                      const firstPieceInspection = p.isFirstPiece
+                        ? inspections.find(
+                            (inspection) =>
+                              inspection.type === "FIRST_PIECE" &&
+                              inspection.qualityPieceId === p.id &&
+                              inspection.status === "CLOSED" &&
+                              inspection.result === "CONFORMING"
+                          )
+                        : null;
+                      return (
+                        <li
+                          key={p.id}
+                          className="rounded border border-border px-3 py-2 text-sm"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-medium">{p.label}</span>
+                            <Badge>
+                              {QUALITY_PIECE_STATUS_LABELS[p.status] || p.status}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-content-muted">
+                            {QUALITY_RESULT_LABELS[p.result] || p.result}
+                            {p.isFirstPiece ? " · 1a pieza" : ""}
+                            {p.isSample ? " · muestra" : ""}
+                          </p>
+                          {p.isFirstPiece && (
+                            <p className="mt-1 text-xs text-content-muted">
+                              Liberación:{" "}
+                              {cfg?.firstPieceReleased
+                                ? "Liberada"
+                                : firstPieceInspection
+                                  ? "Pendiente de liberar"
+                                  : "Pendiente de inspección"}
+                            </p>
+                          )}
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {p.isFirstPiece &&
+                              firstPieceInspection &&
+                              !cfg?.firstPieceReleased && (
+                                <Can permission="quality.release_first_piece">
+                                  <Button
+                                    size="sm"
+                                    loading={busy}
+                                    onClick={() =>
+                                      run(
+                                        item.id,
+                                        "release-first-piece",
+                                        {
+                                          qualityPieceId: p.id,
+                                          qualityInspectionId:
+                                            firstPieceInspection.id,
+                                        },
+                                        "Primera pieza liberada"
+                                      )
+                                    }
+                                  >
+                                    Liberar primera pieza
+                                  </Button>
+                                </Can>
+                              )}
+                            <Can permission="quality.inspect">
+                              {(!p.isFirstPiece ||
+                                !firstPieceInspection ||
+                                cfg?.firstPieceReleased) && (
+                                <Button
+                                  size="sm"
+                                  variant="subtle"
+                                  loading={busy}
+                                  onClick={() =>
+                                    setInspectModal({
+                                      open: true,
+                                      itemId: item.id,
+                                      piece: p,
+                                      type: p.isFirstPiece
+                                        ? "FIRST_PIECE"
+                                        : "PIECE",
+                                    })
+                                  }
+                                >
+                                  Inspeccionar
+                                </Button>
+                              )}
+                            </Can>
+                            <Can permission="quality.create_rework">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                loading={busy}
+                                onClick={() => openRework(item, p)}
+                              >
+                                Retrabajo
+                              </Button>
+                            </Can>
+                            <Can permission="quality.generate_external_qr">
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                loading={busy}
+                                onClick={() => sharePiece(p.id)}
+                              >
+                                QR externo
+                              </Button>
+                            </Can>
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
@@ -594,25 +645,6 @@ export default function QualityOrderClient({ orderId }) {
                               </div>
                             </Can>
                           )}
-                          {ins.type === "FIRST_PIECE" &&
-                            ins.status === "CLOSED" &&
-                            ins.result === "CONFORMING" &&
-                            !cfg?.firstPieceReleased && (
-                              <Can permission="quality.release_first_piece">
-                                <Button
-                                  size="sm"
-                                  loading={busy}
-                                  onClick={() =>
-                                    run(item.id, "release-first-piece", {
-                                      qualityPieceId: ins.qualityPieceId,
-                                      qualityInspectionId: ins.id,
-                                    })
-                                  }
-                                >
-                                  Liberar 1a pieza
-                                </Button>
-                              </Can>
-                            )}
                         </li>
                       );
                     })}

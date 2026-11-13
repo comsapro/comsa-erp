@@ -171,12 +171,21 @@ export const instrumentSchema = z.object({
 
 export const calibrationSchema = z.object({
   calibratedAt: z.coerce.date(),
-  nextDueAt: z.coerce.date().optional().nullable(),
+  nextDueAt: z.coerce.date(),
+  calibrationPeriodDays: z.coerce.number().int().positive(),
   provider: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
   certificatePathname: z.string().optional().nullable(),
   certificateFileName: z.string().optional().nullable(),
   certificateUrl: z.string().optional().nullable(),
+}).superRefine((data, ctx) => {
+  if (data.nextDueAt <= data.calibratedAt) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "La proxima calibracion debe ser posterior a la fecha realizada",
+      path: ["nextDueAt"],
+    });
+  }
 });
 
 export const alertStatusSchema = z.object({

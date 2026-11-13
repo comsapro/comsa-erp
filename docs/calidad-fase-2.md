@@ -18,6 +18,15 @@ Trazabilidad: Cotizacion → OP → Partida → Pieza → Inspeccion → NCR / R
 | `/calidad/historial/[orderId]` | `quality.view_history` | KPIs del proyecto |
 | `/calidad/consulta/[token]` | publico | QR externo read-only |
 
+En la bandeja de Calidad se puede filtrar por primera pieza pendiente de
+liberacion, liberada o no requerida. La primera pieza se libera desde su tarjeta
+cuando su inspeccion termina conforme; el sistema guarda al usuario que la
+libero y avisa a Produccion.
+
+En Instrumentos se captura la periodicidad en dias y la fecha de proxima
+calibracion. Cada registro puede incluir un certificado PDF, JPG o PNG, que
+queda disponible en el historial del instrumento.
+
 ## APIs principales
 
 - `GET /api/calidad/pendientes`
@@ -29,6 +38,7 @@ Trazabilidad: Cotizacion → OP → Partida → Pieza → Inspeccion → NCR / R
 - `POST /api/calidad/retrabajos/[id]/horas`
 - `GET|POST /api/calidad/instrumentos`
 - `PATCH|POST /api/calidad/instrumentos/[id]` (update / calibracion)
+- `POST /api/calidad/instrumentos/[id]/certificado/upload` (certificado privado Blob)
 - `GET /api/calidad/alertas` · `PATCH /api/calidad/alertas/[id]`
 - `GET /api/calidad/historial/[orderId]`
 - `POST /api/calidad/shares`

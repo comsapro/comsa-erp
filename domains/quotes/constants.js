@@ -13,6 +13,17 @@ export function isLegacyQuote(quote) {
   return String(quote?.internalObservations || "").startsWith("[legacy:");
 }
 
+export function getQuoteObservations(quote) {
+  const observations = String(quote?.internalObservations || "");
+  if (!isLegacyQuote(quote)) return observations;
+  return observations
+    .replace(/^\[legacy:[^\]]+\]\s*/i, "")
+    .split("|")
+    .map((part) => part.trim())
+    .filter((part) => part && !/^aprobadoPor\s*:/i.test(part))
+    .join(" | ");
+}
+
 export const QUOTE_STATUS_LABELS = {
   DRAFT: "Borrador",
   PENDING_APPROVAL: "En revision",

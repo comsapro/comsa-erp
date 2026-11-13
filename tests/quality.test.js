@@ -12,6 +12,7 @@ import {
   piecesForReview,
   pieceLabel,
   OPEN_QUALITY_ITEM_STATUSES,
+  filterQualityInboxRows,
 } from "../domains/quality/constants.js";
 
 test("catalogo incluye permisos de quality", () => {
@@ -83,4 +84,25 @@ test("OPEN_QUALITY_ITEM_STATUSES no incluye CLOSED", () => {
   assert.ok(!OPEN_QUALITY_ITEM_STATUSES.includes("CLOSED"));
   assert.ok(OPEN_QUALITY_ITEM_STATUSES.includes("PENDING"));
   assert.ok(OPEN_QUALITY_ITEM_STATUSES.includes("FIRST_PIECE_PENDING"));
+});
+
+test("filterQualityInboxRows separa primera pieza pendiente, liberada y no requerida", () => {
+  const rows = [
+    { id: "pending", requiresFirstPiece: true, firstPieceReleased: false },
+    { id: "released", requiresFirstPiece: true, firstPieceReleased: true },
+    { id: "not-required", requiresFirstPiece: false, firstPieceReleased: false },
+  ];
+  assert.deepEqual(
+    filterQualityInboxRows(rows, "first-piece-pending").map((row) => row.id),
+    ["pending"]
+  );
+  assert.deepEqual(
+    filterQualityInboxRows(rows, "first-piece-released").map((row) => row.id),
+    ["released"]
+  );
+  assert.deepEqual(
+    filterQualityInboxRows(rows, "no-first-piece").map((row) => row.id),
+    ["not-required"]
+  );
+  assert.equal(filterQualityInboxRows(rows, "all").length, 3);
 });

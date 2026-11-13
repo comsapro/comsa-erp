@@ -15,6 +15,7 @@ import {
   XCircle,
 } from "lucide-react";
 import {
+  getQuoteObservations,
   QUOTE_STATUSES,
   QUOTE_STATUS_LABELS,
 } from "@/domains/quotes/constants";
@@ -144,12 +145,14 @@ export default function QuotesClient() {
         key: "internalObservations",
         header: "Observaciones",
         className: "max-w-64 truncate",
-        render: (r) =>
-          r.internalObservations ? (
-            <span title={r.internalObservations}>{r.internalObservations}</span>
+        render: (r) => {
+          const observations = getQuoteObservations(r);
+          return observations ? (
+            <span title={observations}>{observations}</span>
           ) : (
             "-"
-          ),
+          );
+        },
       },
       {
         key: "status",

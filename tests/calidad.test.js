@@ -15,7 +15,10 @@ import {
 } from "../domains/quality/calculations.js";
 import { SYSTEM_ROLES, ALL_PERMISSION_CODES } from "../lib/permissions/catalog.js";
 import { buildMenu } from "../lib/navigation/menu.js";
-import { closeInspectionSchema } from "../domains/quality/schemas.js";
+import {
+  calibrationSchema,
+  closeInspectionSchema,
+} from "../domains/quality/schemas.js";
 
 test("excelColumnLabel genera A, Z, AA, AB", () => {
   assert.equal(excelColumnLabel(0), "A");
@@ -53,6 +56,29 @@ test("closeInspectionSchema permite resolver controles especiales existentes", (
     ],
   });
   assert.equal(parsed.success, true);
+});
+
+test("calibrationSchema requiere fechas y periodicidad coherentes", () => {
+  const calibration = {
+    calibratedAt: "2026-11-12",
+    nextDueAt: "2027-11-12",
+    calibrationPeriodDays: 365,
+  };
+  assert.equal(calibrationSchema.safeParse(calibration).success, true);
+  assert.equal(
+    calibrationSchema.safeParse({
+      ...calibration,
+      nextDueAt: "2026-11-12",
+    }).success,
+    false
+  );
+  assert.equal(
+    calibrationSchema.safeParse({
+      ...calibration,
+      calibrationPeriodDays: 0,
+    }).success,
+    false
+  );
 });
 
 test("evaluateIntervalReadings marca OK/NO OK por medicion", async () => {
