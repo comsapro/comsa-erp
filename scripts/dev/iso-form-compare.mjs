@@ -43,6 +43,7 @@ export const DIMENSIONAL_SAMPLE = {
 
 export const WORK_ORDER_SAMPLE = {
   title: "ORDEN DE TRABAJO COTIZADO",
+  sheetLabel: "Hoja Blanca",
   workCode: "2608-13",
   requestDate: "2026-08-06",
   expectedDate: "",

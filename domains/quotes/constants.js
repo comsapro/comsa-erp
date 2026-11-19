@@ -8,6 +8,40 @@ export const QUOTE_STATUSES = [
   "CANCELLED",
 ];
 
+export function quoteSearchOr(q) {
+  if (!q) return null;
+  const contains = { contains: q, mode: "insensitive" };
+  return [
+    { folio: contains },
+    { purchaseOrder: contains },
+    { requisition: contains },
+    { internalObservations: contains },
+    { client: { commercialName: contains } },
+    {
+      items: {
+        some: {
+          OR: [
+            { description: contains },
+            { item: { sku: contains } },
+            { item: { name: contains } },
+            {
+              materials: {
+                some: {
+                  OR: [
+                    { descriptionSnapshot: contains },
+                    { item: { sku: contains } },
+                    { item: { name: contains } },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      },
+    },
+  ];
+}
+
 /** Cotizaciones importadas del sistema anterior: sus lineas ya son el total de la partida. */
 export function isLegacyQuote(quote) {
   return String(quote?.internalObservations || "").startsWith("[legacy:");

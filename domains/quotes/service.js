@@ -13,7 +13,7 @@ import {
 import { jsonOk, jsonCreated } from "@/lib/api/http";
 import { generateFolio } from "@/lib/folios";
 import { lineAmount, MIN_BENEFIT_SALES } from "@/lib/quotes/calculations";
-import { QUOTE_STATUSES, VALID_TRANSITIONS } from "./constants";
+import { QUOTE_STATUSES, VALID_TRANSITIONS, quoteSearchOr } from "./constants";
 import { quoteListCompanionWhere } from "./list-visibility";
 import { syncCompanionDirectOrderStatus } from "@/domains/direct-orders/status-sync";
 import { applyCompanionDirectOrderHeader } from "@/domains/direct-orders/header-sync";
@@ -403,17 +403,7 @@ export async function listQuotes(request) {
   where.AND = [quoteListCompanionWhere()];
 
   if (params.q) {
-    where.OR = [
-      { folio: { contains: params.q, mode: "insensitive" } },
-      { purchaseOrder: { contains: params.q, mode: "insensitive" } },
-      { requisition: { contains: params.q, mode: "insensitive" } },
-      { internalObservations: { contains: params.q, mode: "insensitive" } },
-      {
-        client: {
-          commercialName: { contains: params.q, mode: "insensitive" },
-        },
-      },
-    ];
+    where.OR = quoteSearchOr(params.q);
   }
 
   const [rows, total] = await Promise.all([

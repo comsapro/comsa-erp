@@ -44,9 +44,11 @@ export default async function OrdenTrabajoPage({ params, searchParams }) {
               <img
                 src="/branding/comsa-logo.jpeg"
                 alt="COMSA"
-                className="mx-auto h-12 w-auto object-contain"
+                className="mx-auto h-14 w-auto object-contain"
               />
-              <p className="mt-1 text-center text-[10px] font-semibold">Hoja Blanca</p>
+              <p className="mt-1 text-center text-[10px] font-semibold">
+                {model.sheetLabel}
+              </p>
             </td>
             <td className={`${cell} text-center text-sm font-semibold`}>
               {model.title}
@@ -127,7 +129,9 @@ export default async function OrdenTrabajoPage({ params, searchParams }) {
               </tr>
             ))}
             <tr>
-              <td className={`${cell} font-semibold`}>Observaciones del vendedor</td>
+              <td className={`${cell} text-center font-semibold`}>
+                Observaciones del vendedor
+              </td>
             </tr>
             <tr>
               <td className={`${cell} min-h-10 whitespace-pre-wrap`}>
@@ -142,7 +146,7 @@ export default async function OrdenTrabajoPage({ params, searchParams }) {
       <table className="mt-1 w-full border-collapse">
         <thead>
           <tr>
-            {["Unidad", "Cantidad", "Descripción", "Dimensiones", "Presentación", "Proveedor", "¿Entregado?"].map(
+            {["Unidad", "Cantidad", "Descripción", "Dimensiones", "Presentación", "Proveedor"].map(
               (header) => (
                 <th key={header} className={th}>
                   {header}
@@ -160,31 +164,8 @@ export default async function OrdenTrabajoPage({ params, searchParams }) {
               <td className={cell}>{material?.dimensions || ""}</td>
               <td className={cell}>{material?.presentation || ""}</td>
               <td className={cell}>{material?.supplier || ""}</td>
-              <td className={cell}>Si · No</td>
             </tr>
           ))}
-        </tbody>
-      </table>
-
-      <table className="mt-3 w-full border-collapse">
-        <thead>
-          <tr>
-            <th className={th}>Solicitud extraordinaria de material</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td className={`${cell} whitespace-pre-wrap`}>
-              <p className="font-semibold">Causa de la solicitud</p>
-              {(model.extraMaterials || []).length === 0
-                ? " "
-                : model.extraMaterials
-                    .map((extra) =>
-                      [extra.summary, extra.reason].filter(Boolean).join(" — ")
-                    )
-                    .join("\n")}
-            </td>
-          </tr>
         </tbody>
       </table>
 
@@ -221,23 +202,13 @@ export default async function OrdenTrabajoPage({ params, searchParams }) {
                   {block.endDate || ""}
                 </p>
               </div>
-              <div className="grid grid-cols-2 border-t border-black text-[11px]">
-                <div className="border-r border-black px-2 py-2">
-                  <p>
-                    Las dimensiones y características del trabajo realizado fueron revisadas y
-                    aseguradas antes de dar por terminado el procedimiento.
-                  </p>
-                  <p className="mt-6 text-center">_______________________</p>
-                  <p className="text-center">Firma del operador</p>
-                </div>
-                <div className="px-2 py-2">
-                  <p>
-                    Estoy recibiendo el material descrito en esta orden de trabajo y al firmar
-                    estoy aceptando las características del mismo.
-                  </p>
-                  <p className="mt-6 text-center">_______________________</p>
-                  <p className="text-center">Firma del vendedor o cliente</p>
-                </div>
+              <div className="border-t border-black px-2 py-2 text-center text-[11px]">
+                <p>
+                  Estoy recibiendo el material descrito en esta orden de trabajo y al firmar
+                  estoy aceptando las características del mismo.
+                </p>
+                <p className="mt-6">_______________________</p>
+                <p>Firma del vendedor o cliente</p>
               </div>
             </article>
           ))
@@ -245,7 +216,7 @@ export default async function OrdenTrabajoPage({ params, searchParams }) {
       </div>
 
       <p className="mt-4 text-[11px]">
-        Revisión 2 · Fecha de revisión: 9 de enero del 2025 · COM-OT-R-001
+        Revisión 3 · Fecha de revisión: 25 de noviembre de 2026 · COM-OT-R-001
       </p>
     </div>
   );

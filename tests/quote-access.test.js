@@ -9,6 +9,7 @@ import { assertSellerReviewEdit } from "../domains/quotes/seller-review.js";
 import {
   getQuoteObservations,
   quoteCanPrint,
+  quoteSearchOr,
 } from "../domains/quotes/constants.js";
 import { poCanPrint } from "../domains/purchase-orders/constants.js";
 import { directOrderCanSubmit } from "../domains/direct-orders/constants.js";
@@ -24,6 +25,24 @@ const supervisor = {
   roles: [{ name: "Supervisor" }],
   permissions: ["quotes.view", "quotes.approve", "sales.view_team"],
 };
+
+test("busqueda de cotizaciones incluye numeros de parte de partidas y materiales", () => {
+  const search = quoteSearchOr("556177");
+  const quoteItemsSearch = search.find((clause) => clause.items)?.items.some;
+  const itemSearch = quoteItemsSearch.OR;
+  const materialSearch = itemSearch.find((clause) => clause.materials)?.materials.some;
+
+  assert.ok(search.some((clause) => clause.folio?.contains === "556177"));
+  assert.ok(itemSearch.some((clause) => clause.item?.sku?.contains === "556177"));
+  assert.ok(
+    materialSearch.OR.some((clause) => clause.item?.sku?.contains === "556177")
+  );
+  assert.ok(
+    materialSearch.OR.some(
+      (clause) => clause.descriptionSnapshot?.contains === "556177"
+    )
+  );
+});
 
 test("compras puede buscar cotizaciones para vincular sin ver todo el modulo", () => {
   const buyer = {

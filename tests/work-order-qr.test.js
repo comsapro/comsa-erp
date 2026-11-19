@@ -50,8 +50,8 @@ function qrImage(page) {
 test("El QR cabe en la celda del titulo, sin cruzar fechas ni reticula", () => {
   const box = workOrderQrBox();
   assert.equal(box.size, 54);
-  assert.ok(box.x >= 136.5);
-  assert.ok(box.x + box.size <= 376.5);
+  assert.ok(box.x >= 513);
+  assert.ok(box.x + box.size <= 583.5);
   assert.ok(box.y >= 696);
   assert.ok(box.y + box.size <= 762.75);
 });

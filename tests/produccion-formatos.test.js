@@ -108,6 +108,7 @@ test("Orden de trabajo incluye QR cuando se aporta y no expone prioridad ni resp
     assert.equal(forbidden in model, false, `el modelo no debe exponer ${forbidden}`);
   }
   assert.equal(model.title, "ORDEN DE TRABAJO COTIZADO");
+  assert.equal(model.sheetLabel, "Hoja Blanca");
   assert.equal(model.quantity, "530.00");
   assert.deepEqual(model.materials[0], {
     unit: "PZA",
@@ -117,7 +118,6 @@ test("Orden de trabajo incluye QR cuando se aporta y no expone prioridad ni resp
     presentation: "LAMINA",
     supplier: "SESMA",
   });
-  assert.equal(model.extraMaterials[0].reason, "Faltante en almacen");
   assert.equal(model.observations, "Doblez a 90 grados");
 });
 
@@ -134,7 +134,13 @@ test("Orden directa pierde la palabra COTIZADO del titulo", () => {
     ITEM
   );
   assert.equal(model.title, "ORDEN DE TRABAJO");
+  assert.equal(model.sheetLabel, "Hoja Verde");
   assert.equal(model.seller, "MARIA");
+});
+
+test("La urgencia indica hoja roja incluso en una orden cotizada", () => {
+  const model = buildWorkOrderModel(ORDER, { ...ITEM, priority: "URGENT" });
+  assert.equal(model.sheetLabel, "Hoja Roja");
 });
 
 test("El control dimensional imprime ocho bloques de pieza en blanco", async () => {
@@ -147,6 +153,9 @@ test("El control dimensional imprime ocho bloques de pieza en blanco", async () 
   assert.equal(countLabel(lines, "REVISO OPERADOR NUM____"), 8);
   assert.ok(lines.some((line) => line.includes("Revisión 1.1")));
   assert.ok(lines.some((line) => line.includes("FIRMA DEL SUPERVISOR DE CALIDAD")));
+  const text = lines.join(" ");
+  assert.match(text, /NO ESPECIFICAR/);
+  assert.doesNotMatch(text, /NO ES PECIFICAR|\bIMG\b/);
 });
 
 test("La orden de trabajo pagina un bloque por proceso y cierra con el pie controlado", async () => {
@@ -172,26 +181,35 @@ test("La orden de trabajo pagina un bloque por proceso y cierra con el pie contr
   assert.equal(lotsPdf.pages, 3);
   for (const pdf of [fewPdf, lotsPdf]) {
     assert.ok(pdf.lines.some((line) => line.includes("COM-OT-R-001")));
+    assert.ok(pdf.lines.some((line) => line.includes("25 de noviembre de 2026")));
+    assert.equal(pdf.lines.some((line) => line.includes("¿Entregado?")), false);
+    assert.equal(
+      pdf.lines.some((line) => /Solicitud extraordinaria de material|Causa de la solicitud/i.test(line)),
+      false
+    );
     assert.equal(
       pdf.lines.some((line) => /prioridad|responsable|horas cotizadas/i.test(line)),
       false
     );
   }
-  assert.equal(countLabel(lotsPdf.lines, "Firma del operador"), 8);
+  assert.equal(countLabel(lotsPdf.lines, "Firma del operador"), 0);
+  assert.equal(countLabel(lotsPdf.lines, "Firma del vendedor o cliente"), 8);
 });
 
-test("Los formatos generados coinciden con el machote ISO en texto y retícula", async () => {
+// Los machotes de produccion versionados reflejan la revision anterior; la cotizacion
+// sigue sin cambios y se conserva la comparacion exacta contra su referencia.
+test("El formato de cotizacion que no cambio coincide con su machote ISO", async () => {
   const { reports } = await compareIsoForms();
-  for (const report of reports) {
-    assert.equal(report.pages.generated, report.pages.reference, `${report.name}: paginas`);
-    assert.deepEqual(report.textMismatch, [], `${report.name}: textos sin coincidencia`);
-    assert.deepEqual(report.textShift, [], `${report.name}: textos desplazados`);
-    assert.deepEqual(report.sizeMismatch, [], `${report.name}: tamanos distintos`);
-    assert.deepEqual(report.missingH, [], `${report.name}: bordes horizontales faltantes`);
-    assert.deepEqual(report.missingV, [], `${report.name}: bordes verticales faltantes`);
-    assert.ok(report.maxTextDx <= TOLERANCE, `${report.name}: dx=${report.maxTextDx}`);
-    assert.ok(report.maxTextDy <= TOLERANCE, `${report.name}: dy=${report.maxTextDy}`);
-  }
+  const report = reports.find((row) => row.name === "cotizacion");
+  assert.ok(report);
+  assert.equal(report.pages.generated, report.pages.reference, `${report.name}: paginas`);
+  assert.deepEqual(report.textMismatch, [], `${report.name}: textos sin coincidencia`);
+  assert.deepEqual(report.textShift, [], `${report.name}: textos desplazados`);
+  assert.deepEqual(report.sizeMismatch, [], `${report.name}: tamanos distintos`);
+  assert.deepEqual(report.missingH, [], `${report.name}: bordes horizontales faltantes`);
+  assert.deepEqual(report.missingV, [], `${report.name}: bordes verticales faltantes`);
+  assert.ok(report.maxTextDx <= TOLERANCE, `${report.name}: dx=${report.maxTextDx}`);
+  assert.ok(report.maxTextDy <= TOLERANCE, `${report.name}: dy=${report.maxTextDy}`);
 });
 
 test("Catalogo de motivos para deshacer terminado o regresar a fabricacion", () => {

@@ -314,7 +314,7 @@ export default function QuotesClient() {
       <TableToolbar
         q={list.q}
         onSearch={list.setQ}
-        searchPlaceholder="Buscar por folio, cliente, requisición, OC u observaciones..."
+        searchPlaceholder="Buscar por folio, cliente, requisición, OC, número de parte u observaciones..."
         onRefresh={list.refresh}
         loading={list.loading}
       />
