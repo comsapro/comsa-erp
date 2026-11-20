@@ -107,6 +107,9 @@ export function invoiceFormDefaultValues(invoice, currentUserId) {
       ? toDateInputValue(new Date(invoice.receptionDate))
       : null,
     notes: invoice?.notes || "",
+    sentAt: invoice?.sentAt ? toDateInputValue(new Date(invoice.sentAt)) : null,
+    creditDays: invoice?.creditDays ?? "",
+    paidAt: invoice?.paidAt ? toDateInputValue(new Date(invoice.paidAt)) : null,
     quotes:
       !quoteState.skipQuoteLink && quoteState.selectedQuote && quoteState.itemIds.length
         ? [{ quoteId: quoteState.selectedQuote.id, quoteItemIds: quoteState.itemIds }]

@@ -110,14 +110,14 @@ export default function ClientForm({ initial, onSubmit, saving }) {
 
       <div className="rounded-[var(--radius-md)] border border-border p-4">
         <CheckboxField
-          label="Condiciones comerciales"
+          label="Condiciones comerciales (días de crédito)"
           name="hasCommercialTerms"
           register={register}
-          hint="Activa para capturar el valor numerico (p. ej. dias de credito)."
+          hint="Días de crédito del cliente. Se usan para calcular la fecha límite de pago de sus facturas."
         />
         <div className="mt-3 max-w-xs">
           <TextField
-            label="Valor"
+            label="Días de crédito"
             name="commercialTermsValue"
             type="number"
             min="0"

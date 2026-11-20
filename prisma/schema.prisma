@@ -349,6 +349,11 @@ model User {
   qualityReworkSimplesCreated QualityReworkSimple[] @relation("QualityReworkSimpleCreatedBy")
   qualityAlertsAssigned QualityAlert[] @relation("QualityAlertAssignee")
   measuringInstrumentsCreated MeasuringInstrument[] @relation("MeasuringInstrumentCreatedBy")
+  notifications                      Notification[]              @relation("NotificationRecipient")
+  productionIncidentComments         ProductionIncidentComment[] @relation("ProductionIncidentCommentBy")
+  qualityErrorsAsOperator            QualityError[]              @relation("QualityErrorOperator")
+  qualityErrorsCreated               QualityError[]              @relation("QualityErrorCreatedBy")
+  dataCorrections                    DataCorrection[]            @relation("DataCorrectionBy")
 
   @@index([status])
   @@index([deletedAt])
@@ -495,6 +500,7 @@ model Client {
   quotes   Quote[]
   directOrders DirectOrder[]
   productionOrders ProductionOrder[]
+  salesInvoices    SalesInvoice[]
 
   @@index([status])
   @@index([deletedAt])
@@ -815,8 +821,8 @@ model QuoteItemTemplateAttachment {
 
   template QuoteItemTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
 
-  @@index([templateId])
   @@unique([pathname])
+  @@index([templateId])
   @@map("quote_item_template_attachments")
 }
 
@@ -980,6 +986,7 @@ model Quote {
   purchaseOrders PurchaseOrder[]
   salesInvoiceQuotes SalesInvoiceQuote[]
   qualityDocuments QualityDocument[]
+  qualityErrors      QualityError[]
 
   @@index([status, elaborationDate])
   @@index([clientId])
@@ -1059,9 +1066,9 @@ model QuoteItemAttachment {
   createdByUser User?     @relation("QuoteItemAttachmentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   qualityDocuments QualityDocument[]
 
+  @@unique([pathname])
   @@index([quoteItemId])
   @@index([audience])
-  @@unique([pathname])
   @@map("quote_item_attachments")
 }
 
@@ -1289,6 +1296,7 @@ model ProductionOrder {
   qualityExternalShares QualityExternalShare[]
   qualityDocuments QualityDocument[]
   drawingInspections QualityDrawingInspection[]
+  qualityErrors         QualityError[]
 
   @@index([status, approvalDate])
   @@index([clientId])
@@ -1324,11 +1332,11 @@ model ProductionAttachment {
   createdByUser   User?                  @relation("ProductionAttachmentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   qualityDocuments QualityDocument[]
 
+  @@unique([pathname])
   @@index([productionOrderId])
   @@index([productionItemId])
   @@index([processId])
   @@index([incidentId])
-  @@unique([pathname])
   @@map("production_attachments")
 }
 
@@ -1352,6 +1360,11 @@ model ProductionItem {
   completedBy       String?                @map("completed_by")
   observations      String?
   durationMinutes   Int?                   @map("duration_minutes")
+  /// Estatus operativo fijado manualmente (Dashboard gerencial). Null = derivado.
+  trackingStatus    ProductionTrackingStatus? @map("tracking_status")
+  trackingStatusAt  DateTime?                 @map("tracking_status_at")
+  trackingStatusBy  String?                   @map("tracking_status_by")
+  deliveredAt       DateTime?                 @map("delivered_at") @db.Date
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1377,6 +1390,7 @@ model ProductionItem {
   qualityEvidences QualityEvidence[]
   qualityDocuments QualityDocument[]
   drawingInspections QualityDrawingInspection[]
+  qualityErrors        QualityError[]
 
   @@index([productionOrderId, position])
   @@index([sourceItemId])
@@ -1519,6 +1533,15 @@ model ProductionIncident {
   reportedBy        String?                   @map("reported_by")
   resolvedAt        DateTime?                 @map("resolved_at")
   closedAt          DateTime?                 @map("closed_at")
+  /// Seguimiento desde Dashboard gerencial / junta semanal.
+  priority          IncidentPriority         @default(MEDIUM)
+  reasonCode        String?                  @map("reason_code")
+  relatedModules    String[]                 @default([]) @map("related_modules")
+  source            String                   @default("PRODUCTION")
+  attendedAt        DateTime?                @map("attended_at")
+  attendedBy        String?                  @map("attended_by")
+  resolvedBy        String?                  @map("resolved_by")
+  closedBy          String?                  @map("closed_by")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1533,7 +1556,9 @@ model ProductionIncident {
   assignedToUser  User?                  @relation("ProductionIncidentAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
   attachments     ProductionAttachment[]
   activities      ProductionActivity[]
+  comments        ProductionIncidentComment[]
 
+  @@index([assignedToUserId, status])
   @@index([productionOrderId, status])
   @@index([productionItemId, status])
   @@index([blocking, status])
@@ -1852,6 +1877,8 @@ model SalesGoal {
   periodKey String          @map("period_key")
   amount    Decimal         @db.Decimal(14, 2)
   label     String?
+  /// true: el monto capturado incluye IVA (convencion historica del ERP).
+  amountIncludesTax Boolean         @default(true) @map("amount_includes_tax")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1938,6 +1965,17 @@ model SalesInvoice {
   receivedByClient Boolean  @default(false) @map("received_by_client")
   receptionDate    DateTime? @map("reception_date") @db.Date
   notes            String?
+  /// Cliente (derivado de la cotizacion ligada; capturable si no hay cotizacion).
+  clientId         String?   @map("client_id")
+  /// Fecha en que se envio la factura al cliente.
+  sentAt           DateTime? @map("sent_at") @db.Date
+  /// Dias de credito (snapshot del cliente al registrar).
+  creditDays       Int?      @map("credit_days")
+  /// Fecha limite de pago = recepcion + dias de credito.
+  dueDate          DateTime? @map("due_date") @db.Date
+  /// Fecha real de pago.
+  paidAt           DateTime? @map("paid_at") @db.Date
+  paymentNotes     String?   @map("payment_notes")
 
   pdfPathname      String?  @map("pdf_pathname")
   pdfFileName      String?  @map("pdf_file_name")
@@ -1959,10 +1997,14 @@ model SalesInvoice {
   seller        User @relation("SalesInvoiceSeller", fields: [sellerId], references: [id])
   createdByUser User @relation("SalesInvoiceCreatedBy", fields: [createdBy], references: [id])
   updatedByUser User @relation("SalesInvoiceUpdatedBy", fields: [updatedBy], references: [id])
+  client        Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
   quotes        SalesInvoiceQuote[]
 
   @@index([sellerId, invoiceDate])
   @@index([receivedByClient])
+  @@index([clientId])
+  @@index([dueDate])
+  @@index([paidAt])
   @@index([deletedAt])
   @@map("sales_invoices")
 }
@@ -2368,6 +2410,7 @@ model QualityReworkOrder {
   hours           QualityReworkHour[]
   nonConformances QualityNonConformance[]
   evidences       QualityEvidence[]
+  qualityError    QualityError?
 
   @@index([productionOrderId])
   @@index([productionItemId])
@@ -2408,6 +2451,7 @@ model QualityReworkSimple {
   createdByUser   User            @relation("QualityReworkSimpleCreatedBy", fields: [createdById], references: [id])
   nonConformances QualityNonConformance[]
   evidences       QualityEvidence[]
+  qualityError    QualityError?
 
   @@index([productionOrderId])
   @@index([productionItemId])
@@ -2761,4 +2805,200 @@ model QualityDrawingMeasurement {
   @@map("quality_drawing_measurements")
 }
 
+// -----------------------------------------------------------------------------
+// Dashboard gerencial y KPIs
+// -----------------------------------------------------------------------------
 
+enum IncidentPriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+
+  @@map("incident_priority")
+}
+
+enum ProductionTrackingStatus {
+  PENDING
+  IN_PRODUCTION
+  IN_QUALITY
+  FINISHED
+  RELEASED
+  DELAYED
+  STOPPED
+  DELIVERED
+
+  @@map("production_tracking_status")
+}
+
+enum QualityErrorDetection {
+  PRODUCTION
+  QUALITY
+  CLIENT
+
+  @@map("quality_error_detection")
+}
+
+enum QualityErrorCostCategory {
+  LABOR
+  MATERIAL
+  OTHER
+
+  @@map("quality_error_cost_category")
+}
+
+/// Comentarios / seguimiento de una incidencia.
+model ProductionIncidentComment {
+  id         String   @id @default(cuid())
+  incidentId String   @map("incident_id")
+  body       String
+  kind       String   @default("COMMENT")
+  createdBy  String?  @map("created_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  incident      ProductionIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  createdByUser User?              @relation("ProductionIncidentCommentBy", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([incidentId, createdAt])
+  @@map("production_incident_comments")
+}
+
+/// Notificacion interna del ERP para un usuario.
+model Notification {
+  id         String           @id @default(cuid())
+  userId     String           @map("user_id")
+  type       String
+  priority   IncidentPriority @default(MEDIUM)
+  title      String
+  body       String?
+  link       String?
+  entityType String?          @map("entity_type")
+  entityId   String?          @map("entity_id")
+  readAt     DateTime?        @map("read_at")
+  createdAt  DateTime         @default(now()) @map("created_at")
+  createdBy  String?          @map("created_by")
+
+  user User @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+  @@index([entityType, entityId])
+  @@map("notifications")
+}
+
+/// Catalogos administrables de KPIs: razones de paro, causas y areas de error.
+model KpiCatalogEntry {
+  id                   String       @id @default(cuid())
+  type                 String
+  code                 String
+  label                String
+  description          String?
+  /// Ruta de modulos responsables (p. ej. ["PRODUCTION","SALES","PURCHASING"]).
+  relatedModules       String[]     @default([]) @map("related_modules")
+  /// Sugerencia de responsable: SELLER | ITEM_ASSIGNEE | NONE.
+  suggestedResponsible String       @default("NONE") @map("suggested_responsible")
+  requiredAction       String?      @map("required_action")
+  sortOrder            Int          @default(0) @map("sort_order")
+  status               RecordStatus @default(ACTIVE)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+  deletedAt DateTime? @map("deleted_at")
+
+  @@unique([type, code])
+  @@index([type, status])
+  @@map("kpi_catalog_entries")
+}
+
+/// Parametros globales de KPIs (registro unico "default").
+model KpiSetting {
+  id                String   @id @default("default")
+  taxRate           Decimal  @default(16) @map("tax_rate") @db.Decimal(6, 2)
+  laborHourRate     Decimal  @default(0) @map("labor_hour_rate") @db.Decimal(14, 2)
+  defaultCreditDays Int      @default(30) @map("default_credit_days")
+  upcomingDays      Int      @default(7) @map("upcoming_days")
+  dueSoonDays       Int      @default(7) @map("due_soon_days")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  updatedBy         String?  @map("updated_by")
+
+  @@map("kpi_settings")
+}
+
+/// Error de produccion / calidad con su costo asociado.
+model QualityError {
+  id                String                @id @default(cuid())
+  productionOrderId String                @map("production_order_id")
+  productionItemId  String?               @map("production_item_id")
+  quoteId           String?               @map("quote_id")
+  detectedAt        DateTime              @map("detected_at") @db.Date
+  detectionStage    QualityErrorDetection @default(QUALITY) @map("detection_stage")
+  causeCode         String?               @map("cause_code")
+  areaCode          String?               @map("area_code")
+  /// Texto libre original (p. ej. area capturada en el retrabajo).
+  areaText          String?               @map("area_text")
+  operatorUserId    String?               @map("operator_user_id")
+  operatorName      String?               @map("operator_name")
+  description       String
+  reworkOrderId     String?               @unique @map("rework_order_id")
+  reworkSimpleId    String?               @unique @map("rework_simple_id")
+  source            String                @default("MANUAL")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String?   @map("created_by")
+  updatedBy String?   @map("updated_by")
+  deletedAt DateTime? @map("deleted_at")
+
+  productionOrder ProductionOrder      @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  productionItem  ProductionItem?      @relation(fields: [productionItemId], references: [id], onDelete: SetNull)
+  quote           Quote?               @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  operatorUser    User?                @relation("QualityErrorOperator", fields: [operatorUserId], references: [id], onDelete: SetNull)
+  createdByUser   User?                @relation("QualityErrorCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  reworkOrder     QualityReworkOrder?  @relation(fields: [reworkOrderId], references: [id], onDelete: SetNull)
+  reworkSimple    QualityReworkSimple? @relation(fields: [reworkSimpleId], references: [id], onDelete: SetNull)
+  costs           QualityErrorCost[]
+
+  @@index([detectedAt])
+  @@index([productionOrderId])
+  @@index([productionItemId])
+  @@index([deletedAt])
+  @@map("quality_errors")
+}
+
+model QualityErrorCost {
+  id         String                   @id @default(cuid())
+  errorId    String                   @map("error_id")
+  category   QualityErrorCostCategory
+  concept    String
+  hours      Decimal?                 @db.Decimal(14, 3)
+  hourlyRate Decimal?                 @map("hourly_rate") @db.Decimal(14, 2)
+  amount     Decimal                  @default(0) @db.Decimal(14, 2)
+  notes      String?
+  createdAt  DateTime                 @default(now()) @map("created_at")
+  createdBy  String?                  @map("created_by")
+
+  error QualityError @relation(fields: [errorId], references: [id], onDelete: Cascade)
+
+  @@index([errorId])
+  @@map("quality_error_costs")
+}
+
+/// Correccion manual auditada (nunca sobrescribe en silencio).
+model DataCorrection {
+  id            String   @id @default(cuid())
+  entityType    String   @map("entity_type")
+  entityId      String   @map("entity_id")
+  field         String
+  originalValue String?  @map("original_value")
+  newValue      String?  @map("new_value")
+  reason        String
+  correctedBy   String?  @map("corrected_by")
+  correctedAt   DateTime @default(now()) @map("corrected_at")
+
+  correctedByUser User? @relation("DataCorrectionBy", fields: [correctedBy], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@map("data_corrections")
+}

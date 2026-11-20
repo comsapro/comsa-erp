@@ -34,6 +34,7 @@ import {
   releaseFirstPieceSchema,
   evidenceSchema,
 } from "./schemas";
+import { recordErrorFromRework } from "./errors";
 
 function dec(n) {
   return Number(n || 0);
@@ -1093,6 +1094,18 @@ export async function createReworkOrder(request) {
     createdBy: actor.id,
   });
 
+  await recordErrorFromRework({
+    kind: "ORDER",
+    reworkId: record.id,
+    productionOrderId: item.productionOrderId,
+    productionItemId: item.id,
+    area: data.area,
+    operatorName: data.operatorName,
+    description: `Retrabajo ${record.folio}: ${data.cause.trim()}`,
+    createdAt: record.requestedAt,
+    actorId: actor.id,
+  });
+
   await recordAudit({
     actor,
     module: "quality",
@@ -1204,6 +1217,18 @@ export async function createReworkSimple(request) {
       hoursUsed: data.hoursUsed,
       createdById: actor.id,
     },
+  });
+
+  await recordErrorFromRework({
+    kind: "SIMPLE",
+    reworkId: row.id,
+    productionOrderId: item.productionOrderId,
+    productionItemId: item.id,
+    area: data.area,
+    operatorName: data.operatorName,
+    description: data.errorDescription,
+    createdAt: row.createdAt,
+    actorId: actor.id,
   });
 
   return jsonCreated(row);

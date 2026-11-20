@@ -35,6 +35,7 @@ import {
 } from "@/domains/dashboard/service";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { HomeKpiSummary } from "@/components/kpis/HomeKpiSummary";
 import { formatDateTime, formatMoney } from "@/lib/utils/format";
 import {
   AUDIT_ACTION_LABELS,
@@ -167,6 +168,7 @@ export default async function DashboardHome() {
   if (isSalesHomeUser(user)) {
     redirect("/ventas");
   }
+  const canKpis = userHasPermission(user, "kpis.view");
   const canAudit = userHasPermission(user, "audit.view");
   const canQuotes = userHasPermission(user, "quotes.view");
   const canDirectOrders = userHasPermission(user, "direct_orders.view");
@@ -244,6 +246,8 @@ export default async function DashboardHome() {
           Este es el panel principal del ERP COMSA.
         </p>
       </div>
+
+      {canKpis && <HomeKpiSummary />}
 
       {visibleStats.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

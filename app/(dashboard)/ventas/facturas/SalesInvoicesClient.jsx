@@ -35,6 +35,9 @@ export default function SalesInvoicesClient({ initialPendingOnly = false, seller
   });
   const [receptionDate, setReceptionDate] = useState(toDateInputValue(new Date()));
   const [savingReception, setSavingReception] = useState(false);
+  const [paymentModal, setPaymentModal] = useState({ open: false, invoice: null });
+  const [paymentDate, setPaymentDate] = useState(toDateInputValue(new Date()));
+  const [savingPayment, setSavingPayment] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -82,6 +85,20 @@ export default function SalesInvoicesClient({ initialPendingOnly = false, seller
       setError(err.message || "No se pudo marcar la recepción");
     } finally {
       setSavingReception(false);
+    }
+  }
+
+  async function confirmPayment(paidAt) {
+    if (!paymentModal.invoice) return;
+    setSavingPayment(true);
+    try {
+      await api.post(`/api/ventas/facturas/${paymentModal.invoice.id}/pago`, { paidAt });
+      setPaymentModal({ open: false, invoice: null });
+      await load();
+    } catch (err) {
+      setError(err.message || "No se pudo registrar el pago");
+    } finally {
+      setSavingPayment(false);
     }
   }
 
@@ -156,6 +173,7 @@ export default function SalesInvoicesClient({ initialPendingOnly = false, seller
                     <th className="px-2 py-2 font-medium">Cotizaciones</th>
                     <th className="px-2 py-2 font-medium">Archivos</th>
                     <th className="px-2 py-2 font-medium">Recepción</th>
+                    <th className="px-2 py-2 font-medium">Vence / pago</th>
                     <th className="px-2 py-2 font-medium">Acciones</th>
                   </tr>
                 </thead>
@@ -210,6 +228,23 @@ export default function SalesInvoicesClient({ initialPendingOnly = false, seller
                         )}
                       </td>
                       <td className="px-2 py-2">
+                        {r.paidAt ? (
+                          <Badge tone="success">Pagada · {formatDate(r.paidAt)}</Badge>
+                        ) : r.dueDate ? (
+                          <span
+                            className={
+                              toDateInputValue(r.dueDate) < toDateInputValue(new Date())
+                                ? "font-medium text-danger-700"
+                                : "text-content"
+                            }
+                          >
+                            {formatDate(r.dueDate)}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="px-2 py-2">
                         <div className="flex flex-wrap gap-2">
                           <Can permission="sales.edit_invoice">
                             <Button
@@ -233,6 +268,22 @@ export default function SalesInvoicesClient({ initialPendingOnly = false, seller
                                 }}
                               >
                                 Marcar recepción
+                              </Button>
+                            </Can>
+                          ) : null}
+                          {r.receivedByClient ? (
+                            <Can permission="sales.edit_invoice">
+                              <Button
+                                size="sm"
+                                variant="secondary"
+                                onClick={() => {
+                                  setPaymentDate(
+                                    r.paidAt ? toDateInputValue(r.paidAt) : toDateInputValue(new Date())
+                                  );
+                                  setPaymentModal({ open: true, invoice: r });
+                                }}
+                              >
+                                {r.paidAt ? "Pago" : "Registrar pago"}
                               </Button>
                             </Can>
                           ) : null}
@@ -283,6 +334,54 @@ export default function SalesInvoicesClient({ initialPendingOnly = false, seller
               onClick={confirmReception}
             >
               Confirmar
+            </Button>
+          </div>
+        </div>
+      </Modal>
+      <Modal
+        open={paymentModal.open}
+        onClose={() =>
+          savingPayment ? undefined : setPaymentModal({ open: false, invoice: null })
+        }
+        title="Pago de la factura"
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-content-muted">
+            Factura {paymentModal.invoice?.invoiceNumber} ·{" "}
+            {formatMoney(paymentModal.invoice?.netAmount)}. Indica la fecha real de pago;
+            alimenta el KPI de cobranza.
+          </p>
+          <Field label="Fecha de pago" htmlFor="payment-date" required>
+            <Input
+              id="payment-date"
+              type="date"
+              value={paymentDate || ""}
+              onChange={(e) => setPaymentDate(e.target.value)}
+            />
+          </Field>
+          <div className="flex justify-end gap-2">
+            {paymentModal.invoice?.paidAt ? (
+              <Button
+                variant="ghost"
+                disabled={savingPayment}
+                onClick={() => confirmPayment(null)}
+              >
+                Quitar pago
+              </Button>
+            ) : null}
+            <Button
+              variant="secondary"
+              disabled={savingPayment}
+              onClick={() => setPaymentModal({ open: false, invoice: null })}
+            >
+              Cancelar
+            </Button>
+            <Button
+              loading={savingPayment}
+              disabled={!paymentDate}
+              onClick={() => confirmPayment(paymentDate)}
+            >
+              Guardar
             </Button>
           </div>
         </div>

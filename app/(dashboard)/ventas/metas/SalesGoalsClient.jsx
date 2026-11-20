@@ -30,6 +30,7 @@ const emptyDefaults = () => ({
   periodKey: periodKeyFor(SALES_GOAL_PERIODS.MONTHLY),
   amount: "",
   label: "",
+  amountIncludesTax: true,
   sellerIds: [],
   teamIds: [],
 });
@@ -60,6 +61,7 @@ export default function SalesGoalsClient({ canManage = false }) {
   });
 
   const period = watch("period");
+  const amountIncludesTax = watch("amountIncludesTax");
 
   useEffect(() => {
     if (!editingId) {
@@ -144,6 +146,7 @@ export default function SalesGoalsClient({ canManage = false }) {
       periodKey: goal.periodKey,
       amount: Number(goal.amount),
       label: goal.label || "",
+      amountIncludesTax: goal.amountIncludesTax !== false,
       sellerIds,
       teamIds,
     });
@@ -217,10 +220,10 @@ export default function SalesGoalsClient({ canManage = false }) {
               <Input {...register("periodKey")} />
             </Field>
             <Field
-              label="Monto meta (+ IVA)"
+              label={`Monto meta (${amountIncludesTax === false ? "sin IVA" : "con IVA"})`}
               required
               error={errors.amount?.message}
-              hint="El monto incluye IVA. Ej: $850,000.50"
+              hint="Ej: $850,000.50. El Dashboard gerencial muestra la meta con y sin IVA."
             >
               <Input
                 inputMode="decimal"
@@ -245,6 +248,17 @@ export default function SalesGoalsClient({ canManage = false }) {
             </Field>
             <Field label="Etiqueta" error={errors.label?.message}>
               <Input {...register("label")} placeholder="Opcional" />
+            </Field>
+            <Field label="La meta se captura" htmlFor="goal-tax">
+              <Select
+                id="goal-tax"
+                {...register("amountIncludesTax", {
+                  setValueAs: (v) => v === true || v === "true",
+                })}
+              >
+                <option value="true">Con IVA</option>
+                <option value="false">Sin IVA</option>
+              </Select>
             </Field>
             <Field
               className="md:col-span-2"
@@ -331,7 +345,7 @@ export default function SalesGoalsClient({ canManage = false }) {
                 <thead>
                   <tr className="border-b border-border text-left text-content-muted">
                     <th className="px-2 py-2 font-medium">Periodo</th>
-                    <th className="px-2 py-2 font-medium">Monto (+ IVA)</th>
+                    <th className="px-2 py-2 font-medium">Monto</th>
                     <th className="px-2 py-2 font-medium">Asignación</th>
                     <th className="px-2 py-2 font-medium">Creada</th>
                     <th className="px-2 py-2 font-medium">Modificada</th>
@@ -352,7 +366,12 @@ export default function SalesGoalsClient({ canManage = false }) {
                           {SALES_GOAL_PERIOD_LABELS[g.period]} · {g.periodKey}
                           {g.label ? ` · ${g.label}` : ""}
                         </td>
-                        <td className="px-2 py-2">{formatMoney(g.amount)}</td>
+                        <td className="px-2 py-2">
+                          {formatMoney(g.amount)}
+                          <div className="text-xs text-content-muted">
+                            {g.amountIncludesTax === false ? "sin IVA" : "con IVA"}
+                          </div>
+                        </td>
                         <td className="px-2 py-2">
                           {teamNames.length > 0 && (
                             <div>Equipos: {teamNames.join(", ")}</div>

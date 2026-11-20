@@ -38,6 +38,9 @@ import {
 } from "./scope";
 import { getCurrentUser, userHasPermission, userIsAdmin } from "@/lib/auth/session";
 import { assertActiveUser, assertActiveUsers } from "@/domains/users/assert-active";
+import { deriveInvoiceFields, computeDueDate } from "@/domains/kpis/invoices";
+import { goalAmountWithTax } from "@/domains/kpis/calculations";
+import { getKpiSettings } from "@/domains/kpis/settings";
 
 function parseMaterialsPage(request) {
   return parseListParams(request, {
@@ -305,7 +308,12 @@ export async function getSalesDashboard(request) {
       _sum: { netAmount: true },
     });
     soldAmount = toNumber(invoices._sum.netAmount);
-    const amount = toNumber(goal.amount);
+    // Facturas con IVA: la meta se expresa con IVA aunque se haya capturado sin IVA.
+    const { taxRate } = await getKpiSettings();
+    const amount = goalAmountWithTax(
+      { amount: toNumber(goal.amount), amountIncludesTax: goal.amountIncludesTax },
+      taxRate
+    );
     const pct = amount > 0 ? Math.min(100, Math.round((soldAmount / amount) * 1000) / 10) : 0;
     goalMeta = {
       id: goal.id,
@@ -769,6 +777,7 @@ export async function createSalesGoal(request) {
       periodKey: data.periodKey,
       amount: data.amount,
       label: data.label || null,
+      amountIncludesTax: data.amountIncludesTax,
       createdBy: actor.id,
       updatedBy: actor.id,
       sellers: {
@@ -825,6 +834,7 @@ export async function updateSalesGoal(request, id) {
         periodKey: data.periodKey,
         amount: data.amount,
         label: data.label || null,
+        amountIncludesTax: data.amountIncludesTax,
         updatedBy: actor.id,
         sellers: {
           create: sellerIds.map((sellerId) => ({ sellerId })),
@@ -932,6 +942,8 @@ export async function createSalesInvoice(request) {
     }
   }
 
+  const derived = await deriveInvoiceFields({ quoteLinks, data });
+
   const record = await prisma.salesInvoice.create({
     data: {
       invoiceNumber: data.invoiceNumber.trim(),
@@ -942,6 +954,7 @@ export async function createSalesInvoice(request) {
       receivedByClient: data.receivedByClient,
       receptionDate: data.receivedByClient ? data.receptionDate : null,
       notes: data.notes || null,
+      ...derived,
       createdBy: actor.id,
       updatedBy: actor.id,
       quotes: quoteLinks.length
@@ -1098,6 +1111,7 @@ export async function updateSalesInvoice(request, id) {
 
   const quoteLinks = data.quotes || [];
   await assertInvoiceQuoteLinks(request, user, quoteLinks);
+  const derived = await deriveInvoiceFields({ quoteLinks, data, existing });
 
   const record = await prisma.$transaction(async (tx) => {
     await tx.salesInvoiceQuoteItem.deleteMany({
@@ -1116,6 +1130,7 @@ export async function updateSalesInvoice(request, id) {
         receivedByClient: data.receivedByClient,
         receptionDate: data.receivedByClient ? data.receptionDate : null,
         notes: data.notes || null,
+        ...derived,
         updatedBy: actor.id,
         quotes: quoteLinks.length
           ? {
@@ -1164,6 +1179,9 @@ export async function markSalesInvoiceReception(request, id) {
     data: {
       receivedByClient: data.receivedByClient,
       receptionDate: data.receivedByClient ? data.receptionDate : null,
+      dueDate: data.receivedByClient
+        ? computeDueDate(data.receptionDate, existing.creditDays)
+        : null,
       updatedBy: actor.id,
     },
     include: INVOICE_DETAIL_INCLUDE,

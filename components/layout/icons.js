@@ -31,6 +31,10 @@ import {
   Ruler,
   Bell,
   History,
+  Gauge,
+  Siren,
+  BadgeAlert,
+  SlidersHorizontal,
 } from "lucide-react";
 
 export const ICONS = {
@@ -66,6 +70,10 @@ export const ICONS = {
   Ruler,
   Bell,
   History,
+  Gauge,
+  Siren,
+  BadgeAlert,
+  SlidersHorizontal,
 };
 
 export function getIcon(name) {

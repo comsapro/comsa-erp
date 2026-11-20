@@ -220,6 +220,7 @@ export default function SalesInvoiceFormClient({
   useEffect(() => {
     if (!(receivedByClient === true || receivedByClient === "true")) {
       setValue("receptionDate", null, { shouldValidate: true });
+      setValue("paidAt", null, { shouldValidate: true });
     }
   }, [receivedByClient, setValue]);
 
@@ -411,6 +412,9 @@ export default function SalesInvoiceFormClient({
             ? invoice.sellerId
             : currentUserId,
         receptionDate: values.receivedByClient ? values.receptionDate : null,
+        paidAt: values.receivedByClient ? values.paidAt || null : null,
+        sentAt: values.sentAt || null,
+        creditDays: values.creditDays === "" || values.creditDays == null ? null : values.creditDays,
         quotes: skipQuoteLink
           ? []
           : [{ quoteId: selectedQuote.id, quoteItemIds: itemIds }],
@@ -522,6 +526,29 @@ export default function SalesInvoiceFormClient({
                 error={errors.receptionDate?.message}
               >
                 <Input type="date" {...register("receptionDate")} />
+              </Field>
+            )}
+            <Field
+              label="Fecha de envío al cliente"
+              hint="Opcional. El tiempo de recepción se mide desde aquí (o desde la fecha de factura)."
+              error={errors.sentAt?.message}
+            >
+              <Input type="date" {...register("sentAt")} />
+            </Field>
+            <Field
+              label="Días de crédito"
+              hint="Vacío = los del cliente (condiciones comerciales) o el valor por defecto."
+              error={errors.creditDays?.message}
+            >
+              <Input type="number" min="0" step="1" {...register("creditDays")} />
+            </Field>
+            {Boolean(receivedByClient === true || receivedByClient === "true") && (
+              <Field
+                label="Fecha de pago"
+                hint="Captúrala cuando el cliente pague."
+                error={errors.paidAt?.message}
+              >
+                <Input type="date" {...register("paidAt")} />
               </Field>
             )}
             <Field className="md:col-span-2" label="Notas" error={errors.notes?.message}>

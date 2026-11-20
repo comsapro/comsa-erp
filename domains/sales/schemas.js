@@ -32,6 +32,7 @@ export const salesGoalSchema = z
       z.coerce.number().positive("La meta debe ser mayor a 0")
     ),
     label: z.string().trim().optional().nullable(),
+    amountIncludesTax: z.boolean().default(true),
     sellerIds: z.array(z.string().min(1)).default([]),
     teamIds: z.array(z.string().min(1)).default([]),
   })
@@ -63,6 +64,19 @@ export const salesInvoiceSchema = z
       z.coerce.date().nullable().optional()
     ),
     notes: z.string().optional().nullable(),
+    // Dashboard gerencial: envio al cliente, dias de credito y pago.
+    sentAt: z.preprocess(
+      (v) => (v === "" || v == null ? null : v),
+      z.coerce.date().nullable().optional()
+    ),
+    creditDays: z.preprocess(
+      (v) => (v === "" || v == null ? null : v),
+      z.coerce.number().int("Dias enteros").min(0).max(365).nullable().optional()
+    ),
+    paidAt: z.preprocess(
+      (v) => (v === "" || v == null ? null : v),
+      z.coerce.date().nullable().optional()
+    ),
     // Vacío solo permitido para Administrador (validado en servicio).
     quotes: z.array(invoiceQuoteSchema).default([]),
   })
@@ -72,6 +86,13 @@ export const salesInvoiceSchema = z
         code: z.ZodIssueCode.custom,
         message: "La fecha de recepción es obligatoria",
         path: ["receptionDate"],
+      });
+    }
+    if (data.paidAt && !data.receivedByClient) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Registra primero la recepción del cliente",
+        path: ["paidAt"],
       });
     }
   });

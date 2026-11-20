@@ -225,7 +225,7 @@ export async function seedE2e() {
     },
   });
 
-  const process = await prisma.manufacturingProcess.create({
+  const mfgProcess = await prisma.manufacturingProcess.create({
     data: {
       code: "E2E-CORTE",
       name: "CORTE LASER",
@@ -254,7 +254,7 @@ export async function seedE2e() {
     clientId: client.id,
     contactId: contact.id,
     issuingCompanyId: issuingCompany.id,
-    processId: process.id,
+    processId: mfgProcess.id,
     itemId: catalogItem.id,
     actorId: users.ventas.id,
   };
@@ -316,7 +316,7 @@ export async function seedE2e() {
           processes: {
             create: {
               sourceType: "QUOTATION",
-              manufacturingProcessId: process.id,
+              manufacturingProcessId: mfgProcess.id,
               processNameSnapshot: "CORTE LASER",
               unitSnapshot: "HOUR",
               quotedHours: 1,

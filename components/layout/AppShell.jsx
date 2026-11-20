@@ -5,6 +5,7 @@ import { Menu, PanelLeftClose, PanelLeft } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { Breadcrumbs } from "./Breadcrumbs";
 import { UserMenu } from "./UserMenu";
+import { NotificationBell } from "./NotificationBell";
 import { cn } from "@/lib/utils/cn";
 
 export function AppShell({ sections, user, appEnv, children }) {
@@ -61,6 +62,7 @@ export function AppShell({ sections, user, appEnv, children }) {
                 {appEnv}
               </span>
             )}
+            <NotificationBell />
             <UserMenu user={user} />
           </div>
         </header>

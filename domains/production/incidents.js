@@ -116,8 +116,18 @@ export async function updateIncident(request, orderId, incidentId) {
     patch.assignedToUserId = data.assignedToUserId;
   }
   if (data.description !== undefined) patch.description = data.description;
-  if (data.status === "RESOLVED") patch.resolvedAt = new Date();
-  if (data.status === "CLOSED") patch.closedAt = new Date();
+  if (data.status === "RESOLVED") {
+    patch.resolvedAt = new Date();
+    patch.resolvedBy = actor.id;
+  }
+  if (data.status === "CLOSED") {
+    patch.closedAt = new Date();
+    patch.closedBy = actor.id;
+  }
+  if (data.status === "IN_REVIEW" && !existing.attendedAt) {
+    patch.attendedAt = new Date();
+    patch.attendedBy = actor.id;
+  }
 
   await prisma.$transaction(async (tx) => {
     await tx.productionIncident.update({
