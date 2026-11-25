@@ -413,7 +413,9 @@ export async function importQuotesAndProduction(prisma, {
         benefitPercentage,
         discountPercentage,
         quantity: toNumber(partida.cantidad) || 1,
-        perPiece: false,
+        // En el sistema anterior las lineas de la partida son por pieza y se
+        // multiplican por la cantidad (p. ej. 2611-30-A: $82.50 x 60 = $4,950).
+        perPiece: true,
       });
       itemTotalsAcc.push(totals);
 
