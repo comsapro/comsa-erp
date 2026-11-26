@@ -273,7 +273,9 @@ export async function deleteProductionAttachment(
  * Planos y archivos de cotizacion destinados a produccion.
  */
 export async function getQuoteProductionDocsForOrder(order) {
-  if (order.sourceType !== "QUOTE" || !order.quoteId) {
+  // Tambien las ordenes de produccion que vienen de una orden directa ligada a
+  // cotizacion (sourceType DIRECT_ORDER) traen partidas QUOTE_ITEM con planos.
+  if (!order.quoteId) {
     return { quoteId: null, quoteFolio: null, attachments: [] };
   }
   const quoteItemIds = (order.items || [])
