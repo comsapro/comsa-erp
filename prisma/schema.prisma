@@ -288,71 +288,76 @@ model User {
   updatedBy String?   @map("updated_by")
   deletedAt DateTime? @map("deleted_at")
 
-  roles               UserRole[]
-  teamMemberships     TeamMember[]
-  passwordResetTokens PasswordResetToken[]
-  auditLogs           AuditLog[]
-  quotesAsSeller      Quote[]              @relation("QuoteSeller")
-  quotesApproved      Quote[]              @relation("QuoteApprovedBy")
-  quotesRejected      Quote[]              @relation("QuoteRejectedBy")
-  quotesCancelled     Quote[]              @relation("QuoteCancelledBy")
-  directOrdersAsSeller DirectOrder[]       @relation("DirectOrderSeller")
-  directOrdersApproved DirectOrder[]       @relation("DirectOrderApprovedBy")
-  directOrdersRejected DirectOrder[]       @relation("DirectOrderRejectedBy")
-  directOrdersCancelled DirectOrder[]      @relation("DirectOrderCancelledBy")
-  productionItemsCompleted ProductionItem[] @relation("ProductionItemCompletedBy")
-  productionItemNotesCreated ProductionItemNote[] @relation("ProductionItemNoteCreatedBy")
-  productionMaterialsReady ProductionOrder[] @relation("ProductionMaterialsReadyBy")
-  inventoryMovementsCreated InventoryMovement[] @relation("InventoryMovementCreatedBy")
-  transfersRequested WarehouseTransfer[] @relation("TransferRequestedBy")
-  transfersApproved WarehouseTransfer[] @relation("TransferApprovedBy")
-  transfersCompleted WarehouseTransfer[] @relation("TransferCompletedBy")
-  purchaseOrdersRequested PurchaseOrder[] @relation("PurchaseOrderRequestedBy")
-  purchaseOrdersAuthorized PurchaseOrder[] @relation("PurchaseOrderAuthorizedBy")
-  purchaseReceiptsReceived PurchaseReceipt[] @relation("PurchaseReceiptReceivedBy")
-  quoteItemAttachmentsCreated QuoteItemAttachment[] @relation("QuoteItemAttachmentCreatedBy")
-  productionAttachmentsCreated ProductionAttachment[] @relation("ProductionAttachmentCreatedBy")
-  productionProcessesCreated ProductionItemProcess[] @relation("ProductionProcessCreatedBy")
-  productionProcessesUpdated ProductionItemProcess[] @relation("ProductionProcessUpdatedBy")
-  productionProcessesReplaced ProductionItemProcess[] @relation("ProductionProcessReplacedBy")
-  productionItemsAssigned ProductionItem[] @relation("ProductionItemAssignedTo")
-  productionItemsUpdated ProductionItem[] @relation("ProductionItemUpdatedBy")
-  productionProcessesAssigned ProductionItemProcess[] @relation("ProductionProcessAssignedTo")
-  productionActivitiesCreated ProductionActivity[] @relation("ProductionActivityCreatedBy")
-  productionSessions ProductionTimeSession[] @relation("ProductionTimeSessionUser")
-  productionIncidentsReported ProductionIncident[] @relation("ProductionIncidentReportedBy")
-  productionIncidentsAssigned ProductionIncident[] @relation("ProductionIncidentAssignedTo")
-  productionExtraMaterialsCreated ProductionExtraMaterial[] @relation("ProductionExtraMaterialCreatedBy")
-  productionScheduleChangesCreated ProductionScheduleChange[] @relation("ProductionScheduleChangeCreatedBy")
-  productionSettingsUpdated ProductionSetting[] @relation("ProductionSettingUpdatedBy")
-  salesGoalsCreated SalesGoal[] @relation("SalesGoalCreatedBy")
-  salesGoalsUpdated SalesGoal[] @relation("SalesGoalUpdatedBy")
-  salesCalendarEventsOwned SalesCalendarEvent[] @relation("SalesCalendarEventOwner")
-  salesCalendarEventsCreated SalesCalendarEvent[] @relation("SalesCalendarEventCreatedBy")
-  salesCalendarEventsUpdated SalesCalendarEvent[] @relation("SalesCalendarEventUpdatedBy")
-  salesGoalMemberships SalesGoalSeller[]
-  salesInvoicesAsSeller SalesInvoice[] @relation("SalesInvoiceSeller")
-  salesInvoicesCreated SalesInvoice[] @relation("SalesInvoiceCreatedBy")
-  salesInvoicesUpdated SalesInvoice[] @relation("SalesInvoiceUpdatedBy")
-  materialPurchaseDecisions MaterialPurchaseDecision[] @relation("MaterialPurchaseDecisionBy")
-  qualityInspectionsAsInspector QualityInspection[] @relation("QualityInspectionInspector")
-  qualityDrawingInspectionsCreated QualityDrawingInspection[] @relation("QualityDrawingInspectionCreatedBy")
-  qualityDrawingInspectionsUpdated QualityDrawingInspection[] @relation("QualityDrawingInspectionUpdatedBy")
-  qualityDrawingInspectionsInspected QualityDrawingInspection[] @relation("QualityDrawingInspectionInspectedBy")
-  qualityDocumentsCreated QualityDocument[] @relation("QualityDocumentCreatedBy")
-  qualityDocumentsUpdated QualityDocument[] @relation("QualityDocumentUpdatedBy")
-  qualityVersionsCreated QualityDocumentVersion[] @relation("QualityDocumentVersionCreatedBy")
-  qualityAnnotationsCreated QualityAnnotation[] @relation("QualityAnnotationCreatedBy")
-  qualityAnnotationsUpdated QualityAnnotation[] @relation("QualityAnnotationUpdatedBy")
-  qualityReworkOrdersCreated QualityReworkOrder[] @relation("QualityReworkOrderCreatedBy")
-  qualityReworkOrdersResponsible QualityReworkOrder[] @relation("QualityReworkOrderResponsible")
-  qualityReworkSimplesCreated QualityReworkSimple[] @relation("QualityReworkSimpleCreatedBy")
-  qualityAlertsAssigned QualityAlert[] @relation("QualityAlertAssignee")
-  measuringInstrumentsCreated MeasuringInstrument[] @relation("MeasuringInstrumentCreatedBy")
+  roles                              UserRole[]
+  teamMemberships                    TeamMember[]
+  passwordResetTokens                PasswordResetToken[]
+  auditLogs                          AuditLog[]
+  quotesAsSeller                     Quote[]                     @relation("QuoteSeller")
+  quotesApproved                     Quote[]                     @relation("QuoteApprovedBy")
+  quotesRejected                     Quote[]                     @relation("QuoteRejectedBy")
+  quotesCancelled                    Quote[]                     @relation("QuoteCancelledBy")
+  directOrdersAsSeller               DirectOrder[]               @relation("DirectOrderSeller")
+  directOrdersApproved               DirectOrder[]               @relation("DirectOrderApprovedBy")
+  directOrdersRejected               DirectOrder[]               @relation("DirectOrderRejectedBy")
+  directOrdersCancelled              DirectOrder[]               @relation("DirectOrderCancelledBy")
+  productionItemsCompleted           ProductionItem[]            @relation("ProductionItemCompletedBy")
+  productionItemNotesCreated         ProductionItemNote[]        @relation("ProductionItemNoteCreatedBy")
+  productionMaterialsReady           ProductionOrder[]           @relation("ProductionMaterialsReadyBy")
+  inventoryMovementsCreated          InventoryMovement[]         @relation("InventoryMovementCreatedBy")
+  transfersRequested                 WarehouseTransfer[]         @relation("TransferRequestedBy")
+  transfersApproved                  WarehouseTransfer[]         @relation("TransferApprovedBy")
+  transfersCompleted                 WarehouseTransfer[]         @relation("TransferCompletedBy")
+  purchaseOrdersRequested            PurchaseOrder[]             @relation("PurchaseOrderRequestedBy")
+  purchaseOrdersAuthorized           PurchaseOrder[]             @relation("PurchaseOrderAuthorizedBy")
+  purchaseReceiptsReceived           PurchaseReceipt[]           @relation("PurchaseReceiptReceivedBy")
+  quoteItemAttachmentsCreated        QuoteItemAttachment[]       @relation("QuoteItemAttachmentCreatedBy")
+  productionAttachmentsCreated       ProductionAttachment[]      @relation("ProductionAttachmentCreatedBy")
+  productionProcessesCreated         ProductionItemProcess[]     @relation("ProductionProcessCreatedBy")
+  productionProcessesUpdated         ProductionItemProcess[]     @relation("ProductionProcessUpdatedBy")
+  productionProcessesReplaced        ProductionItemProcess[]     @relation("ProductionProcessReplacedBy")
+  productionItemsAssigned            ProductionItem[]            @relation("ProductionItemAssignedTo")
+  productionItemsUpdated             ProductionItem[]            @relation("ProductionItemUpdatedBy")
+  productionProcessesAssigned        ProductionItemProcess[]     @relation("ProductionProcessAssignedTo")
+  productionActivitiesCreated        ProductionActivity[]        @relation("ProductionActivityCreatedBy")
+  productionSessions                 ProductionTimeSession[]     @relation("ProductionTimeSessionUser")
+  productionIncidentsReported        ProductionIncident[]        @relation("ProductionIncidentReportedBy")
+  productionIncidentsAssigned        ProductionIncident[]        @relation("ProductionIncidentAssignedTo")
+  productionExtraMaterialsCreated    ProductionExtraMaterial[]   @relation("ProductionExtraMaterialCreatedBy")
+  productionScheduleChangesCreated   ProductionScheduleChange[]  @relation("ProductionScheduleChangeCreatedBy")
+  productionSettingsUpdated          ProductionSetting[]         @relation("ProductionSettingUpdatedBy")
+  salesGoalsCreated                  SalesGoal[]                 @relation("SalesGoalCreatedBy")
+  salesGoalsUpdated                  SalesGoal[]                 @relation("SalesGoalUpdatedBy")
+  salesCalendarEventsOwned           SalesCalendarEvent[]        @relation("SalesCalendarEventOwner")
+  salesCalendarEventsCreated         SalesCalendarEvent[]        @relation("SalesCalendarEventCreatedBy")
+  salesCalendarEventsUpdated         SalesCalendarEvent[]        @relation("SalesCalendarEventUpdatedBy")
+  salesGoalMemberships               SalesGoalSeller[]
+  salesInvoicesAsSeller              SalesInvoice[]              @relation("SalesInvoiceSeller")
+  salesInvoicesCreated               SalesInvoice[]              @relation("SalesInvoiceCreatedBy")
+  salesInvoicesUpdated               SalesInvoice[]              @relation("SalesInvoiceUpdatedBy")
+  materialPurchaseDecisions          MaterialPurchaseDecision[]  @relation("MaterialPurchaseDecisionBy")
+  qualityInspectionsAsInspector      QualityInspection[]         @relation("QualityInspectionInspector")
+  qualityDrawingInspectionsCreated   QualityDrawingInspection[]  @relation("QualityDrawingInspectionCreatedBy")
+  qualityDrawingInspectionsUpdated   QualityDrawingInspection[]  @relation("QualityDrawingInspectionUpdatedBy")
+  qualityDrawingInspectionsInspected QualityDrawingInspection[]  @relation("QualityDrawingInspectionInspectedBy")
+  qualityDocumentsCreated            QualityDocument[]           @relation("QualityDocumentCreatedBy")
+  qualityDocumentsUpdated            QualityDocument[]           @relation("QualityDocumentUpdatedBy")
+  qualityVersionsCreated             QualityDocumentVersion[]    @relation("QualityDocumentVersionCreatedBy")
+  qualityAnnotationsCreated          QualityAnnotation[]         @relation("QualityAnnotationCreatedBy")
+  qualityAnnotationsUpdated          QualityAnnotation[]         @relation("QualityAnnotationUpdatedBy")
+  qualityReworkOrdersCreated         QualityReworkOrder[]        @relation("QualityReworkOrderCreatedBy")
+  qualityReworkOrdersResponsible     QualityReworkOrder[]        @relation("QualityReworkOrderResponsible")
+  qualityReworkSimplesCreated        QualityReworkSimple[]       @relation("QualityReworkSimpleCreatedBy")
+  qualityAlertsAssigned              QualityAlert[]              @relation("QualityAlertAssignee")
+  measuringInstrumentsCreated        MeasuringInstrument[]       @relation("MeasuringInstrumentCreatedBy")
   notifications                      Notification[]              @relation("NotificationRecipient")
   productionIncidentComments         ProductionIncidentComment[] @relation("ProductionIncidentCommentBy")
   qualityErrorsAsOperator            QualityError[]              @relation("QualityErrorOperator")
   qualityErrorsCreated               QualityError[]              @relation("QualityErrorCreatedBy")
+  instrumentsAssigned                MeasuringInstrument[]       @relation("MeasuringInstrumentAssignee")
+  commitmentsCreated                 Commitment[]                @relation("CommitmentCreatedBy")
+  commitmentsClosed                  Commitment[]                @relation("CommitmentClosedBy")
+  commitmentParticipations           CommitmentParticipant[]
+  commitmentComments                 CommitmentComment[]
   dataCorrections                    DataCorrection[]            @relation("DataCorrectionBy")
 
   @@index([status])
@@ -426,10 +431,11 @@ model Team {
   updatedBy String?   @map("updated_by")
   deletedAt DateTime? @map("deleted_at")
 
-  members TeamMember[]
-  roles   TeamRole[]
-  salesGoals SalesGoalTeam[]
+  members             TeamMember[]
+  roles               TeamRole[]
+  salesGoals          SalesGoalTeam[]
   salesCalendarEvents SalesCalendarEvent[]
+  salesInvoices       SalesInvoice[]
 
   @@index([status])
   @@index([deletedAt])
@@ -496,9 +502,9 @@ model Client {
   updatedBy String?   @map("updated_by")
   deletedAt DateTime? @map("deleted_at")
 
-  contacts ClientContact[]
-  quotes   Quote[]
-  directOrders DirectOrder[]
+  contacts         ClientContact[]
+  quotes           Quote[]
+  directOrders     DirectOrder[]
   productionOrders ProductionOrder[]
   salesInvoices    SalesInvoice[]
 
@@ -520,8 +526,8 @@ model ClientContact {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  client Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  quotes Quote[]
+  client       Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  quotes       Quote[]
   directOrders DirectOrder[]
 
   @@index([clientId])
@@ -547,12 +553,12 @@ model Supplier {
   updatedBy String?   @map("updated_by")
   deletedAt DateTime? @map("deleted_at")
 
-  quoteItemMaterials QuoteItemMaterial[]
-  quoteItemExtras    QuoteItemExtra[]
-  templateMaterials  QuoteItemTemplateMaterial[]
-  templateExtras     QuoteItemTemplateExtra[]
-  purchaseOrders     PurchaseOrder[]
-  purchaseReceipts   PurchaseReceipt[]
+  quoteItemMaterials       QuoteItemMaterial[]
+  quoteItemExtras          QuoteItemExtra[]
+  templateMaterials        QuoteItemTemplateMaterial[]
+  templateExtras           QuoteItemTemplateExtra[]
+  purchaseOrders           PurchaseOrder[]
+  purchaseReceipts         PurchaseReceipt[]
   productionExtraMaterials ProductionExtraMaterial[]
 
   @@index([status])
@@ -574,14 +580,14 @@ model Warehouse {
   updatedBy String?   @map("updated_by")
   deletedAt DateTime? @map("deleted_at")
 
-  quoteItems QuoteItem[]
-  inventoryStock InventoryStock[]
-  inventoryMovements InventoryMovement[] @relation("MovementWarehouse")
+  quoteItems                    QuoteItem[]
+  inventoryStock                InventoryStock[]
+  inventoryMovements            InventoryMovement[] @relation("MovementWarehouse")
   inventoryMovementsDestination InventoryMovement[] @relation("MovementDestinationWarehouse")
-  transfersAsSource WarehouseTransfer[] @relation("TransferSource")
-  transfersAsDestination WarehouseTransfer[] @relation("TransferDestination")
-  purchaseOrderItems PurchaseOrderItem[]
-  purchaseReceipts PurchaseReceipt[]
+  transfersAsSource             WarehouseTransfer[] @relation("TransferSource")
+  transfersAsDestination        WarehouseTransfer[] @relation("TransferDestination")
+  purchaseOrderItems            PurchaseOrderItem[]
+  purchaseReceipts              PurchaseReceipt[]
 
   @@index([status])
   @@index([deletedAt])
@@ -628,17 +634,17 @@ model Item {
   updatedBy String?   @map("updated_by")
   deletedAt DateTime? @map("deleted_at")
 
-  category ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  quoteItems QuoteItem[]
-  quoteItemMaterials QuoteItemMaterial[]
-  templateItems QuoteItemTemplate[] @relation("TemplateCatalogItem")
-  templateMaterials QuoteItemTemplateMaterial[]
-  directOrderItems DirectOrderItem[]
-  inventoryStock InventoryStock[]
-  inventoryMovements InventoryMovement[]
-  transferItems WarehouseTransferItem[]
-  purchaseOrderItems PurchaseOrderItem[]
-  purchaseReceiptItems PurchaseReceiptItem[]
+  category                 ProductCategory?            @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  quoteItems               QuoteItem[]
+  quoteItemMaterials       QuoteItemMaterial[]
+  templateItems            QuoteItemTemplate[]         @relation("TemplateCatalogItem")
+  templateMaterials        QuoteItemTemplateMaterial[]
+  directOrderItems         DirectOrderItem[]
+  inventoryStock           InventoryStock[]
+  inventoryMovements       InventoryMovement[]
+  transferItems            WarehouseTransferItem[]
+  purchaseOrderItems       PurchaseOrderItem[]
+  purchaseReceiptItems     PurchaseReceiptItem[]
   productionExtraMaterials ProductionExtraMaterial[]
 
   @@index([itemType])
@@ -690,19 +696,19 @@ model FolioSequence {
 // Etapa 2 — Catalogos comerciales
 // -----------------------------------------------------------------------------
 model IssuingCompany {
-  id               String       @id @default(cuid())
-  commercialName   String       @map("commercial_name")
-  legalName        String?      @map("legal_name")
-  rfc              String?
-  fiscalAddress    String?      @map("fiscal_address")
-  phone            String?
-  email            String?
-  website          String?
-  logoUrl          String?      @map("logo_url")
-  bankDetails      String?      @map("bank_details")
-  legalText        String?      @map("legal_text")
-  quotationFooter  String?      @map("quotation_footer")
-  status           RecordStatus @default(ACTIVE)
+  id              String       @id @default(cuid())
+  commercialName  String       @map("commercial_name")
+  legalName       String?      @map("legal_name")
+  rfc             String?
+  fiscalAddress   String?      @map("fiscal_address")
+  phone           String?
+  email           String?
+  website         String?
+  logoUrl         String?      @map("logo_url")
+  bankDetails     String?      @map("bank_details")
+  legalText       String?      @map("legal_text")
+  quotationFooter String?      @map("quotation_footer")
+  status          RecordStatus @default(ACTIVE)
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -733,9 +739,9 @@ model ManufacturingProcess {
   updatedBy String?   @map("updated_by")
   deletedAt DateTime? @map("deleted_at")
 
-  quoteItemManufacturing    QuoteItemManufacturing[]
-  templateManufacturing     QuoteItemTemplateManufacturing[]
-  productionItemProcesses   ProductionItemProcess[]
+  quoteItemManufacturing  QuoteItemManufacturing[]
+  templateManufacturing   QuoteItemTemplateManufacturing[]
+  productionItemProcesses ProductionItemProcess[]
 
   @@index([status])
   @@index([deletedAt])
@@ -769,20 +775,22 @@ model InstallationConcept {
 // Etapa 2 — Biblioteca de items de cotizacion
 // -----------------------------------------------------------------------------
 model QuoteItemTemplate {
-  id                 String       @id @default(cuid())
+  id                 String            @id @default(cuid())
   name               String
   category           String?
   description        String?
-  defaultQuantity    Decimal      @default(1) @map("default_quantity") @db.Decimal(14, 3)
+  defaultQuantity    Decimal           @default(1) @map("default_quantity") @db.Decimal(14, 3)
   unit               String?
-  deliveryTimeMin    Int?         @map("delivery_time_min")
-  deliveryTimeMax    Int?         @map("delivery_time_max")
-  deliveryTimeUnit   String?      @map("delivery_time_unit")
+  deliveryTimeMin    Int?              @map("delivery_time_min")
+  deliveryTimeMax    Int?              @map("delivery_time_max")
+  deliveryTimeUnit   String?           @map("delivery_time_unit")
   deliveryDaysType   DeliveryDaysType? @map("delivery_days_type")
+  // observations = observaciones internas; clientObservations se imprime al cliente.
   observations       String?
-  benefitPercentage  Decimal      @default(30) @map("benefit_percentage") @db.Decimal(8, 2)
-  itemId             String?      @map("item_id")
-  status             RecordStatus @default(ACTIVE)
+  clientObservations String?           @map("client_observations")
+  benefitPercentage  Decimal           @default(30) @map("benefit_percentage") @db.Decimal(8, 2)
+  itemId             String?           @map("item_id")
+  status             RecordStatus      @default(ACTIVE)
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -790,13 +798,13 @@ model QuoteItemTemplate {
   updatedBy String?   @map("updated_by")
   deletedAt DateTime? @map("deleted_at")
 
-  item            Item?                            @relation("TemplateCatalogItem", fields: [itemId], references: [id], onDelete: SetNull)
-  manufacturing   QuoteItemTemplateManufacturing[]
-  materials       QuoteItemTemplateMaterial[]
-  extras          QuoteItemTemplateExtra[]
-  installations   QuoteItemTemplateInstallation[]
-  attachments     QuoteItemTemplateAttachment[]
-  quoteItems      QuoteItem[]
+  item          Item?                            @relation("TemplateCatalogItem", fields: [itemId], references: [id], onDelete: SetNull)
+  manufacturing QuoteItemTemplateManufacturing[]
+  materials     QuoteItemTemplateMaterial[]
+  extras        QuoteItemTemplateExtra[]
+  installations QuoteItemTemplateInstallation[]
+  attachments   QuoteItemTemplateAttachment[]
+  quoteItems    QuoteItem[]
 
   @@index([status])
   @@index([category])
@@ -805,15 +813,15 @@ model QuoteItemTemplate {
 }
 
 model QuoteItemTemplateAttachment {
-  id          String                   @id @default(cuid())
-  templateId  String                   @map("template_id")
+  id          String                  @id @default(cuid())
+  templateId  String                  @map("template_id")
   pathname    String
   url         String?
-  fileName    String                   @map("file_name")
-  contentType String                   @map("content_type")
-  sizeBytes   Int                      @map("size_bytes")
-  audience    QuoteAttachmentAudience  @default(SALES)
-  sortOrder   Int                      @default(0) @map("sort_order")
+  fileName    String                  @map("file_name")
+  contentType String                  @map("content_type")
+  sizeBytes   Int                     @map("size_bytes")
+  audience    QuoteAttachmentAudience @default(SALES)
+  sortOrder   Int                     @default(0) @map("sort_order")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -908,7 +916,7 @@ model QuoteItemTemplateInstallation {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  template QuoteItemTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  template QuoteItemTemplate    @relation(fields: [templateId], references: [id], onDelete: Cascade)
   concept  InstallationConcept? @relation(fields: [installationConceptId], references: [id], onDelete: SetNull)
 
   @@index([templateId])
@@ -919,26 +927,26 @@ model QuoteItemTemplateInstallation {
 // Etapa 2 — Cotizaciones
 // -----------------------------------------------------------------------------
 model Quote {
-  id                     String       @id @default(cuid())
-  folio                  String       @unique
-  version                String       @default("A")
-  clientId               String       @map("client_id")
-  clientContactId        String?      @map("client_contact_id")
-  sellerId               String       @map("seller_id")
-  issuingCompanyId       String       @map("issuing_company_id")
-  orderType              OrderType    @default(GENERAL) @map("order_type")
-  currency               CurrencyCode @default(MXN)
-  elaborationDate        DateTime     @map("elaboration_date") @db.Date
-  requestDate            DateTime?    @map("request_date") @db.Date
-  validUntil             DateTime     @map("valid_until") @db.Date
-  purchaseOrder          String?      @map("purchase_order")
-  requisition            String?
-  internalObservations   String?      @map("internal_observations")
-  clientDesignProvided   Boolean      @default(false) @map("client_design_provided")
-  advancePercentage      Decimal      @default(0) @map("advance_percentage") @db.Decimal(8, 2)
-  settlementPercentage   Decimal      @default(100) @map("settlement_percentage") @db.Decimal(8, 2)
-  paymentNotes           String?      @map("payment_notes")
-  status                 QuoteStatus  @default(DRAFT)
+  id                   String       @id @default(cuid())
+  folio                String       @unique
+  version              String       @default("A")
+  clientId             String       @map("client_id")
+  clientContactId      String?      @map("client_contact_id")
+  sellerId             String       @map("seller_id")
+  issuingCompanyId     String       @map("issuing_company_id")
+  orderType            OrderType    @default(GENERAL) @map("order_type")
+  currency             CurrencyCode @default(MXN)
+  elaborationDate      DateTime     @map("elaboration_date") @db.Date
+  requestDate          DateTime?    @map("request_date") @db.Date
+  validUntil           DateTime     @map("valid_until") @db.Date
+  purchaseOrder        String?      @map("purchase_order")
+  requisition          String?
+  internalObservations String?      @map("internal_observations")
+  clientDesignProvided Boolean      @default(false) @map("client_design_provided")
+  advancePercentage    Decimal      @default(0) @map("advance_percentage") @db.Decimal(8, 2)
+  settlementPercentage Decimal      @default(100) @map("settlement_percentage") @db.Decimal(8, 2)
+  paymentNotes         String?      @map("payment_notes")
+  status               QuoteStatus  @default(DRAFT)
 
   manufacturingTotal Decimal @default(0) @map("manufacturing_total") @db.Decimal(14, 2)
   materialsTotal     Decimal @default(0) @map("materials_total") @db.Decimal(14, 2)
@@ -950,18 +958,18 @@ model Quote {
   taxTotal           Decimal @default(0) @map("tax_total") @db.Decimal(14, 2)
   total              Decimal @default(0) @db.Decimal(14, 2)
 
-  approvedBy         String?   @map("approved_by")
-  approvedAt         DateTime? @map("approved_at")
-  rejectedBy         String?   @map("rejected_by")
-  rejectedAt         DateTime? @map("rejected_at")
-  rejectionReason    String?   @map("rejection_reason")
-  cancelledBy        String?   @map("cancelled_by")
-  cancelledAt        DateTime? @map("cancelled_at")
-  cancellationReason String?   @map("cancellation_reason")
-  productionOrderId  String?   @unique @map("production_order_id")
-  directOrderId      String?   @unique @map("direct_order_id")
-  parentQuoteId      String?   @map("parent_quote_id")
-  priceAfterProduction Boolean @default(false) @map("price_after_production")
+  approvedBy            String?   @map("approved_by")
+  approvedAt            DateTime? @map("approved_at")
+  rejectedBy            String?   @map("rejected_by")
+  rejectedAt            DateTime? @map("rejected_at")
+  rejectionReason       String?   @map("rejection_reason")
+  cancelledBy           String?   @map("cancelled_by")
+  cancelledAt           DateTime? @map("cancelled_at")
+  cancellationReason    String?   @map("cancellation_reason")
+  productionOrderId     String?   @unique @map("production_order_id")
+  directOrderId         String?   @unique @map("direct_order_id")
+  parentQuoteId         String?   @map("parent_quote_id")
+  priceAfterProduction  Boolean   @default(false) @map("price_after_production")
   sellerReviewStartedAt DateTime? @map("seller_review_started_at")
 
   createdAt DateTime  @default(now()) @map("created_at")
@@ -970,22 +978,22 @@ model Quote {
   updatedBy String?   @map("updated_by")
   deletedAt DateTime? @map("deleted_at")
 
-  client         Client          @relation(fields: [clientId], references: [id])
-  clientContact  ClientContact?  @relation(fields: [clientContactId], references: [id], onDelete: SetNull)
-  seller         User            @relation("QuoteSeller", fields: [sellerId], references: [id])
-  issuingCompany IssuingCompany  @relation(fields: [issuingCompanyId], references: [id])
-  approvedByUser User?           @relation("QuoteApprovedBy", fields: [approvedBy], references: [id], onDelete: SetNull)
-  rejectedByUser User?           @relation("QuoteRejectedBy", fields: [rejectedBy], references: [id], onDelete: SetNull)
-  cancelledByUser User?          @relation("QuoteCancelledBy", fields: [cancelledBy], references: [id], onDelete: SetNull)
-  productionOrder ProductionOrder? @relation("QuoteLatestProduction", fields: [productionOrderId], references: [id], onDelete: SetNull)
-  productionOrders ProductionOrder[] @relation("QuoteProductionOrders")
-  parentQuote    Quote?          @relation("QuoteRevisions", fields: [parentQuoteId], references: [id], onDelete: SetNull)
-  childRevisions Quote[]         @relation("QuoteRevisions")
-  directOrder    DirectOrder?    @relation("DirectOrderQuote", fields: [directOrderId], references: [id], onDelete: SetNull)
-  items          QuoteItem[]
-  purchaseOrders PurchaseOrder[]
+  client             Client              @relation(fields: [clientId], references: [id])
+  clientContact      ClientContact?      @relation(fields: [clientContactId], references: [id], onDelete: SetNull)
+  seller             User                @relation("QuoteSeller", fields: [sellerId], references: [id])
+  issuingCompany     IssuingCompany      @relation(fields: [issuingCompanyId], references: [id])
+  approvedByUser     User?               @relation("QuoteApprovedBy", fields: [approvedBy], references: [id], onDelete: SetNull)
+  rejectedByUser     User?               @relation("QuoteRejectedBy", fields: [rejectedBy], references: [id], onDelete: SetNull)
+  cancelledByUser    User?               @relation("QuoteCancelledBy", fields: [cancelledBy], references: [id], onDelete: SetNull)
+  productionOrder    ProductionOrder?    @relation("QuoteLatestProduction", fields: [productionOrderId], references: [id], onDelete: SetNull)
+  productionOrders   ProductionOrder[]   @relation("QuoteProductionOrders")
+  parentQuote        Quote?              @relation("QuoteRevisions", fields: [parentQuoteId], references: [id], onDelete: SetNull)
+  childRevisions     Quote[]             @relation("QuoteRevisions")
+  directOrder        DirectOrder?        @relation("DirectOrderQuote", fields: [directOrderId], references: [id], onDelete: SetNull)
+  items              QuoteItem[]
+  purchaseOrders     PurchaseOrder[]
   salesInvoiceQuotes SalesInvoiceQuote[]
-  qualityDocuments QualityDocument[]
+  qualityDocuments   QualityDocument[]
   qualityErrors      QualityError[]
 
   @@index([status, elaborationDate])
@@ -997,49 +1005,49 @@ model Quote {
 }
 
 model QuoteItem {
-  id                   String   @id @default(cuid())
-  quoteId              String   @map("quote_id")
-  position             Int      @default(1)
-  templateId           String?  @map("template_id")
-  itemId               String?  @map("item_id")
+  id                   String            @id @default(cuid())
+  quoteId              String            @map("quote_id")
+  position             Int               @default(1)
+  templateId           String?           @map("template_id")
+  itemId               String?           @map("item_id")
   description          String
-  quantity             Decimal  @default(1) @db.Decimal(14, 3)
+  quantity             Decimal           @default(1) @db.Decimal(14, 3)
   unit                 String?
-  deliveryTimeMin      Int?     @map("delivery_time_min")
-  deliveryTimeMax      Int?     @map("delivery_time_max")
-  deliveryTimeUnit     String?  @map("delivery_time_unit")
+  deliveryTimeMin      Int?              @map("delivery_time_min")
+  deliveryTimeMax      Int?              @map("delivery_time_max")
+  deliveryTimeUnit     String?           @map("delivery_time_unit")
   deliveryDaysType     DeliveryDaysType? @map("delivery_days_type")
-  clientObservations   String?  @map("client_observations")
-  internalObservations String?  @map("internal_observations")
-  benefitPercentage    Decimal  @default(30) @map("benefit_percentage") @db.Decimal(8, 2)
-  discountPercentage   Decimal  @default(0) @map("discount_percentage") @db.Decimal(8, 2)
-  discountAmount       Decimal  @default(0) @map("discount_amount") @db.Decimal(14, 2)
-  manufacturingTotal   Decimal  @default(0) @map("manufacturing_total") @db.Decimal(14, 2)
-  materialsTotal       Decimal  @default(0) @map("materials_total") @db.Decimal(14, 2)
-  extrasTotal          Decimal  @default(0) @map("extras_total") @db.Decimal(14, 2)
-  installationTotal    Decimal  @default(0) @map("installation_total") @db.Decimal(14, 2)
-  costTotal            Decimal  @default(0) @map("cost_total") @db.Decimal(14, 2)
-  unitSalePrice        Decimal? @map("unit_sale_price") @db.Decimal(14, 2)
-  saleSubtotal         Decimal  @default(0) @map("sale_subtotal") @db.Decimal(14, 2)
-  taxAmount            Decimal  @default(0) @map("tax_amount") @db.Decimal(14, 2)
-  total                Decimal  @default(0) @db.Decimal(14, 2)
-  isUrgent             Boolean  @default(false) @map("is_urgent")
-  warehouseId          String?  @map("warehouse_id")
-  status               RecordStatus @default(ACTIVE)
-  originItemId         String?  @map("origin_item_id")
+  clientObservations   String?           @map("client_observations")
+  internalObservations String?           @map("internal_observations")
+  benefitPercentage    Decimal           @default(30) @map("benefit_percentage") @db.Decimal(8, 2)
+  discountPercentage   Decimal           @default(0) @map("discount_percentage") @db.Decimal(8, 2)
+  discountAmount       Decimal           @default(0) @map("discount_amount") @db.Decimal(14, 2)
+  manufacturingTotal   Decimal           @default(0) @map("manufacturing_total") @db.Decimal(14, 2)
+  materialsTotal       Decimal           @default(0) @map("materials_total") @db.Decimal(14, 2)
+  extrasTotal          Decimal           @default(0) @map("extras_total") @db.Decimal(14, 2)
+  installationTotal    Decimal           @default(0) @map("installation_total") @db.Decimal(14, 2)
+  costTotal            Decimal           @default(0) @map("cost_total") @db.Decimal(14, 2)
+  unitSalePrice        Decimal?          @map("unit_sale_price") @db.Decimal(14, 2)
+  saleSubtotal         Decimal           @default(0) @map("sale_subtotal") @db.Decimal(14, 2)
+  taxAmount            Decimal           @default(0) @map("tax_amount") @db.Decimal(14, 2)
+  total                Decimal           @default(0) @db.Decimal(14, 2)
+  isUrgent             Boolean           @default(false) @map("is_urgent")
+  warehouseId          String?           @map("warehouse_id")
+  status               RecordStatus      @default(ACTIVE)
+  originItemId         String?           @map("origin_item_id")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  quote          Quote                   @relation(fields: [quoteId], references: [id], onDelete: Cascade)
-  template       QuoteItemTemplate?      @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  item           Item?                   @relation(fields: [itemId], references: [id], onDelete: SetNull)
-  warehouse      Warehouse?              @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
-  manufacturing  QuoteItemManufacturing[]
-  materials      QuoteItemMaterial[]
-  extras         QuoteItemExtra[]
-  installations  QuoteItemInstallation[]
-  attachments    QuoteItemAttachment[]
+  quote             Quote                    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  template          QuoteItemTemplate?       @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  item              Item?                    @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  warehouse         Warehouse?               @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  manufacturing     QuoteItemManufacturing[]
+  materials         QuoteItemMaterial[]
+  extras            QuoteItemExtra[]
+  installations     QuoteItemInstallation[]
+  attachments       QuoteItemAttachment[]
   salesInvoiceItems SalesInvoiceQuoteItem[]
 
   @@index([quoteId, position])
@@ -1062,8 +1070,8 @@ model QuoteItemAttachment {
   createdBy String?  @map("created_by")
   updatedBy String?  @map("updated_by")
 
-  quoteItem     QuoteItem @relation(fields: [quoteItemId], references: [id], onDelete: Cascade)
-  createdByUser User?     @relation("QuoteItemAttachmentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  quoteItem        QuoteItem         @relation(fields: [quoteItemId], references: [id], onDelete: Cascade)
+  createdByUser    User?             @relation("QuoteItemAttachmentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   qualityDocuments QualityDocument[]
 
   @@unique([pathname])
@@ -1112,9 +1120,9 @@ model QuoteItemMaterial {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  quoteItem QuoteItem @relation(fields: [quoteItemId], references: [id], onDelete: Cascade)
-  item      Item?     @relation(fields: [itemId], references: [id], onDelete: SetNull)
-  supplier  Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  quoteItem        QuoteItem                 @relation(fields: [quoteItemId], references: [id], onDelete: Cascade)
+  item             Item?                     @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  supplier         Supplier?                 @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   purchaseDecision MaterialPurchaseDecision?
 
   @@index([quoteItemId])
@@ -1196,15 +1204,15 @@ model DirectOrder {
   updatedBy String?   @map("updated_by")
   deletedAt DateTime? @map("deleted_at")
 
-  client          Client           @relation(fields: [clientId], references: [id])
-  clientContact   ClientContact?   @relation(fields: [clientContactId], references: [id], onDelete: SetNull)
-  seller          User             @relation("DirectOrderSeller", fields: [sellerId], references: [id])
-  issuingCompany  IssuingCompany   @relation(fields: [issuingCompanyId], references: [id])
-  approvedByUser  User?            @relation("DirectOrderApprovedBy", fields: [approvedBy], references: [id], onDelete: SetNull)
-  rejectedByUser  User?            @relation("DirectOrderRejectedBy", fields: [rejectedBy], references: [id], onDelete: SetNull)
-  cancelledByUser User?            @relation("DirectOrderCancelledBy", fields: [cancelledBy], references: [id], onDelete: SetNull)
-  productionOrder ProductionOrder? @relation("DirectOrderProduction", fields: [productionOrderId], references: [id], onDelete: SetNull)
-  quote           Quote?           @relation("DirectOrderQuote")
+  client          Client            @relation(fields: [clientId], references: [id])
+  clientContact   ClientContact?    @relation(fields: [clientContactId], references: [id], onDelete: SetNull)
+  seller          User              @relation("DirectOrderSeller", fields: [sellerId], references: [id])
+  issuingCompany  IssuingCompany    @relation(fields: [issuingCompanyId], references: [id])
+  approvedByUser  User?             @relation("DirectOrderApprovedBy", fields: [approvedBy], references: [id], onDelete: SetNull)
+  rejectedByUser  User?             @relation("DirectOrderRejectedBy", fields: [rejectedBy], references: [id], onDelete: SetNull)
+  cancelledByUser User?             @relation("DirectOrderCancelledBy", fields: [cancelledBy], references: [id], onDelete: SetNull)
+  productionOrder ProductionOrder?  @relation("DirectOrderProduction", fields: [productionOrderId], references: [id], onDelete: SetNull)
+  quote           Quote?            @relation("DirectOrderQuote")
   items           DirectOrderItem[]
 
   @@index([status, requestDate])
@@ -1251,51 +1259,51 @@ model ProductionSetting {
 }
 
 model ProductionOrder {
-  id                 String               @id @default(cuid())
-  folio              String               @unique
-  sourceType         ProductionSourceType @map("source_type")
-  clientId           String               @map("client_id")
-  quoteId            String?              @map("quote_id")
-  approvalDate       DateTime             @map("approval_date") @db.Date
-  status             ProductionStatus     @default(PENDING)
-  totalItems         Int                  @default(0) @map("total_items")
-  completedItems     Int                  @default(0) @map("completed_items")
-  progressPercentage Decimal              @default(0) @map("progress_percentage") @db.Decimal(8, 2)
-  startedAt          DateTime?            @map("started_at")
-  completedAt        DateTime?            @map("completed_at")
-  materialsReadyAt   DateTime?            @map("materials_ready_at")
-  materialsReadyBy   String?              @map("materials_ready_by")
-  estimatedDeliveryDate DateTime?         @map("estimated_delivery_date") @db.Date
-  reprintOfId        String?              @map("reprint_of_id")
-  reprintReason      String?              @map("reprint_reason")
+  id                    String               @id @default(cuid())
+  folio                 String               @unique
+  sourceType            ProductionSourceType @map("source_type")
+  clientId              String               @map("client_id")
+  quoteId               String?              @map("quote_id")
+  approvalDate          DateTime             @map("approval_date") @db.Date
+  status                ProductionStatus     @default(PENDING)
+  totalItems            Int                  @default(0) @map("total_items")
+  completedItems        Int                  @default(0) @map("completed_items")
+  progressPercentage    Decimal              @default(0) @map("progress_percentage") @db.Decimal(8, 2)
+  startedAt             DateTime?            @map("started_at")
+  completedAt           DateTime?            @map("completed_at")
+  materialsReadyAt      DateTime?            @map("materials_ready_at")
+  materialsReadyBy      String?              @map("materials_ready_by")
+  estimatedDeliveryDate DateTime?            @map("estimated_delivery_date") @db.Date
+  reprintOfId           String?              @map("reprint_of_id")
+  reprintReason         String?              @map("reprint_reason")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   createdBy String?  @map("created_by")
   updatedBy String?  @map("updated_by")
 
-  client               Client            @relation(fields: [clientId], references: [id])
-  quote                Quote?            @relation("QuoteProductionOrders", fields: [quoteId], references: [id], onDelete: SetNull)
-  latestForQuote       Quote?            @relation("QuoteLatestProduction")
-  directOrder          DirectOrder?      @relation("DirectOrderProduction")
-  materialsReadyByUser User?             @relation("ProductionMaterialsReadyBy", fields: [materialsReadyBy], references: [id], onDelete: SetNull)
-  reprintOf            ProductionOrder?  @relation("ProductionReprints", fields: [reprintOfId], references: [id], onDelete: SetNull)
-  reprints             ProductionOrder[] @relation("ProductionReprints")
-  items                ProductionItem[]
-  purchaseOrders       PurchaseOrder[]
-  attachments          ProductionAttachment[]
-  activities           ProductionActivity[]
-  incidents            ProductionIncident[]
-  extraMaterials       ProductionExtraMaterial[]
-  timeSessions         ProductionTimeSession[]
-  qualityItemConfigs   QualityItemConfig[]
-  qualityAlerts        QualityAlert[]
-  qualityReworkOrders  QualityReworkOrder[]
-  qualityReworkSimples QualityReworkSimple[]
-  qualityEvidences     QualityEvidence[]
+  client                Client                     @relation(fields: [clientId], references: [id])
+  quote                 Quote?                     @relation("QuoteProductionOrders", fields: [quoteId], references: [id], onDelete: SetNull)
+  latestForQuote        Quote?                     @relation("QuoteLatestProduction")
+  directOrder           DirectOrder?               @relation("DirectOrderProduction")
+  materialsReadyByUser  User?                      @relation("ProductionMaterialsReadyBy", fields: [materialsReadyBy], references: [id], onDelete: SetNull)
+  reprintOf             ProductionOrder?           @relation("ProductionReprints", fields: [reprintOfId], references: [id], onDelete: SetNull)
+  reprints              ProductionOrder[]          @relation("ProductionReprints")
+  items                 ProductionItem[]
+  purchaseOrders        PurchaseOrder[]
+  attachments           ProductionAttachment[]
+  activities            ProductionActivity[]
+  incidents             ProductionIncident[]
+  extraMaterials        ProductionExtraMaterial[]
+  timeSessions          ProductionTimeSession[]
+  qualityItemConfigs    QualityItemConfig[]
+  qualityAlerts         QualityAlert[]
+  qualityReworkOrders   QualityReworkOrder[]
+  qualityReworkSimples  QualityReworkSimple[]
+  qualityEvidences      QualityEvidence[]
   qualityExternalShares QualityExternalShare[]
-  qualityDocuments QualityDocument[]
-  drawingInspections QualityDrawingInspection[]
+  qualityDocuments      QualityDocument[]
+  drawingInspections    QualityDrawingInspection[]
   qualityErrors         QualityError[]
 
   @@index([status, approvalDate])
@@ -1324,12 +1332,12 @@ model ProductionAttachment {
   createdBy String?  @map("created_by")
   updatedBy String?  @map("updated_by")
 
-  productionOrder ProductionOrder        @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
-  productionItem  ProductionItem?        @relation(fields: [productionItemId], references: [id], onDelete: SetNull)
-  process         ProductionItemProcess? @relation(fields: [processId], references: [id], onDelete: SetNull)
-  incident        ProductionIncident?    @relation(fields: [incidentId], references: [id], onDelete: SetNull)
-  activity        ProductionActivity?    @relation(fields: [activityId], references: [id], onDelete: SetNull)
-  createdByUser   User?                  @relation("ProductionAttachmentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  productionOrder  ProductionOrder        @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  productionItem   ProductionItem?        @relation(fields: [productionItemId], references: [id], onDelete: SetNull)
+  process          ProductionItemProcess? @relation(fields: [processId], references: [id], onDelete: SetNull)
+  incident         ProductionIncident?    @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+  activity         ProductionActivity?    @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  createdByUser    User?                  @relation("ProductionAttachmentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   qualityDocuments QualityDocument[]
 
   @@unique([pathname])
@@ -1341,25 +1349,25 @@ model ProductionAttachment {
 }
 
 model ProductionItem {
-  id                String                 @id @default(cuid())
-  productionOrderId String                 @map("production_order_id")
-  sourceItemId      String                 @map("source_item_id")
-  sourceItemType    String                 @map("source_item_type")
-  position          Int                    @default(1)
+  id                String                    @id @default(cuid())
+  productionOrderId String                    @map("production_order_id")
+  sourceItemId      String                    @map("source_item_id")
+  sourceItemType    String                    @map("source_item_type")
+  position          Int                       @default(1)
   description       String
-  quantity          Decimal                @default(1) @db.Decimal(14, 3)
-  completedQuantity Decimal                @default(0) @map("completed_quantity") @db.Decimal(14, 3)
-  status            ProductionStatus       @default(PENDING)
-  priority          ProductionItemPriority @default(NORMAL)
-  assignedToUserId  String?                @map("assigned_to_user_id")
-  plannedStartAt    DateTime?              @map("planned_start_at") @db.Date
-  plannedEndAt      DateTime?              @map("planned_end_at") @db.Date
-  commitmentDate    DateTime?              @map("commitment_date") @db.Date
-  startedAt         DateTime?              @map("started_at")
-  completedAt       DateTime?              @map("completed_at")
-  completedBy       String?                @map("completed_by")
+  quantity          Decimal                   @default(1) @db.Decimal(14, 3)
+  completedQuantity Decimal                   @default(0) @map("completed_quantity") @db.Decimal(14, 3)
+  status            ProductionStatus          @default(PENDING)
+  priority          ProductionItemPriority    @default(NORMAL)
+  assignedToUserId  String?                   @map("assigned_to_user_id")
+  plannedStartAt    DateTime?                 @map("planned_start_at") @db.Date
+  plannedEndAt      DateTime?                 @map("planned_end_at") @db.Date
+  commitmentDate    DateTime?                 @map("commitment_date") @db.Date
+  startedAt         DateTime?                 @map("started_at")
+  completedAt       DateTime?                 @map("completed_at")
+  completedBy       String?                   @map("completed_by")
   observations      String?
-  durationMinutes   Int?                   @map("duration_minutes")
+  durationMinutes   Int?                      @map("duration_minutes")
   /// Estatus operativo fijado manualmente (Dashboard gerencial). Null = derivado.
   trackingStatus    ProductionTrackingStatus? @map("tracking_status")
   trackingStatusAt  DateTime?                 @map("tracking_status_at")
@@ -1371,25 +1379,25 @@ model ProductionItem {
   createdBy String?  @map("created_by")
   updatedBy String?  @map("updated_by")
 
-  productionOrder ProductionOrder            @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
-  completedByUser User?                      @relation("ProductionItemCompletedBy", fields: [completedBy], references: [id], onDelete: SetNull)
-  assignedToUser  User?                      @relation("ProductionItemAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
-  updatedByUser   User?                      @relation("ProductionItemUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
-  notes           ProductionItemNote[]
-  processes       ProductionItemProcess[]
-  activities      ProductionActivity[]
-  incidents       ProductionIncident[]
-  extraMaterials  ProductionExtraMaterial[]
-  attachments     ProductionAttachment[]
-  timeSessions    ProductionTimeSession[]
-  scheduleChanges ProductionScheduleChange[]
-  qualityConfig   QualityItemConfig?
-  qualityPieces   QualityPiece[]
-  qualityReworkOrders QualityReworkOrder[]
+  productionOrder      ProductionOrder            @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  completedByUser      User?                      @relation("ProductionItemCompletedBy", fields: [completedBy], references: [id], onDelete: SetNull)
+  assignedToUser       User?                      @relation("ProductionItemAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  updatedByUser        User?                      @relation("ProductionItemUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  notes                ProductionItemNote[]
+  processes            ProductionItemProcess[]
+  activities           ProductionActivity[]
+  incidents            ProductionIncident[]
+  extraMaterials       ProductionExtraMaterial[]
+  attachments          ProductionAttachment[]
+  timeSessions         ProductionTimeSession[]
+  scheduleChanges      ProductionScheduleChange[]
+  qualityConfig        QualityItemConfig?
+  qualityPieces        QualityPiece[]
+  qualityReworkOrders  QualityReworkOrder[]
   qualityReworkSimples QualityReworkSimple[]
-  qualityEvidences QualityEvidence[]
-  qualityDocuments QualityDocument[]
-  drawingInspections QualityDrawingInspection[]
+  qualityEvidences     QualityEvidence[]
+  qualityDocuments     QualityDocument[]
+  drawingInspections   QualityDrawingInspection[]
   qualityErrors        QualityError[]
 
   @@index([productionOrderId, position])
@@ -1401,11 +1409,11 @@ model ProductionItem {
 }
 
 model ProductionItemNote {
-  id                String   @id @default(cuid())
-  productionItemId  String   @map("production_item_id")
-  body              String
-  createdBy         String?  @map("created_by")
-  createdAt         DateTime @default(now()) @map("created_at")
+  id               String   @id @default(cuid())
+  productionItemId String   @map("production_item_id")
+  body             String
+  createdBy        String?  @map("created_by")
+  createdAt        DateTime @default(now()) @map("created_at")
 
   productionItem ProductionItem @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
   createdByUser  User?          @relation("ProductionItemNoteCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
@@ -1415,41 +1423,41 @@ model ProductionItemNote {
 }
 
 model ProductionItemProcess {
-  id                     String                       @id @default(cuid())
-  productionItemId       String                       @map("production_item_id")
-  sourceType             ProductionProcessSourceType  @map("source_type")
-  quotedManufacturingId  String?                      @map("quoted_manufacturing_id")
-  manufacturingProcessId String?                      @map("manufacturing_process_id")
-  processNameSnapshot    String                       @map("process_name_snapshot")
-  unitSnapshot           ProcessUnit                  @map("unit_snapshot")
-  quotedHours            Decimal                      @default(0) @map("quoted_hours") @db.Decimal(14, 3)
-  expectedHours          Decimal                      @default(0) @map("expected_hours") @db.Decimal(14, 3)
-  realHours              Decimal                      @default(0) @map("real_hours") @db.Decimal(14, 3)
-  handicapSnapshot       Decimal?                     @map("handicap_snapshot") @db.Decimal(6, 2)
-  assignedToUserId       String?                      @map("assigned_to_user_id")
-  startedAt              DateTime?                    @map("started_at")
-  completedAt            DateTime?                    @map("completed_at")
-  status                 ProductionProcessStatus      @default(PENDING)
-  replacedProcessId      String?                      @map("replaced_process_id")
-  replacementReason      String?                      @map("replacement_reason")
-  replacedAt             DateTime?                    @map("replaced_at")
-  replacedBy             String?                      @map("replaced_by")
+  id                     String                      @id @default(cuid())
+  productionItemId       String                      @map("production_item_id")
+  sourceType             ProductionProcessSourceType @map("source_type")
+  quotedManufacturingId  String?                     @map("quoted_manufacturing_id")
+  manufacturingProcessId String?                     @map("manufacturing_process_id")
+  processNameSnapshot    String                      @map("process_name_snapshot")
+  unitSnapshot           ProcessUnit                 @map("unit_snapshot")
+  quotedHours            Decimal                     @default(0) @map("quoted_hours") @db.Decimal(14, 3)
+  expectedHours          Decimal                     @default(0) @map("expected_hours") @db.Decimal(14, 3)
+  realHours              Decimal                     @default(0) @map("real_hours") @db.Decimal(14, 3)
+  handicapSnapshot       Decimal?                    @map("handicap_snapshot") @db.Decimal(6, 2)
+  assignedToUserId       String?                     @map("assigned_to_user_id")
+  startedAt              DateTime?                   @map("started_at")
+  completedAt            DateTime?                   @map("completed_at")
+  status                 ProductionProcessStatus     @default(PENDING)
+  replacedProcessId      String?                     @map("replaced_process_id")
+  replacementReason      String?                     @map("replacement_reason")
+  replacedAt             DateTime?                   @map("replaced_at")
+  replacedBy             String?                     @map("replaced_by")
   notes                  String?
-  sortOrder              Int                          @default(0) @map("sort_order")
+  sortOrder              Int                         @default(0) @map("sort_order")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   createdBy String?  @map("created_by")
   updatedBy String?  @map("updated_by")
 
-  productionItem ProductionItem              @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
-  process        ManufacturingProcess?       @relation(fields: [manufacturingProcessId], references: [id], onDelete: SetNull)
-  assignedToUser User?                       @relation("ProductionProcessAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
-  replacedByUser User?                       @relation("ProductionProcessReplacedBy", fields: [replacedBy], references: [id], onDelete: SetNull)
-  createdByUser  User?                       @relation("ProductionProcessCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser  User?                       @relation("ProductionProcessUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
-  replacedProcess ProductionItemProcess?     @relation("ProductionProcessReplacement", fields: [replacedProcessId], references: [id], onDelete: SetNull)
-  replacements    ProductionItemProcess[]    @relation("ProductionProcessReplacement")
+  productionItem  ProductionItem            @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
+  process         ManufacturingProcess?     @relation(fields: [manufacturingProcessId], references: [id], onDelete: SetNull)
+  assignedToUser  User?                     @relation("ProductionProcessAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  replacedByUser  User?                     @relation("ProductionProcessReplacedBy", fields: [replacedBy], references: [id], onDelete: SetNull)
+  createdByUser   User?                     @relation("ProductionProcessCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser   User?                     @relation("ProductionProcessUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  replacedProcess ProductionItemProcess?    @relation("ProductionProcessReplacement", fields: [replacedProcessId], references: [id], onDelete: SetNull)
+  replacements    ProductionItemProcess[]   @relation("ProductionProcessReplacement")
   sessions        ProductionTimeSession[]
   activities      ProductionActivity[]
   incidents       ProductionIncident[]
@@ -1475,12 +1483,12 @@ model ProductionActivity {
   createdBy         String?                @map("created_by")
   createdAt         DateTime               @default(now()) @map("created_at")
 
-  productionOrder ProductionOrder        @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
-  productionItem  ProductionItem?        @relation(fields: [productionItemId], references: [id], onDelete: SetNull)
-  process         ProductionItemProcess? @relation(fields: [processId], references: [id], onDelete: SetNull)
-  incident        ProductionIncident?    @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+  productionOrder ProductionOrder          @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  productionItem  ProductionItem?          @relation(fields: [productionItemId], references: [id], onDelete: SetNull)
+  process         ProductionItemProcess?   @relation(fields: [processId], references: [id], onDelete: SetNull)
+  incident        ProductionIncident?      @relation(fields: [incidentId], references: [id], onDelete: SetNull)
   extraMaterial   ProductionExtraMaterial? @relation(fields: [extraMaterialId], references: [id], onDelete: SetNull)
-  createdByUser   User?                  @relation("ProductionActivityCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  createdByUser   User?                    @relation("ProductionActivityCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   attachments     ProductionAttachment[]
 
   @@index([productionOrderId, createdAt])
@@ -1490,18 +1498,18 @@ model ProductionActivity {
 }
 
 model ProductionTimeSession {
-  id                String                       @id @default(cuid())
-  productionOrderId String                       @map("production_order_id")
-  productionItemId  String                       @map("production_item_id")
-  processId         String                       @map("process_id")
-  userId            String                       @map("user_id")
-  status            ProductionTimeSessionStatus  @default(RUNNING)
-  startedAt         DateTime                     @map("started_at")
-  lastResumedAt     DateTime                     @map("last_resumed_at")
-  pausedAt          DateTime?                    @map("paused_at")
-  endedAt           DateTime?                    @map("ended_at")
+  id                 String                      @id @default(cuid())
+  productionOrderId  String                      @map("production_order_id")
+  productionItemId   String                      @map("production_item_id")
+  processId          String                      @map("process_id")
+  userId             String                      @map("user_id")
+  status             ProductionTimeSessionStatus @default(RUNNING)
+  startedAt          DateTime                    @map("started_at")
+  lastResumedAt      DateTime                    @map("last_resumed_at")
+  pausedAt           DateTime?                   @map("paused_at")
+  endedAt            DateTime?                   @map("ended_at")
   accumulatedMinutes Decimal                     @default(0) @map("accumulated_minutes") @db.Decimal(14, 3)
-  durationMinutes   Decimal                      @default(0) @map("duration_minutes") @db.Decimal(14, 3)
+  durationMinutes    Decimal                     @default(0) @map("duration_minutes") @db.Decimal(14, 3)
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -1518,21 +1526,21 @@ model ProductionTimeSession {
 }
 
 model ProductionIncident {
-  id                String                    @id @default(cuid())
-  productionOrderId String                    @map("production_order_id")
-  productionItemId  String?                   @map("production_item_id")
-  processId         String?                   @map("process_id")
-  extraMaterialId   String?                   @map("extra_material_id")
-  type              ProductionIncidentType    @default(OTHER)
-  status            ProductionIncidentStatus  @default(OPEN)
-  blocking          Boolean                   @default(false)
+  id                String                   @id @default(cuid())
+  productionOrderId String                   @map("production_order_id")
+  productionItemId  String?                  @map("production_item_id")
+  processId         String?                  @map("process_id")
+  extraMaterialId   String?                  @map("extra_material_id")
+  type              ProductionIncidentType   @default(OTHER)
+  status            ProductionIncidentStatus @default(OPEN)
+  blocking          Boolean                  @default(false)
   title             String
   description       String
-  actionTaken       String?                   @map("action_taken")
-  assignedToUserId  String?                   @map("assigned_to_user_id")
-  reportedBy        String?                   @map("reported_by")
-  resolvedAt        DateTime?                 @map("resolved_at")
-  closedAt          DateTime?                 @map("closed_at")
+  actionTaken       String?                  @map("action_taken")
+  assignedToUserId  String?                  @map("assigned_to_user_id")
+  reportedBy        String?                  @map("reported_by")
+  resolvedAt        DateTime?                @map("resolved_at")
+  closedAt          DateTime?                @map("closed_at")
   /// Seguimiento desde Dashboard gerencial / junta semanal.
   priority          IncidentPriority         @default(MEDIUM)
   reasonCode        String?                  @map("reason_code")
@@ -1548,12 +1556,12 @@ model ProductionIncident {
   createdBy String?  @map("created_by")
   updatedBy String?  @map("updated_by")
 
-  productionOrder ProductionOrder        @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
-  productionItem  ProductionItem?        @relation(fields: [productionItemId], references: [id], onDelete: SetNull)
-  process         ProductionItemProcess? @relation(fields: [processId], references: [id], onDelete: SetNull)
-  extraMaterial   ProductionExtraMaterial? @relation(fields: [extraMaterialId], references: [id], onDelete: SetNull)
-  reportedByUser  User?                  @relation("ProductionIncidentReportedBy", fields: [reportedBy], references: [id], onDelete: SetNull)
-  assignedToUser  User?                  @relation("ProductionIncidentAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  productionOrder ProductionOrder             @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  productionItem  ProductionItem?             @relation(fields: [productionItemId], references: [id], onDelete: SetNull)
+  process         ProductionItemProcess?      @relation(fields: [processId], references: [id], onDelete: SetNull)
+  extraMaterial   ProductionExtraMaterial?    @relation(fields: [extraMaterialId], references: [id], onDelete: SetNull)
+  reportedByUser  User?                       @relation("ProductionIncidentReportedBy", fields: [reportedBy], references: [id], onDelete: SetNull)
+  assignedToUser  User?                       @relation("ProductionIncidentAssignedTo", fields: [assignedToUserId], references: [id], onDelete: SetNull)
   attachments     ProductionAttachment[]
   activities      ProductionActivity[]
   comments        ProductionIncidentComment[]
@@ -1599,17 +1607,17 @@ model ProductionExtraMaterial {
 }
 
 model ProductionScheduleChange {
-  id                       String    @id @default(cuid())
-  productionItemId         String    @map("production_item_id")
-  previousPlannedStartAt   DateTime? @map("previous_planned_start_at") @db.Date
-  previousPlannedEndAt     DateTime? @map("previous_planned_end_at") @db.Date
-  previousCommitmentDate   DateTime? @map("previous_commitment_date") @db.Date
-  newPlannedStartAt        DateTime? @map("new_planned_start_at") @db.Date
-  newPlannedEndAt          DateTime? @map("new_planned_end_at") @db.Date
-  newCommitmentDate        DateTime? @map("new_commitment_date") @db.Date
-  reason                   String?
-  createdBy                String?   @map("created_by")
-  createdAt                DateTime  @default(now()) @map("created_at")
+  id                     String    @id @default(cuid())
+  productionItemId       String    @map("production_item_id")
+  previousPlannedStartAt DateTime? @map("previous_planned_start_at") @db.Date
+  previousPlannedEndAt   DateTime? @map("previous_planned_end_at") @db.Date
+  previousCommitmentDate DateTime? @map("previous_commitment_date") @db.Date
+  newPlannedStartAt      DateTime? @map("new_planned_start_at") @db.Date
+  newPlannedEndAt        DateTime? @map("new_planned_end_at") @db.Date
+  newCommitmentDate      DateTime? @map("new_commitment_date") @db.Date
+  reason                 String?
+  createdBy              String?   @map("created_by")
+  createdAt              DateTime  @default(now()) @map("created_at")
 
   productionItem ProductionItem @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
   createdByUser  User?          @relation("ProductionScheduleChangeCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
@@ -1641,21 +1649,21 @@ model InventoryStock {
 }
 
 model InventoryMovement {
-  id                      String                 @id @default(cuid())
-  folio                   String                 @unique
-  warehouseId             String                 @map("warehouse_id")
-  destinationWarehouseId  String?                @map("destination_warehouse_id")
-  itemId                  String                 @map("item_id")
-  movementType            MovementType           @map("movement_type")
-  quantity                Decimal                @db.Decimal(14, 3)
-  unitCost                Decimal?               @map("unit_cost") @db.Decimal(14, 2)
-  referenceType           MovementReferenceType? @map("reference_type")
-  referenceId             String?                @map("reference_id")
-  reason                  String?
-  notes                   String?
-  movementDate            DateTime               @map("movement_date")
-  createdBy               String                 @map("created_by")
-  createdAt               DateTime               @default(now()) @map("created_at")
+  id                     String                 @id @default(cuid())
+  folio                  String                 @unique
+  warehouseId            String                 @map("warehouse_id")
+  destinationWarehouseId String?                @map("destination_warehouse_id")
+  itemId                 String                 @map("item_id")
+  movementType           MovementType           @map("movement_type")
+  quantity               Decimal                @db.Decimal(14, 3)
+  unitCost               Decimal?               @map("unit_cost") @db.Decimal(14, 2)
+  referenceType          MovementReferenceType? @map("reference_type")
+  referenceId            String?                @map("reference_id")
+  reason                 String?
+  notes                  String?
+  movementDate           DateTime               @map("movement_date")
+  createdBy              String                 @map("created_by")
+  createdAt              DateTime               @default(now()) @map("created_at")
 
   warehouse            Warehouse  @relation("MovementWarehouse", fields: [warehouseId], references: [id])
   destinationWarehouse Warehouse? @relation("MovementDestinationWarehouse", fields: [destinationWarehouseId], references: [id])
@@ -1688,11 +1696,11 @@ model WarehouseTransfer {
   createdBy String?  @map("created_by")
   updatedBy String?  @map("updated_by")
 
-  sourceWarehouse      Warehouse @relation("TransferSource", fields: [sourceWarehouseId], references: [id])
-  destinationWarehouse Warehouse @relation("TransferDestination", fields: [destinationWarehouseId], references: [id])
-  requestedByUser      User?     @relation("TransferRequestedBy", fields: [requestedBy], references: [id], onDelete: SetNull)
-  approvedByUser       User?     @relation("TransferApprovedBy", fields: [approvedBy], references: [id], onDelete: SetNull)
-  completedByUser      User?     @relation("TransferCompletedBy", fields: [completedBy], references: [id], onDelete: SetNull)
+  sourceWarehouse      Warehouse               @relation("TransferSource", fields: [sourceWarehouseId], references: [id])
+  destinationWarehouse Warehouse               @relation("TransferDestination", fields: [destinationWarehouseId], references: [id])
+  requestedByUser      User?                   @relation("TransferRequestedBy", fields: [requestedBy], references: [id], onDelete: SetNull)
+  approvedByUser       User?                   @relation("TransferApprovedBy", fields: [approvedBy], references: [id], onDelete: SetNull)
+  completedByUser      User?                   @relation("TransferCompletedBy", fields: [completedBy], references: [id], onDelete: SetNull)
   items                WarehouseTransferItem[]
 
   @@index([status, requestedAt])
@@ -1720,24 +1728,24 @@ model WarehouseTransferItem {
 // Etapa 3 — Ordenes de compra y recepciones
 // -----------------------------------------------------------------------------
 model PurchaseOrder {
-  id                String              @id @default(cuid())
-  folio             String              @unique
-  productionOrderId String?             @map("production_order_id")
-  quoteId           String?             @map("quote_id")
-  supplierId        String              @map("supplier_id")
-  requestedBy       String              @map("requested_by")
-  authorizedBy      String?             @map("authorized_by")
-  requestDate       DateTime            @map("request_date") @db.Date
-  authorizationDate DateTime?           @map("authorization_date")
-  expectedDate      DateTime?           @map("expected_date") @db.Date
-  status            PurchaseOrderStatus @default(DRAFT)
-  comments          String?
-  subtotal          Decimal             @default(0) @db.Decimal(14, 2)
-  tax               Decimal             @default(0) @db.Decimal(14, 2)
-  total             Decimal             @default(0) @db.Decimal(14, 2)
-  rejectionReason   String?             @map("rejection_reason")
-  cancellationReason String?            @map("cancellation_reason")
-  completedAt       DateTime?           @map("completed_at")
+  id                 String              @id @default(cuid())
+  folio              String              @unique
+  productionOrderId  String?             @map("production_order_id")
+  quoteId            String?             @map("quote_id")
+  supplierId         String              @map("supplier_id")
+  requestedBy        String              @map("requested_by")
+  authorizedBy       String?             @map("authorized_by")
+  requestDate        DateTime            @map("request_date") @db.Date
+  authorizationDate  DateTime?           @map("authorization_date")
+  expectedDate       DateTime?           @map("expected_date") @db.Date
+  status             PurchaseOrderStatus @default(DRAFT)
+  comments           String?
+  subtotal           Decimal             @default(0) @db.Decimal(14, 2)
+  tax                Decimal             @default(0) @db.Decimal(14, 2)
+  total              Decimal             @default(0) @db.Decimal(14, 2)
+  rejectionReason    String?             @map("rejection_reason")
+  cancellationReason String?             @map("cancellation_reason")
+  completedAt        DateTime?           @map("completed_at")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -1745,13 +1753,13 @@ model PurchaseOrder {
   updatedBy String?   @map("updated_by")
   deletedAt DateTime? @map("deleted_at")
 
-  productionOrder ProductionOrder? @relation(fields: [productionOrderId], references: [id], onDelete: SetNull)
-  quote           Quote?           @relation(fields: [quoteId], references: [id], onDelete: SetNull)
-  supplier        Supplier         @relation(fields: [supplierId], references: [id])
-  requestedByUser User             @relation("PurchaseOrderRequestedBy", fields: [requestedBy], references: [id])
-  authorizedByUser User?           @relation("PurchaseOrderAuthorizedBy", fields: [authorizedBy], references: [id], onDelete: SetNull)
-  items           PurchaseOrderItem[]
-  receipts        PurchaseReceipt[]
+  productionOrder  ProductionOrder?    @relation(fields: [productionOrderId], references: [id], onDelete: SetNull)
+  quote            Quote?              @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  supplier         Supplier            @relation(fields: [supplierId], references: [id])
+  requestedByUser  User                @relation("PurchaseOrderRequestedBy", fields: [requestedBy], references: [id])
+  authorizedByUser User?               @relation("PurchaseOrderAuthorizedBy", fields: [authorizedBy], references: [id], onDelete: SetNull)
+  items            PurchaseOrderItem[]
+  receipts         PurchaseReceipt[]
 
   @@index([status, requestDate])
   @@index([supplierId])
@@ -1762,31 +1770,31 @@ model PurchaseOrder {
 }
 
 model PurchaseOrderItem {
-  id                   String                  @id @default(cuid())
-  purchaseOrderId      String                  @map("purchase_order_id")
-  itemId               String?                 @map("item_id")
-  descriptionSnapshot  String                  @map("description_snapshot")
-  quantity             Decimal                 @db.Decimal(14, 3)
-  receivedQuantity     Decimal                 @default(0) @map("received_quantity") @db.Decimal(14, 3)
-  unit                 String?
-  dimensions           String?
-  presentation         String?
-  supplierName         String?                 @map("supplier_name")
-  unitPrice            Decimal                 @default(0) @map("unit_price") @db.Decimal(14, 2)
-  subtotal             Decimal                 @default(0) @db.Decimal(14, 2)
-  taxAmount            Decimal                 @default(0) @map("tax_amount") @db.Decimal(14, 2)
-  total                Decimal                 @default(0) @db.Decimal(14, 2)
-  warehouseId          String?                 @map("warehouse_id")
-  status               PurchaseOrderItemStatus @default(PENDING)
-  sourceType           PurchaseOrderItemSourceType @default(MANUAL) @map("source_type")
-  sourceMaterialId     String?                 @map("source_material_id")
+  id                  String                      @id @default(cuid())
+  purchaseOrderId     String                      @map("purchase_order_id")
+  itemId              String?                     @map("item_id")
+  descriptionSnapshot String                      @map("description_snapshot")
+  quantity            Decimal                     @db.Decimal(14, 3)
+  receivedQuantity    Decimal                     @default(0) @map("received_quantity") @db.Decimal(14, 3)
+  unit                String?
+  dimensions          String?
+  presentation        String?
+  supplierName        String?                     @map("supplier_name")
+  unitPrice           Decimal                     @default(0) @map("unit_price") @db.Decimal(14, 2)
+  subtotal            Decimal                     @default(0) @db.Decimal(14, 2)
+  taxAmount           Decimal                     @default(0) @map("tax_amount") @db.Decimal(14, 2)
+  total               Decimal                     @default(0) @db.Decimal(14, 2)
+  warehouseId         String?                     @map("warehouse_id")
+  status              PurchaseOrderItemStatus     @default(PENDING)
+  sourceType          PurchaseOrderItemSourceType @default(MANUAL) @map("source_type")
+  sourceMaterialId    String?                     @map("source_material_id")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
-  item          Item?         @relation(fields: [itemId], references: [id], onDelete: SetNull)
-  warehouse     Warehouse?    @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  purchaseOrder PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  item          Item?                 @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  warehouse     Warehouse?            @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
   receiptItems  PurchaseReceiptItem[]
 
   @@index([purchaseOrderId])
@@ -1805,11 +1813,11 @@ model PurchaseReceipt {
   receivedBy      String   @map("received_by")
   createdAt       DateTime @default(now()) @map("created_at")
 
-  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
-  supplier      Supplier      @relation(fields: [supplierId], references: [id])
-  warehouse     Warehouse     @relation(fields: [warehouseId], references: [id])
-  receivedByUser User         @relation("PurchaseReceiptReceivedBy", fields: [receivedBy], references: [id])
-  items         PurchaseReceiptItem[]
+  purchaseOrder  PurchaseOrder         @relation(fields: [purchaseOrderId], references: [id])
+  supplier       Supplier              @relation(fields: [supplierId], references: [id])
+  warehouse      Warehouse             @relation(fields: [warehouseId], references: [id])
+  receivedByUser User                  @relation("PurchaseReceiptReceivedBy", fields: [receivedBy], references: [id])
+  items          PurchaseReceiptItem[]
 
   @@index([purchaseOrderId])
   @@index([supplierId])
@@ -1818,14 +1826,14 @@ model PurchaseReceipt {
 }
 
 model PurchaseReceiptItem {
-  id                         String  @id @default(cuid())
-  purchaseReceiptId          String  @map("purchase_receipt_id")
-  purchaseOrderItemId        String  @map("purchase_order_item_id")
-  itemId                     String  @map("item_id")
-  orderedQuantity            Decimal @map("ordered_quantity") @db.Decimal(14, 3)
-  previouslyReceivedQuantity Decimal @map("previously_received_quantity") @db.Decimal(14, 3)
-  receivedQuantity           Decimal @map("received_quantity") @db.Decimal(14, 3)
-  unitCost                   Decimal @default(0) @map("unit_cost") @db.Decimal(14, 2)
+  id                         String   @id @default(cuid())
+  purchaseReceiptId          String   @map("purchase_receipt_id")
+  purchaseOrderItemId        String   @map("purchase_order_item_id")
+  itemId                     String   @map("item_id")
+  orderedQuantity            Decimal  @map("ordered_quantity") @db.Decimal(14, 3)
+  previouslyReceivedQuantity Decimal  @map("previously_received_quantity") @db.Decimal(14, 3)
+  receivedQuantity           Decimal  @map("received_quantity") @db.Decimal(14, 3)
+  unitCost                   Decimal  @default(0) @map("unit_cost") @db.Decimal(14, 2)
   createdAt                  DateTime @default(now()) @map("created_at")
 
   purchaseReceipt   PurchaseReceipt   @relation(fields: [purchaseReceiptId], references: [id], onDelete: Cascade)
@@ -1872,22 +1880,22 @@ model Holiday {
 }
 
 model SalesGoal {
-  id        String          @id @default(cuid())
-  period    SalesGoalPeriod
-  periodKey String          @map("period_key")
-  amount    Decimal         @db.Decimal(14, 2)
-  label     String?
+  id                String          @id @default(cuid())
+  period            SalesGoalPeriod
+  periodKey         String          @map("period_key")
+  amount            Decimal         @db.Decimal(14, 2)
+  label             String?
   /// true: el monto capturado incluye IVA (convencion historica del ERP).
   amountIncludesTax Boolean         @default(true) @map("amount_includes_tax")
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  createdBy String   @map("created_by")
-  updatedBy String   @map("updated_by")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String    @map("created_by")
+  updatedBy String    @map("updated_by")
   deletedAt DateTime? @map("deleted_at")
 
-  createdByUser User @relation("SalesGoalCreatedBy", fields: [createdBy], references: [id])
-  updatedByUser User @relation("SalesGoalUpdatedBy", fields: [updatedBy], references: [id])
+  createdByUser User              @relation("SalesGoalCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User              @relation("SalesGoalUpdatedBy", fields: [updatedBy], references: [id])
   sellers       SalesGoalSeller[]
   teams         SalesGoalTeam[]
 
@@ -1956,37 +1964,43 @@ model SalesCalendarEvent {
 }
 
 model SalesInvoice {
-  id               String   @id @default(cuid())
-  invoiceNumber    String   @unique @map("invoice_number")
-  netAmount        Decimal  @map("net_amount") @db.Decimal(14, 2)
-  invoiceDate      DateTime @map("invoice_date") @db.Date
-  sellerId         String   @map("seller_id")
-  clientPoNumber   String   @map("client_po_number")
-  receivedByClient Boolean  @default(false) @map("received_by_client")
-  receptionDate    DateTime? @map("reception_date") @db.Date
-  notes            String?
+  id                String    @id @default(cuid())
+  invoiceNumber     String    @unique @map("invoice_number")
+  netAmount         Decimal   @map("net_amount") @db.Decimal(14, 2)
+  invoiceDate       DateTime  @map("invoice_date") @db.Date
+  sellerId          String    @map("seller_id")
+  clientPoNumber    String    @map("client_po_number")
+  receivedByClient  Boolean   @default(false) @map("received_by_client")
+  receptionDate     DateTime? @map("reception_date") @db.Date
+  notes             String?
   /// Cliente (derivado de la cotizacion ligada; capturable si no hay cotizacion).
-  clientId         String?   @map("client_id")
+  clientId          String?   @map("client_id")
   /// Fecha en que se envio la factura al cliente.
-  sentAt           DateTime? @map("sent_at") @db.Date
+  sentAt            DateTime? @map("sent_at") @db.Date
   /// Dias de credito (snapshot del cliente al registrar).
-  creditDays       Int?      @map("credit_days")
+  creditDays        Int?      @map("credit_days")
   /// Fecha limite de pago = recepcion + dias de credito.
-  dueDate          DateTime? @map("due_date") @db.Date
+  dueDate           DateTime? @map("due_date") @db.Date
   /// Fecha real de pago.
-  paidAt           DateTime? @map("paid_at") @db.Date
-  paymentNotes     String?   @map("payment_notes")
+  paidAt            DateTime? @map("paid_at") @db.Date
+  paymentNotes      String?   @map("payment_notes")
+  /// Equipo al que se acredita la factura (suma a la meta de todo el equipo).
+  teamId            String?   @map("team_id")
+  /// Descripcion de lo facturado (obligatoria si no se liga a cotizacion).
+  description       String?
+  /// Motivo (catalogo INVOICE_NO_QUOTE_REASON) cuando no se liga a cotizacion.
+  noQuoteReasonCode String?   @map("no_quote_reason_code")
 
-  pdfPathname      String?  @map("pdf_pathname")
-  pdfFileName      String?  @map("pdf_file_name")
-  pdfUrl           String?  @map("pdf_url")
-  pdfContentType   String?  @map("pdf_content_type")
-  pdfSizeBytes     Int?     @map("pdf_size_bytes")
-  xmlPathname      String?  @map("xml_pathname")
-  xmlFileName      String?  @map("xml_file_name")
-  xmlUrl           String?  @map("xml_url")
-  xmlContentType   String?  @map("xml_content_type")
-  xmlSizeBytes     Int?     @map("xml_size_bytes")
+  pdfPathname    String? @map("pdf_pathname")
+  pdfFileName    String? @map("pdf_file_name")
+  pdfUrl         String? @map("pdf_url")
+  pdfContentType String? @map("pdf_content_type")
+  pdfSizeBytes   Int?    @map("pdf_size_bytes")
+  xmlPathname    String? @map("xml_pathname")
+  xmlFileName    String? @map("xml_file_name")
+  xmlUrl         String? @map("xml_url")
+  xmlContentType String? @map("xml_content_type")
+  xmlSizeBytes   Int?    @map("xml_size_bytes")
 
   createdAt DateTime  @default(now()) @map("created_at")
   updatedAt DateTime  @updatedAt @map("updated_at")
@@ -1994,13 +2008,15 @@ model SalesInvoice {
   updatedBy String    @map("updated_by")
   deletedAt DateTime? @map("deleted_at")
 
-  seller        User @relation("SalesInvoiceSeller", fields: [sellerId], references: [id])
-  createdByUser User @relation("SalesInvoiceCreatedBy", fields: [createdBy], references: [id])
-  updatedByUser User @relation("SalesInvoiceUpdatedBy", fields: [updatedBy], references: [id])
+  seller        User                @relation("SalesInvoiceSeller", fields: [sellerId], references: [id])
+  createdByUser User                @relation("SalesInvoiceCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser User                @relation("SalesInvoiceUpdatedBy", fields: [updatedBy], references: [id])
   client        Client?             @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  team          Team?               @relation(fields: [teamId], references: [id], onDelete: SetNull)
   quotes        SalesInvoiceQuote[]
 
   @@index([sellerId, invoiceDate])
+  @@index([teamId])
   @@index([receivedByClient])
   @@index([clientId])
   @@index([dueDate])
@@ -2037,13 +2053,13 @@ model SalesInvoiceQuoteItem {
 }
 
 model MaterialPurchaseDecision {
-  id                   String              @id @default(cuid())
-  quoteItemMaterialId  String              @unique @map("quote_item_material_id")
-  willPurchase         Boolean             @map("will_purchase")
-  skipReason           MaterialSkipReason? @map("skip_reason")
-  observations         String?
-  decidedBy            String              @map("decided_by")
-  decidedAt            DateTime            @default(now()) @map("decided_at")
+  id                  String              @id @default(cuid())
+  quoteItemMaterialId String              @unique @map("quote_item_material_id")
+  willPurchase        Boolean             @map("will_purchase")
+  skipReason          MaterialSkipReason? @map("skip_reason")
+  observations        String?
+  decidedBy           String              @map("decided_by")
+  decidedAt           DateTime            @default(now()) @map("decided_at")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -2173,32 +2189,32 @@ enum QualityEvidenceStage {
 }
 
 model QualityItemConfig {
-  id                    String                       @id @default(cuid())
-  productionOrderId     String                       @map("production_order_id")
-  productionItemId      String                       @unique @map("production_item_id")
-  requiresFirstPiece    Boolean                      @default(false) @map("requires_first_piece")
-  firstPieceReleased    Boolean                      @default(false) @map("first_piece_released")
-  firstPieceReleasedAt  DateTime?                    @map("first_piece_released_at")
-  inspectionMode        QualityInspectionMode        @default(FULL) @map("inspection_mode")
-  sampleEveryN          Int?                         @map("sample_every_n")
-  sampleCountRequired   Int?                         @map("sample_count_required")
-  requestedQty          Decimal                      @default(0) @map("requested_qty") @db.Decimal(14, 3)
-  fabricatedQty         Decimal                      @default(0) @map("fabricated_qty") @db.Decimal(14, 3)
-  inspectedQty          Decimal                      @default(0) @map("inspected_qty") @db.Decimal(14, 3)
-  releasedQty           Decimal                      @default(0) @map("released_qty") @db.Decimal(14, 3)
-  missingQty            Decimal                      @default(0) @map("missing_qty") @db.Decimal(14, 3)
-  inspectionStatus      QualityItemInspectionStatus  @default(PENDING) @map("inspection_status")
-  samplingConfiguredBy  String?                      @map("sampling_configured_by")
-  samplingConfiguredAt  DateTime?                    @map("sampling_configured_at")
-  notes                 String?
+  id                   String                      @id @default(cuid())
+  productionOrderId    String                      @map("production_order_id")
+  productionItemId     String                      @unique @map("production_item_id")
+  requiresFirstPiece   Boolean                     @default(false) @map("requires_first_piece")
+  firstPieceReleased   Boolean                     @default(false) @map("first_piece_released")
+  firstPieceReleasedAt DateTime?                   @map("first_piece_released_at")
+  inspectionMode       QualityInspectionMode       @default(FULL) @map("inspection_mode")
+  sampleEveryN         Int?                        @map("sample_every_n")
+  sampleCountRequired  Int?                        @map("sample_count_required")
+  requestedQty         Decimal                     @default(0) @map("requested_qty") @db.Decimal(14, 3)
+  fabricatedQty        Decimal                     @default(0) @map("fabricated_qty") @db.Decimal(14, 3)
+  inspectedQty         Decimal                     @default(0) @map("inspected_qty") @db.Decimal(14, 3)
+  releasedQty          Decimal                     @default(0) @map("released_qty") @db.Decimal(14, 3)
+  missingQty           Decimal                     @default(0) @map("missing_qty") @db.Decimal(14, 3)
+  inspectionStatus     QualityItemInspectionStatus @default(PENDING) @map("inspection_status")
+  samplingConfiguredBy String?                     @map("sampling_configured_by")
+  samplingConfiguredAt DateTime?                   @map("sampling_configured_at")
+  notes                String?
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   createdBy String?  @map("created_by")
   updatedBy String?  @map("updated_by")
 
-  productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
-  productionItem  ProductionItem  @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
+  productionOrder ProductionOrder     @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  productionItem  ProductionItem      @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
   pieces          QualityPiece[]
   inspections     QualityInspection[]
 
@@ -2208,31 +2224,31 @@ model QualityItemConfig {
 }
 
 model QualityPiece {
-  id                String             @id @default(cuid())
-  productionItemId  String             @map("production_item_id")
-  qualityConfigId   String             @map("quality_config_id")
-  pieceNumber       Int                @map("piece_number")
-  label             String
-  status            QualityPieceStatus @default(PENDING)
-  isFirstPiece      Boolean            @default(false) @map("is_first_piece")
-  isSample          Boolean            @default(false) @map("is_sample")
-  result            QualityResult      @default(PENDING)
-  releasedAt        DateTime?          @map("released_at")
-  releasedBy        String?            @map("released_by")
+  id               String             @id @default(cuid())
+  productionItemId String             @map("production_item_id")
+  qualityConfigId  String             @map("quality_config_id")
+  pieceNumber      Int                @map("piece_number")
+  label            String
+  status           QualityPieceStatus @default(PENDING)
+  isFirstPiece     Boolean            @default(false) @map("is_first_piece")
+  isSample         Boolean            @default(false) @map("is_sample")
+  result           QualityResult      @default(PENDING)
+  releasedAt       DateTime?          @map("released_at")
+  releasedBy       String?            @map("released_by")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   createdBy String?  @map("created_by")
   updatedBy String?  @map("updated_by")
 
-  productionItem ProductionItem      @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
-  qualityConfig  QualityItemConfig   @relation(fields: [qualityConfigId], references: [id], onDelete: Cascade)
-  inspections    QualityInspection[]
+  productionItem  ProductionItem            @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
+  qualityConfig   QualityItemConfig         @relation(fields: [qualityConfigId], references: [id], onDelete: Cascade)
+  inspections     QualityInspection[]
   nonConformances QualityNonConformance[]
-  reworkOrders   QualityReworkOrderPiece[]
-  reworkSimples  QualityReworkSimple[]
-  evidences      QualityEvidence[]
-  externalShares QualityExternalShare[]
+  reworkOrders    QualityReworkOrderPiece[]
+  reworkSimples   QualityReworkSimple[]
+  evidences       QualityEvidence[]
+  externalShares  QualityExternalShare[]
 
   @@unique([productionItemId, pieceNumber])
   @@index([qualityConfigId])
@@ -2241,32 +2257,32 @@ model QualityPiece {
 }
 
 model QualityInspection {
-  id               String                   @id @default(cuid())
-  qualityConfigId  String                   @map("quality_config_id")
-  qualityPieceId   String?                  @map("quality_piece_id")
+  id               String                  @id @default(cuid())
+  qualityConfigId  String                  @map("quality_config_id")
+  qualityPieceId   String?                 @map("quality_piece_id")
   type             QualityInspectionType
-  status           QualityInspectionStatus  @default(DRAFT)
-  result           QualityResult            @default(PENDING)
-  inspectorId      String                   @map("inspector_id")
-  startedAt        DateTime?                @map("started_at")
-  closedAt         DateTime?                @map("closed_at")
+  status           QualityInspectionStatus @default(DRAFT)
+  result           QualityResult           @default(PENDING)
+  inspectorId      String                  @map("inspector_id")
+  startedAt        DateTime?               @map("started_at")
+  closedAt         DateTime?               @map("closed_at")
   observations     String?
-  instrumentId     String?                  @map("instrument_id")
-  instrumentWarned Boolean                  @default(false) @map("instrument_warned")
+  instrumentId     String?                 @map("instrument_id")
+  instrumentWarned Boolean                 @default(false) @map("instrument_warned")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   createdBy String?  @map("created_by")
   updatedBy String?  @map("updated_by")
 
-  qualityConfig   QualityItemConfig      @relation(fields: [qualityConfigId], references: [id], onDelete: Cascade)
-  qualityPiece    QualityPiece?          @relation(fields: [qualityPieceId], references: [id], onDelete: SetNull)
-  inspector       User                   @relation("QualityInspectionInspector", fields: [inspectorId], references: [id])
-  instrument      MeasuringInstrument?   @relation(fields: [instrumentId], references: [id], onDelete: SetNull)
-  measurements    QualityMeasurement[]
-  specialChecks   QualitySpecialCheck[]
-  nonConformances QualityNonConformance[]
-  evidences       QualityEvidence[]
+  qualityConfig          QualityItemConfig              @relation(fields: [qualityConfigId], references: [id], onDelete: Cascade)
+  qualityPiece           QualityPiece?                  @relation(fields: [qualityPieceId], references: [id], onDelete: SetNull)
+  inspector              User                           @relation("QualityInspectionInspector", fields: [inspectorId], references: [id])
+  instrument             MeasuringInstrument?           @relation(fields: [instrumentId], references: [id], onDelete: SetNull)
+  measurements           QualityMeasurement[]
+  specialChecks          QualitySpecialCheck[]
+  nonConformances        QualityNonConformance[]
+  evidences              QualityEvidence[]
   missingProcessRequests QualityMissingProcessRequest[]
 
   @@index([qualityConfigId])
@@ -2277,16 +2293,16 @@ model QualityInspection {
 }
 
 model QualityMeasurement {
-  id                  String   @id @default(cuid())
-  qualityInspectionId String   @map("quality_inspection_id")
+  id                  String        @id @default(cuid())
+  qualityInspectionId String        @map("quality_inspection_id")
   label               String
   nominal             String?
-  tolerancePlus       String?  @map("tolerance_plus")
-  toleranceMinus      String?  @map("tolerance_minus")
-  measuredValue       String?  @map("measured_value")
+  tolerancePlus       String?       @map("tolerance_plus")
+  toleranceMinus      String?       @map("tolerance_minus")
+  measuredValue       String?       @map("measured_value")
   unit                String?
   result              QualityResult @default(PENDING)
-  sortOrder           Int      @default(0) @map("sort_order")
+  sortOrder           Int           @default(0) @map("sort_order")
   observations        String?
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -2299,21 +2315,21 @@ model QualityMeasurement {
 }
 
 model QualitySpecialCheck {
-  id                  String                   @id @default(cuid())
-  qualityInspectionId String                   @map("quality_inspection_id")
-  checkType           QualitySpecialCheckType  @map("check_type")
-  required            Boolean                  @default(false)
+  id                  String                  @id @default(cuid())
+  qualityInspectionId String                  @map("quality_inspection_id")
+  checkType           QualitySpecialCheckType @map("check_type")
+  required            Boolean                 @default(false)
   method              String?
   unit                String?
-  expectedValue       String?                  @map("expected_value")
-  obtainedValue       String?                  @map("obtained_value")
-  result              QualityResult            @default(PENDING)
-  reportPathname      String?                  @map("report_pathname")
-  reportFileName      String?                  @map("report_file_name")
-  instrumentId        String?                  @map("instrument_id")
+  expectedValue       String?                 @map("expected_value")
+  obtainedValue       String?                 @map("obtained_value")
+  result              QualityResult           @default(PENDING)
+  reportPathname      String?                 @map("report_pathname")
+  reportFileName      String?                 @map("report_file_name")
+  instrumentId        String?                 @map("instrument_id")
   observations        String?
-  completedAt         DateTime?                @map("completed_at")
-  completedBy         String?                  @map("completed_by")
+  completedAt         DateTime?               @map("completed_at")
+  completedBy         String?                 @map("completed_by")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -2327,26 +2343,26 @@ model QualitySpecialCheck {
 }
 
 model QualityNonConformance {
-  id                  String        @id @default(cuid())
-  qualityInspectionId String        @map("quality_inspection_id")
-  qualityPieceId      String?       @map("quality_piece_id")
-  result              QualityResult
-  description         String
-  area                String?
-  processName         String?       @map("process_name")
-  operatorId          String?       @map("operator_id")
-  productionIncidentId String?      @map("production_incident_id")
-  reworkOrderId       String?       @map("rework_order_id")
-  reworkSimpleId      String?       @map("rework_simple_id")
+  id                   String        @id @default(cuid())
+  qualityInspectionId  String        @map("quality_inspection_id")
+  qualityPieceId       String?       @map("quality_piece_id")
+  result               QualityResult
+  description          String
+  area                 String?
+  processName          String?       @map("process_name")
+  operatorId           String?       @map("operator_id")
+  productionIncidentId String?       @map("production_incident_id")
+  reworkOrderId        String?       @map("rework_order_id")
+  reworkSimpleId       String?       @map("rework_simple_id")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   createdBy String?  @map("created_by")
   updatedBy String?  @map("updated_by")
 
-  inspection   QualityInspection  @relation(fields: [qualityInspectionId], references: [id], onDelete: Cascade)
-  qualityPiece QualityPiece?      @relation(fields: [qualityPieceId], references: [id], onDelete: SetNull)
-  reworkOrder  QualityReworkOrder? @relation(fields: [reworkOrderId], references: [id], onDelete: SetNull)
+  inspection   QualityInspection    @relation(fields: [qualityInspectionId], references: [id], onDelete: Cascade)
+  qualityPiece QualityPiece?        @relation(fields: [qualityPieceId], references: [id], onDelete: SetNull)
+  reworkOrder  QualityReworkOrder?  @relation(fields: [reworkOrderId], references: [id], onDelete: SetNull)
   reworkSimple QualityReworkSimple? @relation(fields: [reworkSimpleId], references: [id], onDelete: SetNull)
   evidences    QualityEvidence[]
 
@@ -2356,14 +2372,14 @@ model QualityNonConformance {
 }
 
 model QualityMissingProcessRequest {
-  id                  String   @id @default(cuid())
-  qualityInspectionId String   @map("quality_inspection_id")
-  productionOrderId   String   @map("production_order_id")
-  productionItemId    String   @map("production_item_id")
-  processName         String   @map("process_name")
+  id                     String  @id @default(cuid())
+  qualityInspectionId    String  @map("quality_inspection_id")
+  productionOrderId      String  @map("production_order_id")
+  productionItemId       String  @map("production_item_id")
+  processName            String  @map("process_name")
   manufacturingProcessId String? @map("manufacturing_process_id")
-  notes               String?
-  productionProcessId String?  @map("production_process_id")
+  notes                  String?
+  productionProcessId    String? @map("production_process_id")
 
   createdAt DateTime @default(now()) @map("created_at")
   createdBy String?  @map("created_by")
@@ -2402,10 +2418,10 @@ model QualityReworkOrder {
   updatedAt DateTime @updatedAt @map("updated_at")
   updatedBy String?  @map("updated_by")
 
-  productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
-  productionItem  ProductionItem  @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
-  responsible     User?           @relation("QualityReworkOrderResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
-  createdByUser   User            @relation("QualityReworkOrderCreatedBy", fields: [createdById], references: [id])
+  productionOrder ProductionOrder           @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  productionItem  ProductionItem            @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
+  responsible     User?                     @relation("QualityReworkOrderResponsible", fields: [responsibleId], references: [id], onDelete: SetNull)
+  createdByUser   User                      @relation("QualityReworkOrderCreatedBy", fields: [createdById], references: [id])
   pieces          QualityReworkOrderPiece[]
   hours           QualityReworkHour[]
   nonConformances QualityNonConformance[]
@@ -2419,9 +2435,9 @@ model QualityReworkOrder {
 }
 
 model QualityReworkOrderPiece {
-  id               String @id @default(cuid())
-  reworkOrderId    String @map("rework_order_id")
-  qualityPieceId   String @map("quality_piece_id")
+  id             String @id @default(cuid())
+  reworkOrderId  String @map("rework_order_id")
+  qualityPieceId String @map("quality_piece_id")
 
   reworkOrder  QualityReworkOrder @relation(fields: [reworkOrderId], references: [id], onDelete: Cascade)
   qualityPiece QualityPiece       @relation(fields: [qualityPieceId], references: [id], onDelete: Cascade)
@@ -2431,24 +2447,24 @@ model QualityReworkOrderPiece {
 }
 
 model QualityReworkSimple {
-  id                String   @id @default(cuid())
-  productionOrderId String   @map("production_order_id")
-  productionItemId  String   @map("production_item_id")
-  qualityPieceId    String?  @map("quality_piece_id")
+  id                String  @id @default(cuid())
+  productionOrderId String  @map("production_order_id")
+  productionItemId  String  @map("production_item_id")
+  qualityPieceId    String? @map("quality_piece_id")
   area              String?
-  processName       String?  @map("process_name")
-  operatorName      String?  @map("operator_name")
-  errorDescription  String   @map("error_description")
-  hoursUsed         Decimal  @default(0) @map("hours_used") @db.Decimal(14, 3)
-  createdById       String   @map("created_by_id")
+  processName       String? @map("process_name")
+  operatorName      String? @map("operator_name")
+  errorDescription  String  @map("error_description")
+  hoursUsed         Decimal @default(0) @map("hours_used") @db.Decimal(14, 3)
+  createdById       String  @map("created_by_id")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
-  productionItem  ProductionItem  @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
-  qualityPiece    QualityPiece?   @relation(fields: [qualityPieceId], references: [id], onDelete: SetNull)
-  createdByUser   User            @relation("QualityReworkSimpleCreatedBy", fields: [createdById], references: [id])
+  productionOrder ProductionOrder         @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  productionItem  ProductionItem          @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
+  qualityPiece    QualityPiece?           @relation(fields: [qualityPieceId], references: [id], onDelete: SetNull)
+  createdByUser   User                    @relation("QualityReworkSimpleCreatedBy", fields: [createdById], references: [id])
   nonConformances QualityNonConformance[]
   evidences       QualityEvidence[]
   qualityError    QualityError?
@@ -2475,32 +2491,39 @@ model QualityReworkHour {
 }
 
 model MeasuringInstrument {
-  id                 String           @id @default(cuid())
-  code               String           @unique
-  type               String
-  brand              String?
-  model              String?
-  serialNumber       String?          @map("serial_number")
-  range              String?
-  resolution         String?
-  unit               String?
-  acquiredAt         DateTime?        @map("acquired_at") @db.Date
-  lastCalibrationAt  DateTime?        @map("last_calibration_at") @db.Date
-  calibrationPeriodDays Int?          @map("calibration_period_days")
-  nextCalibrationAt  DateTime?        @map("next_calibration_at") @db.Date
-  status             InstrumentStatus @default(ACTIVE)
-  notes              String?
-  deletedAt          DateTime?        @map("deleted_at")
+  id                    String           @id @default(cuid())
+  code                  String           @unique
+  type                  String
+  brand                 String?
+  model                 String?
+  serialNumber          String?          @map("serial_number")
+  range                 String?
+  resolution            String?
+  unit                  String?
+  acquiredAt            DateTime?        @map("acquired_at") @db.Date
+  lastCalibrationAt     DateTime?        @map("last_calibration_at") @db.Date
+  calibrationPeriodDays Int?             @map("calibration_period_days")
+  nextCalibrationAt     DateTime?        @map("next_calibration_at") @db.Date
+  status                InstrumentStatus @default(ACTIVE)
+  /// Condicion fisica del equipo (catalogo INSTRUMENT_STATUS: en reparacion, baja...).
+  conditionCode         String?          @map("condition_code")
+  /// Resguardo: usuario del ERP (vendedor, operador con usuario) u operador del catalogo.
+  assignedUserId        String?          @map("assigned_user_id")
+  assignedOperatorCode  String?          @map("assigned_operator_code")
+  assignedAt            DateTime?        @map("assigned_at") @db.Date
+  notes                 String?
+  deletedAt             DateTime?        @map("deleted_at")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
   createdBy String?  @map("created_by")
   updatedBy String?  @map("updated_by")
 
-  createdByUser User? @relation("MeasuringInstrumentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  calibrations  InstrumentCalibration[]
-  inspections   QualityInspection[]
-  specialChecks QualitySpecialCheck[]
+  createdByUser       User?                       @relation("MeasuringInstrumentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  assignedUser        User?                       @relation("MeasuringInstrumentAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  calibrations        InstrumentCalibration[]
+  inspections         QualityInspection[]
+  specialChecks       QualitySpecialCheck[]
   drawingMeasurements QualityDrawingMeasurement[]
 
   @@index([status])
@@ -2509,15 +2532,15 @@ model MeasuringInstrument {
 }
 
 model InstrumentCalibration {
-  id             String   @id @default(cuid())
-  instrumentId   String   @map("instrument_id")
-  calibratedAt   DateTime @map("calibrated_at") @db.Date
-  nextDueAt      DateTime? @map("next_due_at") @db.Date
-  provider       String?
-  certificatePathname String? @map("certificate_pathname")
-  certificateFileName String? @map("certificate_file_name")
-  certificateUrl String?  @map("certificate_url")
-  notes          String?
+  id                  String    @id @default(cuid())
+  instrumentId        String    @map("instrument_id")
+  calibratedAt        DateTime  @map("calibrated_at") @db.Date
+  nextDueAt           DateTime? @map("next_due_at") @db.Date
+  provider            String?
+  certificatePathname String?   @map("certificate_pathname")
+  certificateFileName String?   @map("certificate_file_name")
+  certificateUrl      String?   @map("certificate_url")
+  notes               String?
 
   createdAt DateTime @default(now()) @map("created_at")
   createdBy String?  @map("created_by")
@@ -2548,14 +2571,14 @@ model QualityEvidence {
   createdAt DateTime @default(now()) @map("created_at")
   createdBy String?  @map("created_by")
 
-  productionOrder ProductionOrder?     @relation(fields: [productionOrderId], references: [id], onDelete: SetNull)
-  productionItem  ProductionItem?      @relation(fields: [productionItemId], references: [id], onDelete: SetNull)
-  qualityPiece    QualityPiece?        @relation(fields: [qualityPieceId], references: [id], onDelete: SetNull)
-  inspection      QualityInspection?   @relation(fields: [qualityInspectionId], references: [id], onDelete: SetNull)
-  specialCheck    QualitySpecialCheck? @relation(fields: [specialCheckId], references: [id], onDelete: SetNull)
+  productionOrder ProductionOrder?       @relation(fields: [productionOrderId], references: [id], onDelete: SetNull)
+  productionItem  ProductionItem?        @relation(fields: [productionItemId], references: [id], onDelete: SetNull)
+  qualityPiece    QualityPiece?          @relation(fields: [qualityPieceId], references: [id], onDelete: SetNull)
+  inspection      QualityInspection?     @relation(fields: [qualityInspectionId], references: [id], onDelete: SetNull)
+  specialCheck    QualitySpecialCheck?   @relation(fields: [specialCheckId], references: [id], onDelete: SetNull)
   nonConformance  QualityNonConformance? @relation(fields: [nonConformanceId], references: [id], onDelete: SetNull)
-  reworkOrder     QualityReworkOrder?  @relation(fields: [reworkOrderId], references: [id], onDelete: SetNull)
-  reworkSimple    QualityReworkSimple? @relation(fields: [reworkSimpleId], references: [id], onDelete: SetNull)
+  reworkOrder     QualityReworkOrder?    @relation(fields: [reworkOrderId], references: [id], onDelete: SetNull)
+  reworkSimple    QualityReworkSimple?   @relation(fields: [reworkSimpleId], references: [id], onDelete: SetNull)
 
   @@unique([pathname])
   @@index([productionOrderId])
@@ -2590,14 +2613,14 @@ model QualityAlert {
 }
 
 model QualityExternalShare {
-  id              String    @id @default(cuid())
-  token           String    @unique
-  qualityPieceId  String?   @map("quality_piece_id")
-  productionOrderId String? @map("production_order_id")
-  productionItemId  String? @map("production_item_id")
-  expiresAt       DateTime? @map("expires_at")
-  revokedAt       DateTime? @map("revoked_at")
-  showEvidences   Boolean   @default(true) @map("show_evidences")
+  id                String    @id @default(cuid())
+  token             String    @unique
+  qualityPieceId    String?   @map("quality_piece_id")
+  productionOrderId String?   @map("production_order_id")
+  productionItemId  String?   @map("production_item_id")
+  expiresAt         DateTime? @map("expires_at")
+  revokedAt         DateTime? @map("revoked_at")
+  showEvidences     Boolean   @default(true) @map("show_evidences")
 
   createdAt DateTime @default(now()) @map("created_at")
   createdBy String?  @map("created_by")
@@ -2679,13 +2702,13 @@ model QualityDocument {
   updatedBy String?   @map("updated_by")
   deletedAt DateTime? @map("deleted_at")
 
-  productionOrder      ProductionOrder       @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
-  productionItem       ProductionItem        @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
-  quote                Quote?                @relation(fields: [quoteId], references: [id], onDelete: SetNull)
-  quoteItemAttachment  QuoteItemAttachment?  @relation(fields: [quoteItemAttachmentId], references: [id], onDelete: Restrict)
-  productionAttachment ProductionAttachment? @relation(fields: [productionAttachmentId], references: [id], onDelete: Restrict)
-  createdByUser        User?                 @relation("QualityDocumentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser        User?                 @relation("QualityDocumentUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  productionOrder      ProductionOrder          @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+  productionItem       ProductionItem           @relation(fields: [productionItemId], references: [id], onDelete: Cascade)
+  quote                Quote?                   @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+  quoteItemAttachment  QuoteItemAttachment?     @relation(fields: [quoteItemAttachmentId], references: [id], onDelete: Restrict)
+  productionAttachment ProductionAttachment?    @relation(fields: [productionAttachmentId], references: [id], onDelete: Restrict)
+  createdByUser        User?                    @relation("QualityDocumentCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser        User?                    @relation("QualityDocumentUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
   versions             QualityDocumentVersion[]
 
   @@index([productionItemId])
@@ -2709,8 +2732,8 @@ model QualityDocumentVersion {
   createdAt DateTime @default(now()) @map("created_at")
   createdBy String?  @map("created_by")
 
-  qualityDocument QualityDocument           @relation(fields: [qualityDocumentId], references: [id], onDelete: Cascade)
-  createdByUser   User?                     @relation("QualityDocumentVersionCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  qualityDocument QualityDocument            @relation(fields: [qualityDocumentId], references: [id], onDelete: Cascade)
+  createdByUser   User?                      @relation("QualityDocumentVersionCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
   inspections     QualityDrawingInspection[]
   annotations     QualityAnnotation[]
 
@@ -2769,10 +2792,10 @@ model QualityAnnotation {
   updatedBy String?   @map("updated_by")
   deletedAt DateTime? @map("deleted_at")
 
-  inspection             QualityDrawingInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
-  qualityDocumentVersion QualityDocumentVersion   @relation(fields: [qualityDocumentVersionId], references: [id], onDelete: Restrict)
-  createdByUser          User?                    @relation("QualityAnnotationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
-  updatedByUser          User?                    @relation("QualityAnnotationUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
+  inspection             QualityDrawingInspection   @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+  qualityDocumentVersion QualityDocumentVersion     @relation(fields: [qualityDocumentVersionId], references: [id], onDelete: Restrict)
+  createdByUser          User?                      @relation("QualityAnnotationCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser          User?                      @relation("QualityAnnotationUpdatedBy", fields: [updatedBy], references: [id], onDelete: SetNull)
   measurement            QualityDrawingMeasurement?
 
   @@index([inspectionId, pageNumber])
@@ -2782,15 +2805,15 @@ model QualityAnnotation {
 }
 
 model QualityDrawingMeasurement {
-  id             String                         @id @default(cuid())
-  annotationId   String                         @unique @map("annotation_id")
-  nominalValue   Decimal                        @map("nominal_value") @db.Decimal(14, 4)
-  measuredValue  Decimal                        @map("measured_value") @db.Decimal(14, 4)
-  upperTolerance Decimal                        @map("upper_tolerance") @db.Decimal(14, 4)
-  lowerTolerance Decimal                        @map("lower_tolerance") @db.Decimal(14, 4)
+  id             String                          @id @default(cuid())
+  annotationId   String                          @unique @map("annotation_id")
+  nominalValue   Decimal                         @map("nominal_value") @db.Decimal(14, 4)
+  measuredValue  Decimal                         @map("measured_value") @db.Decimal(14, 4)
+  upperTolerance Decimal                         @map("upper_tolerance") @db.Decimal(14, 4)
+  lowerTolerance Decimal                         @map("lower_tolerance") @db.Decimal(14, 4)
   unit           String
   result         QualityDrawingMeasurementResult
-  instrumentId   String?                        @map("instrument_id")
+  instrumentId   String?                         @map("instrument_id")
   readings       Json?
   comments       String?
 
@@ -3001,4 +3024,78 @@ model DataCorrection {
 
   @@index([entityType, entityId])
   @@map("data_corrections")
+}
+
+// -----------------------------------------------------------------------------
+// Compromisos manuales (fuera de produccion)
+// -----------------------------------------------------------------------------
+enum CommitmentStatus {
+  OPEN
+  IN_REVIEW
+  CLOSED
+  CANCELLED
+
+  @@map("commitment_status")
+}
+
+model Commitment {
+  id          String           @id @default(cuid())
+  title       String
+  description String?
+  startDate   DateTime         @map("start_date") @db.Date
+  dueDate     DateTime         @map("due_date") @db.Date
+  status      CommitmentStatus @default(OPEN)
+  closedAt    DateTime?        @map("closed_at")
+  closedBy    String?          @map("closed_by")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdBy String    @map("created_by")
+  deletedAt DateTime? @map("deleted_at")
+
+  createdByUser User                    @relation("CommitmentCreatedBy", fields: [createdBy], references: [id])
+  closedByUser  User?                   @relation("CommitmentClosedBy", fields: [closedBy], references: [id], onDelete: SetNull)
+  participants  CommitmentParticipant[]
+  comments      CommitmentComment[]
+
+  @@index([status, dueDate])
+  @@index([createdBy])
+  @@index([deletedAt])
+  @@map("commitments")
+}
+
+model CommitmentParticipant {
+  id           String    @id @default(cuid())
+  commitmentId String    @map("commitment_id")
+  userId       String    @map("user_id")
+  /// Cuando el involucrado marco su parte como terminada.
+  completedAt  DateTime? @map("completed_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  commitment Commitment @relation(fields: [commitmentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commitmentId, userId])
+  @@index([userId])
+  @@map("commitment_participants")
+}
+
+/// Comentario o evidencia. kind: COMMENT | DONE | REOPENED | APPROVED | REJECTED.
+model CommitmentComment {
+  id              String   @id @default(cuid())
+  commitmentId    String   @map("commitment_id")
+  userId          String   @map("user_id")
+  kind            String   @default("COMMENT")
+  body            String?
+  filePathname    String?  @map("file_pathname")
+  fileName        String?  @map("file_name")
+  fileContentType String?  @map("file_content_type")
+  fileSizeBytes   Int?     @map("file_size_bytes")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  commitment Commitment @relation(fields: [commitmentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([commitmentId, createdAt])
+  @@map("commitment_comments")
 }

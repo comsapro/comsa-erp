@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { Field } from "@/components/forms/Field";
 import { MonthCalendar } from "@/components/views/MonthCalendar";
+import { useCalendarCommitments } from "@/components/commitments/useCalendarCommitments";
 import { Badge } from "@/components/ui/Badge";
 import {
   PRODUCTION_STATUS_LABELS,
@@ -105,6 +106,7 @@ export default function ProductionCalendarClient() {
   }, []);
 
   useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
     load(emptyFilters());
   }, [load]);
 
@@ -117,6 +119,10 @@ export default function ProductionCalendarClient() {
       })),
     [rows]
   );
+
+  // Compromisos manuales del usuario, el dia de entrega.
+  const manualCommitments = useCalendarCommitments();
+  const calendarRows = useMemo(() => [...manualCommitments, ...dated], [manualCommitments, dated]);
 
   const today = new Date().toISOString().slice(0, 10);
   const delayed = dated.filter(
@@ -142,18 +148,18 @@ export default function ProductionCalendarClient() {
 
   const byWeekDay = useMemo(() => {
     const map = new Map(weekDays.map((d) => [d, []]));
-    for (const row of dated) {
+    for (const row of calendarRows) {
       const key = toDay(row.calendarDate);
       if (key && map.has(key)) map.get(key).push(row);
     }
     return map;
-  }, [dated, weekDays]);
+  }, [calendarRows, weekDays]);
 
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Calendario de produccion"
-        description="Compromisos y fechas planeadas. Cada tarjeta muestra la etapa (proceso) calendarizada."
+        description="Partidas con fecha compromiso o planeada (azul) y tus compromisos manuales (verde) en su fecha de entrega."
         actions={
           <div className="flex gap-2">
             <Button
@@ -283,16 +289,19 @@ export default function ProductionCalendarClient() {
 
       {mode === "month" ? (
         <MonthCalendar
-          rows={dated}
+          rows={calendarRows}
           loading={loading}
           getDate={(r) => r.calendarDate}
-          getHref={(r) => `/produccion/${r.productionOrder.id}`}
-          getTitle={(r) => r.productionOrder.folio}
+          getHref={(r) => (r.kind === "manual" ? r.href : `/produccion/${r.productionOrder.id}`)}
+          getTitle={(r) => (r.kind === "manual" ? r.title : r.productionOrder.folio)}
           getSubtitle={(r) =>
-            `${r.stageLabel} · ${r.description} · ${
-              PRODUCTION_STATUS_LABELS[r.status] || r.status
-            }`
+            r.kind === "manual"
+              ? r.subtitle
+              : `${r.stageLabel} · ${r.description} · ${
+                  PRODUCTION_STATUS_LABELS[r.status] || r.status
+                }`
           }
+          getTone={(r) => (r.kind === "manual" ? "manual" : "commitment")}
           emptyTitle="Sin partidas"
           emptyDescription="No hay partidas con fecha compromiso, planeada o entrega aproximada."
         />
@@ -316,7 +325,18 @@ export default function ProductionCalendarClient() {
                     {label}
                   </p>
                   <ul className="flex flex-col gap-1.5">
-                    {items.map((r) => (
+                    {items.map((r) =>
+                      r.kind === "manual" ? (
+                        <li key={r.id}>
+                          <Link
+                            href={r.href}
+                            className="block rounded-md border border-success-500/30 bg-success-50 px-2 py-1.5 transition-colors hover:border-success-500"
+                          >
+                            <p className="text-xs font-semibold text-success-700">{r.title}</p>
+                            <p className="truncate text-[11px] text-content-muted">{r.subtitle}</p>
+                          </Link>
+                        </li>
+                      ) : (
                       <li key={r.id}>
                         <Link
                           href={`/produccion/${r.productionOrder.id}`}
@@ -336,7 +356,8 @@ export default function ProductionCalendarClient() {
                           </div>
                         </Link>
                       </li>
-                    ))}
+                      )
+                    )}
                     {!items.length ? (
                       <li className="text-[11px] text-content-muted">Sin eventos</li>
                     ) : null}

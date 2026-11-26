@@ -79,8 +79,29 @@ export const salesInvoiceSchema = z
     ),
     // Vacío solo permitido para Administrador (validado en servicio).
     quotes: z.array(invoiceQuoteSchema).default([]),
+    // Equipo al que se acredita (suma a la meta de todos sus integrantes).
+    teamId: z.preprocess((v) => (v === "" ? null : v), z.string().nullable().optional()),
+    // Sin cotizacion: cliente, descripcion y motivo (catalogo) obligatorios.
+    clientId: z.preprocess((v) => (v === "" ? null : v), z.string().nullable().optional()),
+    description: z.string().trim().max(2000).optional().nullable(),
+    noQuoteReasonCode: z.preprocess((v) => (v === "" ? null : v), z.string().nullable().optional()),
   })
   .superRefine((data, ctx) => {
+    if (!data.quotes?.length) {
+      if (!data.clientId) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Selecciona el cliente", path: ["clientId"] });
+      }
+      if (!data.description?.trim()) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Describe lo facturado", path: ["description"] });
+      }
+      if (!data.noQuoteReasonCode) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Indica el motivo de no ligar cotización",
+          path: ["noQuoteReasonCode"],
+        });
+      }
+    }
     if (data.receivedByClient && !data.receptionDate) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

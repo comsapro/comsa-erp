@@ -35,6 +35,8 @@ import {
   Siren,
   BadgeAlert,
   SlidersHorizontal,
+  ListChecks,
+  HardHat,
 } from "lucide-react";
 
 export const ICONS = {
@@ -74,6 +76,8 @@ export const ICONS = {
   Siren,
   BadgeAlert,
   SlidersHorizontal,
+  ListChecks,
+  HardHat,
 };
 
 export function getIcon(name) {

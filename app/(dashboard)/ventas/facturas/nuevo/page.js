@@ -1,5 +1,6 @@
 import { requirePagePermission } from "@/lib/auth/guard";
 import { userHasPermission, userIsAdmin } from "@/lib/auth/session";
+import { loadInvoiceFormOptions } from "@/domains/sales/invoice-form-options";
 import SalesInvoiceFormClient from "./SalesInvoiceFormClient";
 
 export const metadata = { title: "Nueva factura de ventas" };
@@ -12,6 +13,7 @@ export default async function NuevaFacturaVentasPage() {
       isAdmin={userIsAdmin(user)}
       currentUserId={user.id}
       currentUserName={user.name}
+      options={await loadInvoiceFormOptions(user)}
     />
   );
 }

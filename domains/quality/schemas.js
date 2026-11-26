@@ -167,6 +167,10 @@ export const instrumentSchema = z.object({
   calibrationPeriodDays: z.coerce.number().int().positive().optional().nullable(),
   notes: z.string().optional().nullable(),
   status: z.enum(INSTRUMENT_STATUSES).optional(),
+  conditionCode: z.string().trim().optional().nullable(),
+  assignedUserId: z.string().trim().optional().nullable(),
+  assignedOperatorCode: z.string().trim().optional().nullable(),
+  assignedAt: z.coerce.date().optional().nullable(),
 });
 
 export const calibrationSchema = z.object({

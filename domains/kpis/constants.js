@@ -98,12 +98,27 @@ export const KPI_CATALOG_TYPES = {
   STOP_REASON: "STOP_REASON",
   ERROR_CAUSE: "ERROR_CAUSE",
   ERROR_AREA: "ERROR_AREA",
+  OPERATOR: "OPERATOR",
+  INSTRUMENT_STATUS: "INSTRUMENT_STATUS",
+  INVOICE_NO_QUOTE_REASON: "INVOICE_NO_QUOTE_REASON",
 };
+
+/** Permiso para administrar cada catalogo (por defecto kpis.manage_catalogs). */
+export const KPI_CATALOG_TYPE_PERMISSIONS = {
+  OPERATOR: ["quality.manage_operators", "kpis.manage_catalogs"],
+};
+
+export function catalogManagePermissions(type) {
+  return KPI_CATALOG_TYPE_PERMISSIONS[type] || ["kpis.manage_catalogs"];
+}
 
 export const KPI_CATALOG_TYPE_LABELS = {
   STOP_REASON: "Razones de paro / incidencia",
   ERROR_CAUSE: "Causas de error",
   ERROR_AREA: "Áreas de error",
+  OPERATOR: "Operadores",
+  INSTRUMENT_STATUS: "Condición de instrumentos",
+  INVOICE_NO_QUOTE_REASON: "Motivos de factura sin cotización",
 };
 
 export const SUGGESTED_RESPONSIBLE_OPTIONS = {

@@ -225,6 +225,7 @@ export function goalTargetsForRange(goals, range, taxRate) {
     );
     const first = chosen[0].goal;
     const memberIds = [...new Set(chosen.flatMap((x) => x.goal.memberIds || []))];
+    const teamIds = [...new Set(chosen.flatMap((x) => x.goal.teamIds || []))];
     targets.push({
       key,
       label: first.label || first.names || "Meta",
@@ -232,6 +233,7 @@ export function goalTargetsForRange(goals, range, taxRate) {
       prorated: chosen.some((x) => x.days < x.goalDays),
       goalIds: chosen.map((x) => x.goal.id),
       memberIds,
+      teamIds,
       goalWithTax: round(amount, 2),
     });
   }
@@ -244,13 +246,18 @@ export function goalTargetsForRange(goals, range, taxRate) {
  * invoices: [{ sellerId, sellerName, netAmount (con IVA) }]
  */
 export function salesProgress(targets, invoices, taxRate) {
+  // Una factura cuenta para la meta si su vendedor es integrante o si se
+  // acredito al equipo de la meta.
   const assigned = new Set();
+  const assignedTeams = new Set();
   const rows = targets.map((t) => {
     const members = new Set(t.memberIds);
+    const teams = new Set(t.teamIds || []);
     const billed = invoices
-      .filter((inv) => members.has(inv.sellerId))
+      .filter((inv) => members.has(inv.sellerId) || (inv.teamId && teams.has(inv.teamId)))
       .reduce((s, inv) => s + num(inv.netAmount), 0);
     t.memberIds.forEach((id) => assigned.add(id));
+    teams.forEach((id) => assignedTeams.add(id));
     return buildSalesRow({
       key: t.key,
       label: t.label,
@@ -263,7 +270,9 @@ export function salesProgress(targets, invoices, taxRate) {
     });
   });
 
-  const unassignedInvoices = invoices.filter((inv) => !assigned.has(inv.sellerId));
+  const unassignedInvoices = invoices.filter(
+    (inv) => !assigned.has(inv.sellerId) && !(inv.teamId && assignedTeams.has(inv.teamId))
+  );
   if (unassignedInvoices.length) {
     const billed = unassignedInvoices.reduce((s, inv) => s + num(inv.netAmount), 0);
     const names = [...new Set(unassignedInvoices.map((i) => i.sellerName).filter(Boolean))];

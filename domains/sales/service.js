@@ -35,6 +35,8 @@ import {
   resolveSalesScope,
   sellerWhere,
   canAccessSellerId,
+  canAccessInvoice,
+  invoiceWhere,
 } from "./scope";
 import { getCurrentUser, userHasPermission, userIsAdmin } from "@/lib/auth/session";
 import { assertActiveUser, assertActiveUsers } from "@/domains/users/assert-active";
@@ -287,7 +289,7 @@ export async function getSalesDashboard(request) {
     countReceivedMaterials(scope),
     countCommitmentsThisWeek(scope),
     prisma.salesInvoice.aggregate({
-      where: { deletedAt: null, receivedByClient: false, ...sellFilter },
+      where: { deletedAt: null, receivedByClient: false, ...invoiceWhere(scope) },
       _count: { _all: true },
       _sum: { netAmount: true },
       _min: { invoiceDate: true },
@@ -299,10 +301,14 @@ export async function getSalesDashboard(request) {
   if (goal) {
     const range = periodRange(goal.period, goal.periodKey);
     const sellerIds = await sellerIdsForGoal(goal);
+    const goalTeamIds = (goal.teams || []).map((t) => t.teamId || t.team?.id).filter(Boolean);
     const invoices = await prisma.salesInvoice.aggregate({
       where: {
         deletedAt: null,
-        ...(sellerIds.length ? { sellerId: { in: sellerIds } } : { sellerId: "__none__" }),
+        OR: [
+          sellerIds.length ? { sellerId: { in: sellerIds } } : { sellerId: "__none__" },
+          ...(goalTeamIds.length ? [{ teamId: { in: goalTeamIds } }] : []),
+        ],
         invoiceDate: { gte: range.from, lte: range.to },
       },
       _sum: { netAmount: true },
@@ -871,11 +877,13 @@ export async function listSalesInvoices(request) {
   const rows = await prisma.salesInvoice.findMany({
     where: {
       deletedAt: null,
-      ...sellerWhere(scope),
+      ...invoiceWhere(scope),
       ...(pendingReception ? { receivedByClient: false } : {}),
     },
     include: {
       seller: { select: { id: true, name: true } },
+      team: { select: { id: true, name: true } },
+      client: { select: { id: true, commercialName: true } },
       quotes: {
         include: {
           quote: { select: { id: true, folio: true } },
@@ -943,6 +951,7 @@ export async function createSalesInvoice(request) {
   }
 
   const derived = await deriveInvoiceFields({ quoteLinks, data });
+  const extra = await invoiceExtraFields(user, data, quoteLinks);
 
   const record = await prisma.salesInvoice.create({
     data: {
@@ -955,6 +964,7 @@ export async function createSalesInvoice(request) {
       receptionDate: data.receivedByClient ? data.receptionDate : null,
       notes: data.notes || null,
       ...derived,
+      ...extra,
       createdBy: actor.id,
       updatedBy: actor.id,
       quotes: quoteLinks.length
@@ -991,8 +1001,39 @@ export async function createSalesInvoice(request) {
   return jsonCreated(record);
 }
 
+/**
+ * Equipo acreditado y datos de factura sin cotizacion (cliente, descripcion y
+ * motivo del catalogo INVOICE_NO_QUOTE_REASON).
+ */
+async function invoiceExtraFields(user, data, quoteLinks) {
+  let teamId = data.teamId || null;
+  if (teamId) {
+    const team = await prisma.team.findFirst({
+      where: { id: teamId, deletedAt: null, status: "ACTIVE" },
+      select: { id: true, members: { select: { userId: true } } },
+    });
+    if (!team) throw new ValidationError("Equipo no encontrado o inactivo");
+    if (!canViewTeamSales(user) && !team.members.some((m) => m.userId === user.id)) {
+      throw new ForbiddenError("Solo puedes acreditar facturas a tus equipos");
+    }
+  }
+  if (quoteLinks.length) {
+    return { teamId, description: data.description?.trim() || null, noQuoteReasonCode: null };
+  }
+  const reason = await prisma.kpiCatalogEntry.findFirst({
+    where: { type: "INVOICE_NO_QUOTE_REASON", code: data.noQuoteReasonCode, deletedAt: null },
+    select: { code: true },
+  });
+  if (!reason) throw new ValidationError("Motivo no válido", { noQuoteReasonCode: ["No existe en el catálogo"] });
+  const client = await prisma.client.findFirst({ where: { id: data.clientId }, select: { id: true } });
+  if (!client) throw new ValidationError("Cliente no encontrado", { clientId: ["Selecciona un cliente"] });
+  return { teamId, description: data.description.trim(), noQuoteReasonCode: reason.code };
+}
+
 const INVOICE_DETAIL_INCLUDE = {
   seller: { select: { id: true, name: true } },
+  team: { select: { id: true, name: true } },
+  client: { select: { id: true, commercialName: true } },
   quotes: {
     include: {
       quote: {
@@ -1041,7 +1082,7 @@ export async function getSalesInvoice(request, id) {
   ]);
   const record = await findSalesInvoiceOrThrow(id);
   const scope = await resolveSalesScope(request, {});
-  if (!canAccessSellerId(scope, record.sellerId)) {
+  if (!canAccessInvoice(scope, record)) {
     throw new ForbiddenError("No puedes consultar facturas de otro vendedor");
   }
   return jsonOk(record);
@@ -1081,7 +1122,7 @@ export async function updateSalesInvoice(request, id) {
   const user = await getCurrentUser();
   const existing = await findSalesInvoiceOrThrow(id);
   const scope = await resolveSalesScope(request, {});
-  if (!canAccessSellerId(scope, existing.sellerId)) {
+  if (!canAccessInvoice(scope, existing)) {
     throw new ForbiddenError("No puedes editar facturas de otro vendedor");
   }
 
@@ -1091,7 +1132,7 @@ export async function updateSalesInvoice(request, id) {
   const sellerId =
     canViewTeamSales(user) && data.sellerId ? data.sellerId : existing.sellerId;
   await assertActiveUser(sellerId, "Vendedor");
-  if (!canAccessSellerId(scope, sellerId)) {
+  if (sellerId !== existing.sellerId && !canAccessSellerId(scope, sellerId)) {
     throw new ForbiddenError("No puedes asignar ese vendedor");
   }
 
@@ -1112,6 +1153,7 @@ export async function updateSalesInvoice(request, id) {
   const quoteLinks = data.quotes || [];
   await assertInvoiceQuoteLinks(request, user, quoteLinks);
   const derived = await deriveInvoiceFields({ quoteLinks, data, existing });
+  const extra = await invoiceExtraFields(user, data, quoteLinks);
 
   const record = await prisma.$transaction(async (tx) => {
     await tx.salesInvoiceQuoteItem.deleteMany({
@@ -1131,6 +1173,7 @@ export async function updateSalesInvoice(request, id) {
         receptionDate: data.receivedByClient ? data.receptionDate : null,
         notes: data.notes || null,
         ...derived,
+        ...extra,
         updatedBy: actor.id,
         quotes: quoteLinks.length
           ? {
@@ -1167,7 +1210,7 @@ export async function markSalesInvoiceReception(request, id) {
   const actor = await getActor(request);
   const existing = await findSalesInvoiceOrThrow(id);
   const scope = await resolveSalesScope(request, {});
-  if (!canAccessSellerId(scope, existing.sellerId)) {
+  if (!canAccessInvoice(scope, existing)) {
     throw new ForbiddenError("No puedes editar facturas de otro vendedor");
   }
 

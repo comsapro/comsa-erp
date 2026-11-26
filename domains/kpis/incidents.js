@@ -591,7 +591,13 @@ export async function updateTrackingStatus(request, itemId) {
 
 /** Usuarios activos para asignar responsables desde el dashboard. */
 export async function listAssignableUsers() {
-  await requireAnyPermission([...MANAGE_PERMISSIONS, "quality.record_errors", "kpis.view"]);
+  await requireAnyPermission([
+    ...MANAGE_PERMISSIONS,
+    "quality.record_errors",
+    "quality.manage_instruments",
+    "kpis.view",
+    "commitments.create",
+  ]);
   const users = await prisma.user.findMany({
     where: { deletedAt: null, status: "ACTIVE" },
     select: { id: true, name: true, email: true },

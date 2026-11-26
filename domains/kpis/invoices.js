@@ -5,7 +5,7 @@ import { requireAnyPermission, requirePermission } from "@/lib/permissions/requi
 import { recordAudit, AUDIT_ACTIONS } from "@/lib/audit/logger";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/lib/permissions/errors";
 import { jsonOk, jsonCreated } from "@/lib/api/http";
-import { resolveSalesScope, canAccessSellerId } from "@/domains/sales/scope";
+import { resolveSalesScope, canAccessInvoice } from "@/domains/sales/scope";
 import { invoiceCorrectionSchema, invoicePaymentSchema } from "./schemas";
 import { CORRECTABLE_INVOICE_FIELDS } from "./constants";
 import { addDaysKey, dayKey, keyToDate } from "./periods";
@@ -30,7 +30,8 @@ export function computeDueDate(receptionDate, creditDays) {
  * limite (recepcion + credito).
  */
 export async function deriveInvoiceFields({ quoteLinks = [], data, existing = null }) {
-  let clientId = existing?.clientId || null;
+  // Sin cotizacion el cliente se captura en el formulario.
+  let clientId = (!quoteLinks.length && data.clientId) || existing?.clientId || null;
   let clientTerms = null;
   if (quoteLinks.length) {
     const quote = await prisma.quote.findFirst({
@@ -69,7 +70,7 @@ async function loadInvoiceForSeller(request, id) {
   const invoice = await prisma.salesInvoice.findFirst({ where: { id, deletedAt: null } });
   if (!invoice) throw new NotFoundError("Factura no encontrada");
   const scope = await resolveSalesScope(request, {});
-  if (!canAccessSellerId(scope, invoice.sellerId)) {
+  if (!canAccessInvoice(scope, invoice)) {
     throw new ForbiddenError("No puedes editar facturas de otro vendedor");
   }
   return invoice;

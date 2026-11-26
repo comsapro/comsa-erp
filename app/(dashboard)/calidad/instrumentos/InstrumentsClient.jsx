@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Textarea } from "@/components/ui/Textarea";
+import { Select } from "@/components/ui/Select";
+import { useAssignableUsers } from "@/components/kpis/IncidentFormModal";
 import { Modal } from "@/components/ui/Modal";
 import { Alert } from "@/components/feedback/Alert";
 import { Skeleton } from "@/components/feedback/Skeleton";
@@ -32,9 +34,137 @@ function sanitizeFileName(name) {
     .slice(0, 180);
 }
 
+function assigneeLabel(r, operators) {
+  if (r.assignedUser) return r.assignedUser.name;
+  if (r.assignedOperatorCode) {
+    return operators.find((o) => o.code === r.assignedOperatorCode)?.label || r.assignedOperatorCode;
+  }
+  return null;
+}
+
+// Condicion (catalogo) y resguardo: operador del catalogo o usuario del ERP.
+function InstrumentEditModal({ instrument, conditions, operators, onClose, onSaved }) {
+  const users = useAssignableUsers(Boolean(instrument));
+  const [form, setForm] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!instrument) return;
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setError("");
+    setForm({
+      conditionCode: instrument.conditionCode || "",
+      assignee: instrument.assignedUserId
+        ? `user:${instrument.assignedUserId}`
+        : instrument.assignedOperatorCode
+          ? `op:${instrument.assignedOperatorCode}`
+          : "",
+      assignedAt: instrument.assignedAt ? String(instrument.assignedAt).slice(0, 10) : "",
+      notes: instrument.notes || "",
+    });
+  }, [instrument]);
+
+  async function save(e) {
+    e.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      await api.patch(`/api/calidad/instrumentos/${instrument.id}`, {
+        conditionCode: form.conditionCode || null,
+        assignedUserId: form.assignee.startsWith("user:") ? form.assignee.slice(5) : null,
+        assignedOperatorCode: form.assignee.startsWith("op:") ? form.assignee.slice(3) : null,
+        ...(form.assignedAt ? { assignedAt: form.assignedAt } : {}),
+        notes: form.notes || null,
+      });
+      onSaved();
+    } catch (err) {
+      setError(err.message || "No se pudo guardar");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal
+      open={Boolean(instrument && form)}
+      onClose={saving ? undefined : onClose}
+      title={`Condición y resguardo · ${instrument?.code || ""}`}
+      description="Estatus del equipo y a quién está asignado."
+      size="md"
+    >
+      {form && (
+        <form onSubmit={save} className="space-y-4">
+          {error && <Alert variant="danger">{error}</Alert>}
+          <label className="block text-sm">
+            <span className="mb-1 block text-content-muted">Condición</span>
+            <Select value={form.conditionCode} onChange={(e) => setForm((f) => ({ ...f, conditionCode: e.target.value }))}>
+              <option value="">Sin indicar</option>
+              {conditions
+                .filter((c) => c.status === "ACTIVE" || c.code === form.conditionCode)
+                .map((c) => (
+                  <option key={c.code} value={c.code}>
+                    {c.label}
+                  </option>
+                ))}
+            </Select>
+          </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm">
+              <span className="mb-1 block text-content-muted">Asignado a</span>
+              <Select value={form.assignee} onChange={(e) => setForm((f) => ({ ...f, assignee: e.target.value }))}>
+                <option value="">Sin asignar (almacén)</option>
+                <optgroup label="Operadores">
+                  {operators
+                    .filter((o) => o.status === "ACTIVE" || `op:${o.code}` === form.assignee)
+                    .map((o) => (
+                      <option key={o.code} value={`op:${o.code}`}>
+                        {o.label}
+                      </option>
+                    ))}
+                </optgroup>
+                <optgroup label="Usuarios (vendedores y personal)">
+                  {users.map((u) => (
+                    <option key={u.id} value={`user:${u.id}`}>
+                      {u.name}
+                    </option>
+                  ))}
+                </optgroup>
+              </Select>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-content-muted">Fecha de entrega</span>
+              <Input
+                type="date"
+                value={form.assignedAt}
+                onChange={(e) => setForm((f) => ({ ...f, assignedAt: e.target.value }))}
+              />
+            </label>
+          </div>
+          <label className="block text-sm">
+            <span className="mb-1 block text-content-muted">Notas</span>
+            <Textarea rows={2} value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} />
+          </label>
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="secondary" disabled={saving} onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button type="submit" loading={saving}>
+              Guardar
+            </Button>
+          </div>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
 export default function InstrumentsClient() {
   const { toast } = useToast();
   const [rows, setRows] = useState([]);
+  const [conditions, setConditions] = useState([]);
+  const [operators, setOperators] = useState([]);
+  const [editingInstrument, setEditingInstrument] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -55,6 +185,8 @@ export default function InstrumentsClient() {
     try {
       const res = await api.get("/api/calidad/instrumentos");
       setRows(res?.data || []);
+      setConditions(res?.conditions || []);
+      setOperators(res?.operators || []);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -164,7 +296,7 @@ export default function InstrumentsClient() {
     <div className="space-y-6">
       <PageHeader
         title="Instrumentos de medición"
-        description="Catálogo y control de calibraciones."
+        description="Catálogo, control de calibraciones, condición y resguardo."
       />
       {error && <Alert variant="danger">{error}</Alert>}
 
@@ -247,6 +379,8 @@ export default function InstrumentsClient() {
                     <th className="px-2 py-2">Última cal.</th>
                     <th className="px-2 py-2">Próxima</th>
                     <th className="px-2 py-2">Estado</th>
+                    <th className="px-2 py-2">Condición</th>
+                    <th className="px-2 py-2">Asignado a</th>
                     <th className="px-2 py-2">Certificados recientes</th>
                     <th className="px-2 py-2" />
                   </tr>
@@ -272,6 +406,29 @@ export default function InstrumentsClient() {
                         <Badge>
                           {INSTRUMENT_STATUS_LABELS[r.status] || r.status}
                         </Badge>
+                      </td>
+                      <td className="px-2 py-2">
+                        {r.conditionCode ? (
+                          <Badge
+                            tone={
+                              ["DADO_DE_BAJA", "EXTRAVIADO"].includes(r.conditionCode)
+                                ? "danger"
+                                : r.conditionCode === "EN_REPARACION"
+                                  ? "warning"
+                                  : "neutral"
+                            }
+                          >
+                            {conditions.find((c) => c.code === r.conditionCode)?.label || r.conditionCode}
+                          </Badge>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="px-2 py-2">
+                        {assigneeLabel(r, operators) || <span className="text-content-muted">Sin asignar</span>}
+                        {r.assignedAt && (
+                          <span className="block text-xs text-content-muted">desde {formatDate(r.assignedAt)}</span>
+                        )}
                       </td>
                       <td className="px-2 py-2">
                         {(r.calibrations || []).some(
@@ -301,14 +458,19 @@ export default function InstrumentsClient() {
                         )}
                       </td>
                       <td className="px-2 py-2 text-right">
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          loading={saving}
-                          onClick={() => openCalibrationForm(r)}
-                        >
-                          Registrar calibración
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          <Button size="sm" variant="subtle" onClick={() => setEditingInstrument(r)}>
+                            Condición / asignar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            loading={saving}
+                            onClick={() => openCalibrationForm(r)}
+                          >
+                            Registrar calibración
+                          </Button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -318,6 +480,18 @@ export default function InstrumentsClient() {
           )}
         </CardBody>
       </Card>
+
+      <InstrumentEditModal
+        instrument={editingInstrument}
+        conditions={conditions}
+        operators={operators}
+        onClose={() => setEditingInstrument(null)}
+        onSaved={() => {
+          setEditingInstrument(null);
+          toast({ variant: "success", title: "Instrumento actualizado" });
+          load();
+        }}
+      />
 
       <Modal
         open={Boolean(calibratingInstrument && calibrationForm)}

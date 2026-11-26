@@ -22,6 +22,7 @@ import { formatMoney } from "@/lib/utils/format";
 import { PeriodSelector, normalizePeriodParams, periodApiParams } from "@/components/kpis/PeriodSelector";
 import { SimpleTable } from "@/components/kpis/ui";
 import { useAssignableUsers } from "@/components/kpis/IncidentFormModal";
+import { usePermissions } from "@/components/permissions/PermissionsProvider";
 import {
   COST_CATEGORY_LABELS,
   COST_CONCEPTS,
@@ -30,17 +31,44 @@ import {
   DETECTION_STAGE_LABELS,
   DETECTION_STAGE_SHORT,
 } from "@/domains/kpis/constants";
+import { PROCESS_UNIT_LABELS } from "@/domains/catalogs/schemas";
 import { errorCost } from "@/domains/kpis/calculations";
 import { formatDayShort, periodQuery, todayKey } from "@/domains/kpis/periods";
 
-const emptyLine = (category = "LABOR") => ({
-  category,
-  concept: COST_CONCEPTS[category][0].code,
-  hours: "",
-  hourlyRate: "",
-  amount: "",
-  notes: "",
-});
+// Mano de obra: el concepto es un proceso del catalogo ("PROC:<codigo>") y
+// toma su tarifa; los conceptos fijos anteriores se conservan en historicos.
+const PROCESS_PREFIX = "PROC:";
+
+function processForConcept(concept, processes) {
+  if (!String(concept || "").startsWith(PROCESS_PREFIX)) return null;
+  const code = concept.slice(PROCESS_PREFIX.length);
+  return (processes || []).find((p) => p.code === code) || null;
+}
+
+function conceptLabel(concept, processes) {
+  const proc = processForConcept(concept, processes);
+  if (proc) return proc.name;
+  if (String(concept || "").startsWith(PROCESS_PREFIX)) return concept.slice(PROCESS_PREFIX.length);
+  return COST_CONCEPT_LABELS[concept] || concept;
+}
+
+const emptyLine = (category = "LABOR", processes = []) => {
+  const proc = category === "LABOR" ? processes[0] : null;
+  return {
+    category,
+    concept: proc ? `${PROCESS_PREFIX}${proc.code}` : COST_CONCEPTS[category][0].code,
+    hours: "",
+    hourlyRate: proc ? String(proc.defaultRate ?? "") : "",
+    amount: "",
+    notes: "",
+  };
+};
+
+function operatorKeyOf(row) {
+  if (row?.operatorUserId) return `user:${row.operatorUserId}`;
+  if (row?.operatorName) return `op:${row.operatorName}`;
+  return "";
+}
 
 function OrderPicker({ value, onChange }) {
   const [q, setQ] = useState("");
@@ -108,7 +136,18 @@ function OrderPicker({ value, onChange }) {
   );
 }
 
-function ErrorModal({ open, error: editing, causes, areas, laborRate, onClose, onSaved }) {
+function ErrorModal({
+  open,
+  error: editing,
+  causes,
+  areas,
+  operators = [],
+  processes = [],
+  canManageOperators = false,
+  laborRate,
+  onClose,
+  onSaved,
+}) {
   const users = useAssignableUsers(open);
   const [order, setOrder] = useState(null);
   const [items, setItems] = useState([]);
@@ -128,8 +167,7 @@ function ErrorModal({ open, error: editing, causes, areas, laborRate, onClose, o
         detectionStage: editing.detectionStage,
         causeCode: editing.causeCode || "",
         areaCode: editing.areaCode || "",
-        operatorUserId: editing.operatorUserId || "",
-        operatorName: editing.operatorName || "",
+        operatorKey: operatorKeyOf(editing),
         description: editing.description,
         costs: editing.costs.map((c) => ({
           ...c,
@@ -147,8 +185,7 @@ function ErrorModal({ open, error: editing, causes, areas, laborRate, onClose, o
         detectionStage: "QUALITY",
         causeCode: "",
         areaCode: "",
-        operatorUserId: "",
-        operatorName: "",
+        operatorKey: "",
         description: "",
         costs: [],
       });
@@ -203,8 +240,9 @@ function ErrorModal({ open, error: editing, causes, areas, laborRate, onClose, o
       productionItemId: form.productionItemId || null,
       causeCode: form.causeCode || null,
       areaCode: form.areaCode || null,
-      operatorUserId: form.operatorUserId || null,
-      operatorName: form.operatorName || null,
+      operatorKey: undefined,
+      operatorUserId: form.operatorKey.startsWith("user:") ? form.operatorKey.slice(5) : null,
+      operatorName: form.operatorKey.startsWith("op:") ? form.operatorKey.slice(3) : null,
       costs: form.costs.map((c) => ({
         category: c.category,
         concept: c.concept,
@@ -282,20 +320,40 @@ function ErrorModal({ open, error: editing, causes, areas, laborRate, onClose, o
               ))}
             </Select>
           </Field>
-          <Field label="Operador" htmlFor="qe-operator" hint="Usuario del ERP o nombre libre">
-            <div className="flex gap-2">
-              <Select id="qe-operator" value={form.operatorUserId} onChange={(e) => set({ operatorUserId: e.target.value })}>
-                <option value="">—</option>
+          <Field
+            label="Operador"
+            htmlFor="qe-operator"
+            hint={
+              canManageOperators ? (
+                <Link href="/calidad/operadores" target="_blank" className="text-brand-700 hover:underline">
+                  Agregar operador al catálogo
+                </Link>
+              ) : (
+                "Catálogo de operadores"
+              )
+            }
+          >
+            <Select id="qe-operator" value={form.operatorKey} onChange={(e) => set({ operatorKey: e.target.value })}>
+              <option value="">—</option>
+              <optgroup label="Operadores">
+                {operators.map((o) => (
+                  <option key={o.code} value={`op:${o.label}`}>
+                    {o.label}
+                  </option>
+                ))}
+                {form.operatorKey.startsWith("op:") &&
+                  !operators.some((o) => `op:${o.label}` === form.operatorKey) && (
+                    <option value={form.operatorKey}>{form.operatorKey.slice(3)} (capturado)</option>
+                  )}
+              </optgroup>
+              <optgroup label="Usuarios del ERP">
                 {users.map((u) => (
-                  <option key={u.id} value={u.id}>
+                  <option key={u.id} value={`user:${u.id}`}>
                     {u.name}
                   </option>
                 ))}
-              </Select>
-              {!form.operatorUserId && (
-                <Input value={form.operatorName} onChange={(e) => set({ operatorName: e.target.value })} placeholder="Nombre" aria-label="Nombre del operador" />
-              )}
-            </div>
+              </optgroup>
+            </Select>
           </Field>
           <Field label="Descripción del error" htmlFor="qe-desc" required className="md:col-span-3">
             <Textarea id="qe-desc" rows={2} value={form.description} onChange={(e) => set({ description: e.target.value })} />
@@ -307,7 +365,7 @@ function ErrorModal({ open, error: editing, causes, areas, laborRate, onClose, o
             <p className="text-sm font-semibold text-content">Costo del error</p>
             <div className="flex gap-1">
               {Object.keys(COST_CONCEPTS).map((cat) => (
-                <Button key={cat} type="button" size="sm" variant="subtle" onClick={() => set({ costs: [...form.costs, emptyLine(cat)] })}>
+                <Button key={cat} type="button" size="sm" variant="subtle" onClick={() => set({ costs: [...form.costs, emptyLine(cat, processes)] })}>
                   <Plus className="h-3.5 w-3.5" />
                   {COST_CATEGORY_LABELS[cat]}
                 </Button>
@@ -325,16 +383,44 @@ function ErrorModal({ open, error: editing, causes, areas, laborRate, onClose, o
             {form.costs.map((c, i) => (
               <div key={i} className="grid items-end gap-2 sm:grid-cols-[8rem_1fr_6rem_7rem_8rem_auto]">
                 <span className="text-xs font-medium text-content-muted">{COST_CATEGORY_LABELS[c.category]}</span>
-                <Select value={c.concept} onChange={(e) => setLine(i, { concept: e.target.value })} aria-label="Concepto">
-                  {COST_CONCEPTS[c.category].map((o) => (
-                    <option key={o.code} value={o.code}>
-                      {o.label}
-                    </option>
-                  ))}
-                </Select>
+                {c.category === "LABOR" ? (
+                  <Select
+                    value={c.concept}
+                    onChange={(e) => {
+                      const proc = processForConcept(e.target.value, processes);
+                      setLine(i, { concept: e.target.value, ...(proc ? { hourlyRate: String(proc.defaultRate ?? "") } : {}) });
+                    }}
+                    aria-label="Proceso"
+                  >
+                    {processes.map((p) => (
+                      <option key={p.code} value={`${PROCESS_PREFIX}${p.code}`}>
+                        {p.name} · {formatMoney(p.defaultRate)}/{PROCESS_UNIT_LABELS[p.unit] || p.unit}
+                      </option>
+                    ))}
+                    {!processForConcept(c.concept, processes) && (
+                      <option value={c.concept}>{conceptLabel(c.concept, processes)}</option>
+                    )}
+                  </Select>
+                ) : (
+                  <Select value={c.concept} onChange={(e) => setLine(i, { concept: e.target.value })} aria-label="Concepto">
+                    {COST_CONCEPTS[c.category].map((o) => (
+                      <option key={o.code} value={o.code}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </Select>
+                )}
                 {c.category === "LABOR" ? (
                   <>
-                    <Input type="number" step="0.25" min="0" placeholder="Horas" value={c.hours} onChange={(e) => setLine(i, { hours: e.target.value })} aria-label="Horas" />
+                    <Input
+                      type="number"
+                      step="0.25"
+                      min="0"
+                      placeholder={(processForConcept(c.concept, processes)?.unit || "HOUR") === "HOUR" ? "Horas" : "Cantidad"}
+                      value={c.hours}
+                      onChange={(e) => setLine(i, { hours: e.target.value })}
+                      aria-label="Horas o cantidad"
+                    />
                     <Input
                       type="number"
                       step="0.01"
@@ -385,6 +471,7 @@ function ErrorModal({ open, error: editing, causes, areas, laborRate, onClose, o
 }
 
 export default function QualityErrorsClient({ initialParams, canEdit }) {
+  const { has } = usePermissions();
   const router = useRouter();
   const { toast } = useToast();
   const [period, setPeriod] = useState(() => normalizePeriodParams(initialParams));
@@ -515,7 +602,7 @@ export default function QualityErrorsClient({ initialParams, canEdit }) {
                   header: "Costo",
                   align: "right",
                   render: (r) => (
-                    <span title={r.costs.map((c) => `${COST_CONCEPT_LABELS[c.concept] || c.concept}`).join(", ")}>
+                    <span title={r.costs.map((c) => conceptLabel(c.concept, data?.processes)).join(", ")}>
                       {formatMoney(r.cost.total)}
                       <span className="block text-xs text-content-muted">{r.cost.hours} h</span>
                     </span>
@@ -551,6 +638,9 @@ export default function QualityErrorsClient({ initialParams, canEdit }) {
           error={editing}
           causes={data.causes || []}
           areas={data.areas || []}
+          operators={data.operators || []}
+          processes={data.processes || []}
+          canManageOperators={has("quality.manage_operators") || has("kpis.manage_catalogs")}
           laborRate={data.laborHourRate || 0}
           onClose={() => {
             setCreating(false);

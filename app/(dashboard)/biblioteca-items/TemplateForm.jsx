@@ -84,6 +84,7 @@ export default function TemplateForm({ initial, onSubmit, saving }) {
       deliveryTimeUnit: initial?.deliveryTimeUnit || "days",
       deliveryDaysType: initial?.deliveryDaysType || "",
       observations: initial?.observations || "",
+      clientObservations: initial?.clientObservations || "",
       benefitPercentage: num(initial?.benefitPercentage, 30),
       status: initial?.status || "ACTIVE",
       ...mapLines(initial),
@@ -249,7 +250,14 @@ export default function TemplateForm({ initial, onSubmit, saving }) {
       </div>
 
       <TextareaField
-        label="Observaciones"
+        label="Observaciones al cliente"
+        name="clientObservations"
+        register={register}
+        error={errors.clientObservations?.message}
+      />
+
+      <TextareaField
+        label="Observaciones internas"
         name="observations"
         register={register}
         error={errors.observations?.message}

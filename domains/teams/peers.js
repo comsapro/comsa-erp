@@ -33,3 +33,13 @@ export async function getTeamPeerUserIds(userId) {
   ids.add(userId);
   return [...ids];
 }
+
+/** IDs de equipos ACTIVE a los que pertenece `userId`. */
+export async function getUserTeamIds(userId) {
+  if (!userId) return [];
+  const rows = await prisma.teamMember.findMany({
+    where: { userId, team: { deletedAt: null, status: "ACTIVE" } },
+    select: { teamId: true },
+  });
+  return [...new Set(rows.map((r) => r.teamId))];
+}

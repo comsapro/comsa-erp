@@ -1272,20 +1272,57 @@ export async function listInstruments(request) {
     "quality.inspect",
     "quality.view",
   ]);
-  const rows = await prisma.measuringInstrument.findMany({
-    where: { deletedAt: null },
-    include: {
-      calibrations: { orderBy: { calibratedAt: "desc" }, take: 3 },
-    },
-    orderBy: { code: "asc" },
-  });
-  return jsonOk({ data: rows });
+  const [rows, conditions, operators] = await Promise.all([
+    prisma.measuringInstrument.findMany({
+      where: { deletedAt: null },
+      include: {
+        calibrations: { orderBy: { calibratedAt: "desc" }, take: 3 },
+        assignedUser: { select: { id: true, name: true } },
+      },
+      orderBy: { code: "asc" },
+    }),
+    prisma.kpiCatalogEntry.findMany({
+      where: { type: "INSTRUMENT_STATUS", deletedAt: null },
+      select: { code: true, label: true, status: true },
+      orderBy: [{ sortOrder: "asc" }, { label: "asc" }],
+    }),
+    prisma.kpiCatalogEntry.findMany({
+      where: { type: "OPERATOR", deletedAt: null },
+      select: { code: true, label: true, status: true },
+      orderBy: [{ sortOrder: "asc" }, { label: "asc" }],
+    }),
+  ]);
+  return jsonOk({ data: rows, conditions, operators });
+}
+
+/** Valida condicion y resguardo (operador del catalogo o usuario, no ambos). */
+async function normalizeInstrumentAssignment(data) {
+  const out = { ...data };
+  for (const [field, type] of [
+    ["conditionCode", "INSTRUMENT_STATUS"],
+    ["assignedOperatorCode", "OPERATOR"],
+  ]) {
+    if (out[field] === undefined) continue;
+    out[field] = out[field] || null;
+    if (out[field]) {
+      const hit = await prisma.kpiCatalogEntry.findFirst({
+        where: { type, code: out[field], deletedAt: null },
+        select: { id: true },
+      });
+      if (!hit) throw new ValidationError("Valor de catalogo invalido", { [field]: ["No existe en el catalogo"] });
+    }
+  }
+  if (out.assignedUserId !== undefined) out.assignedUserId = out.assignedUserId || null;
+  if (out.assignedUserId && out.assignedOperatorCode) {
+    throw new ValidationError("Asigna el instrumento a un operador o a un usuario, no a ambos");
+  }
+  return out;
 }
 
 export async function createInstrument(request) {
   await requirePermission("quality.manage_instruments");
   const actor = await getActor(request);
-  const data = instrumentSchema.parse(await request.json());
+  const data = await normalizeInstrumentAssignment(instrumentSchema.parse(await request.json()));
   const row = await prisma.measuringInstrument.create({
     data: {
       ...data,
@@ -1299,14 +1336,39 @@ export async function createInstrument(request) {
 export async function updateInstrument(request, id) {
   await requirePermission("quality.manage_instruments");
   const actor = await getActor(request);
-  const data = instrumentSchema.partial().parse(await request.json());
+  const data = await normalizeInstrumentAssignment(
+    instrumentSchema.partial().parse(await request.json())
+  );
   const existing = await prisma.measuringInstrument.findFirst({
     where: { id, deletedAt: null },
   });
   if (!existing) throw new NotFoundError("Instrumento no encontrado");
+  const assigneeChanged =
+    (data.assignedUserId !== undefined && data.assignedUserId !== existing.assignedUserId) ||
+    (data.assignedOperatorCode !== undefined && data.assignedOperatorCode !== existing.assignedOperatorCode);
+  if (assigneeChanged && data.assignedAt === undefined) {
+    data.assignedAt = data.assignedUserId || data.assignedOperatorCode ? new Date() : null;
+  }
   const row = await prisma.measuringInstrument.update({
     where: { id },
     data: { ...data, updatedBy: actor.id },
+  });
+  await recordAudit({
+    actor,
+    module: "quality",
+    entity: "MeasuringInstrument",
+    entityId: id,
+    action: AUDIT_ACTIONS.UPDATE,
+    previousData: {
+      conditionCode: existing.conditionCode,
+      assignedUserId: existing.assignedUserId,
+      assignedOperatorCode: existing.assignedOperatorCode,
+    },
+    newData: {
+      conditionCode: row.conditionCode,
+      assignedUserId: row.assignedUserId,
+      assignedOperatorCode: row.assignedOperatorCode,
+    },
   });
   return jsonOk(row);
 }

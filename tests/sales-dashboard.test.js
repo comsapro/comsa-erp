@@ -128,8 +128,25 @@ test("salesInvoiceSchema acepta receptionDate vacia", () => {
     receivedByClient: false,
     receptionDate: "",
     quotes: [],
+    clientId: "c1",
+    description: "Venta de material",
+    noQuoteReasonCode: "VENTA_MATERIAL",
   });
   assert.equal(parsed.receptionDate, null);
+});
+
+test("factura sin cotizacion exige cliente, descripcion y motivo", () => {
+  const result = salesInvoiceSchema.safeParse({
+    invoiceNumber: "F-2",
+    netAmount: 100,
+    invoiceDate: "2026-09-18",
+    clientPoNumber: "PO-2",
+    receivedByClient: false,
+    quotes: [],
+  });
+  assert.equal(result.success, false);
+  const paths = result.error.issues.map((i) => i.path[0]).sort();
+  assert.deepEqual(paths, ["clientId", "description", "noQuoteReasonCode"]);
 });
 
 test("poCreateSchema permite partida manual sin itemId", () => {

@@ -315,6 +315,11 @@ export function CommitmentsPanel({ initialView = "overdue", onChanged, meeting =
               Calendario
             </Button>
           )}
+          {!meeting && (
+            <Button as={Link} size="sm" variant="subtle" href="/compromisos">
+              Compromisos manuales
+            </Button>
+          )}
         </div>
       </div>
       <div className="px-5 pt-2">

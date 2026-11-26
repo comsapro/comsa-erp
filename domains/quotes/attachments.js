@@ -552,6 +552,45 @@ export async function servePrivateBlob(request) {
     });
   }
 
+  // Archivos de facturas de venta (PDF/XML): mismo alcance que la factura.
+  const invoice = await prisma.salesInvoice.findFirst({
+    where: { OR: [{ pdfPathname: pathname }, { xmlPathname: pathname }], deletedAt: null },
+  });
+  if (invoice) {
+    await requireAnyPermission(["sales.view", "sales.create_invoice", "sales.edit_invoice", "kpis.view"]);
+    const { resolveSalesScope, canAccessInvoice } = await import("@/domains/sales/scope");
+    const { getCurrentUser, userHasPermission } = await import("@/lib/auth/session");
+    const user = await getCurrentUser();
+    // El dashboard gerencial ve todas las facturas; el resto, segun su alcance.
+    if (!userHasPermission(user, "kpis.view")) {
+      const scope = await resolveSalesScope(request, {});
+      if (!canAccessInvoice(scope, invoice)) throw new NotFoundError("Archivo no encontrado");
+    }
+    const isPdf = invoice.pdfPathname === pathname;
+    return streamBlob(pathname, {
+      fileName: isPdf ? invoice.pdfFileName : invoice.xmlFileName,
+      contentType: isPdf ? invoice.pdfContentType || "application/pdf" : invoice.xmlContentType || "application/xml",
+    });
+  }
+
+  // Evidencias de compromisos: involucrados, creador o quien ve todos.
+  const evidence = await prisma.commitmentComment.findFirst({
+    where: { filePathname: pathname },
+    include: { commitment: { select: { createdBy: true, participants: { select: { userId: true } } } } },
+  });
+  if (evidence) {
+    const { getCurrentUser, userHasPermission } = await import("@/lib/auth/session");
+    const user = await getCurrentUser();
+    const c = evidence.commitment;
+    const allowed =
+      user &&
+      (c.createdBy === user.id ||
+        c.participants.some((p) => p.userId === user.id) ||
+        userHasPermission(user, "commitments.view_all"));
+    if (!allowed) throw new NotFoundError("Archivo no encontrado");
+    return streamBlob(pathname, { fileName: evidence.fileName, contentType: evidence.fileContentType });
+  }
+
   throw new NotFoundError("Archivo no encontrado");
 }
 

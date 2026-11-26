@@ -6,7 +6,7 @@ import { recordAudit, AUDIT_ACTIONS } from "@/lib/audit/logger";
 import { ConflictError, NotFoundError } from "@/lib/permissions/errors";
 import { jsonOk, jsonCreated } from "@/lib/api/http";
 import { catalogEntrySchema, catalogEntryUpdateSchema, kpiSettingsSchema } from "./schemas";
-import { KPI_CATALOG_TYPES } from "./constants";
+import { KPI_CATALOG_TYPES, catalogManagePermissions } from "./constants";
 import { num } from "./calculations";
 
 /** Parametros globales (crea el registro "default" si no existe). */
@@ -68,7 +68,7 @@ export async function getCatalog(type, { includeInactive = false } = {}) {
 /** Mapas codigo -> etiqueta de los tres catalogos (incluye inactivos para historicos). */
 export async function getCatalogMaps() {
   const rows = await prisma.kpiCatalogEntry.findMany({ where: { deletedAt: null } });
-  const maps = { STOP_REASON: {}, ERROR_CAUSE: {}, ERROR_AREA: {} };
+  const maps = Object.fromEntries(Object.values(KPI_CATALOG_TYPES).map((t) => [t, {}]));
   for (const r of rows) {
     if (maps[r.type]) maps[r.type][r.code] = r;
   }
@@ -80,14 +80,16 @@ export async function listCatalogEntries(request) {
   const type = url.searchParams.get("type");
   const includeInactive = url.searchParams.get("all") === "1";
   if (includeInactive) {
-    await requirePermission("kpis.manage_catalogs");
+    await requireAnyPermission(type ? catalogManagePermissions(type) : ["kpis.manage_catalogs"]);
   } else {
     await requireAnyPermission([
       "kpis.view",
       "kpis.manage_incidents",
       "kpis.manage_catalogs",
       "quality.view",
+      "quality.manage_instruments",
       "production.manage_incidents",
+      "sales.create_invoice",
     ]);
   }
   const types = type && KPI_CATALOG_TYPES[type] ? [type] : Object.values(KPI_CATALOG_TYPES);
@@ -103,9 +105,9 @@ export async function listCatalogEntries(request) {
 }
 
 export async function createCatalogEntry(request) {
-  await requirePermission("kpis.manage_catalogs");
-  const actor = await getActor(request);
   const data = catalogEntrySchema.parse(await request.json());
+  await requireAnyPermission(catalogManagePermissions(data.type));
+  const actor = await getActor(request);
   const existing = await prisma.kpiCatalogEntry.findFirst({
     where: { type: data.type, code: data.code },
   });
@@ -132,10 +134,10 @@ export async function createCatalogEntry(request) {
 }
 
 export async function updateCatalogEntry(request, id) {
-  await requirePermission("kpis.manage_catalogs");
-  const actor = await getActor(request);
   const existing = await prisma.kpiCatalogEntry.findFirst({ where: { id, deletedAt: null } });
   if (!existing) throw new NotFoundError("Entrada de catalogo no encontrada");
+  await requireAnyPermission(catalogManagePermissions(existing.type));
+  const actor = await getActor(request);
   const data = catalogEntryUpdateSchema.parse(await request.json());
   const record = await prisma.kpiCatalogEntry.update({
     where: { id },
@@ -155,10 +157,10 @@ export async function updateCatalogEntry(request, id) {
 
 /** Borrado logico: los historicos conservan el codigo. */
 export async function deleteCatalogEntry(request, id) {
-  await requirePermission("kpis.manage_catalogs");
-  const actor = await getActor(request);
   const existing = await prisma.kpiCatalogEntry.findFirst({ where: { id, deletedAt: null } });
   if (!existing) throw new NotFoundError("Entrada de catalogo no encontrada");
+  await requireAnyPermission(catalogManagePermissions(existing.type));
+  const actor = await getActor(request);
   await prisma.kpiCatalogEntry.update({
     where: { id },
     data: { deletedAt: new Date(), status: "INACTIVE", updatedBy: actor.id },

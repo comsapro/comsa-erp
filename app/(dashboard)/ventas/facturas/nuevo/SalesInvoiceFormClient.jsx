@@ -182,6 +182,7 @@ export default function SalesInvoiceFormClient({
   currentUserId,
   currentUserName,
   invoice = null,
+  options = { teams: [], reasons: [], clients: [] },
 }) {
   const router = useRouter();
   const isEdit = Boolean(invoice?.id);
@@ -415,6 +416,10 @@ export default function SalesInvoiceFormClient({
         paidAt: values.receivedByClient ? values.paidAt || null : null,
         sentAt: values.sentAt || null,
         creditDays: values.creditDays === "" || values.creditDays == null ? null : values.creditDays,
+        teamId: values.teamId || null,
+        clientId: skipQuoteLink ? values.clientId || null : null,
+        noQuoteReasonCode: skipQuoteLink ? values.noQuoteReasonCode || null : null,
+        description: values.description || null,
         quotes: skipQuoteLink
           ? []
           : [{ quoteId: selectedQuote.id, quoteItemIds: itemIds }],
@@ -509,6 +514,20 @@ export default function SalesInvoiceFormClient({
                 <Input value={currentUserName || "Usuario actual"} disabled />
               )}
             </Field>
+            <Field
+              label="Equipo"
+              hint="Opcional. La factura suma a la meta de todos los integrantes del equipo y todos la ven."
+              error={errors.teamId?.message}
+            >
+              <Select {...register("teamId")}>
+                <option value="">Sin equipo (solo el vendedor)</option>
+                {options.teams.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
             <Field label="¿Recepcionada por el cliente?" required>
               <Select
                 {...register("receivedByClient", {
@@ -530,7 +549,7 @@ export default function SalesInvoiceFormClient({
             )}
             <Field
               label="Fecha de envío al cliente"
-              hint="Opcional. El tiempo de recepción se mide desde aquí (o desde la fecha de factura)."
+              hint="Opcional. Día en que se mandó la factura al cliente (no es la recepción). El tiempo de recepción se mide desde aquí, o desde la fecha de factura."
               error={errors.sentAt?.message}
             >
               <Input type="date" {...register("sentAt")} />
@@ -591,6 +610,43 @@ export default function SalesInvoiceFormClient({
                   </span>
                 </span>
               </label>
+            )}
+
+            {skipQuoteLink && (
+              <div className="grid gap-4 md:grid-cols-2">
+                <Field label="Cliente" required error={errors.clientId?.message}>
+                  <Select {...register("clientId")}>
+                    <option value="">Selecciona el cliente</option>
+                    {options.clients.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.commercialName}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field
+                  label="Motivo de no ligar cotización"
+                  required
+                  error={errors.noQuoteReasonCode?.message}
+                >
+                  <Select {...register("noQuoteReasonCode")}>
+                    <option value="">Selecciona el motivo</option>
+                    {options.reasons.map((r) => (
+                      <option key={r.code} value={r.code}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field
+                  className="md:col-span-2"
+                  label="Descripción de lo facturado"
+                  required
+                  error={errors.description?.message}
+                >
+                  <Textarea rows={2} {...register("description")} />
+                </Field>
+              </div>
             )}
 
             {!skipQuoteLink && (
@@ -695,84 +751,22 @@ export default function SalesInvoiceFormClient({
             </p>
           </CardHeader>
           <CardBody className="grid gap-4 sm:grid-cols-2">
-            <div className="rounded border border-border p-3">
-              <p className="mb-2 text-sm font-medium">PDF</p>
-              <input
-                ref={pdfInputRef}
-                type="file"
-                accept=".pdf,application/pdf"
-                className="hidden"
-                onChange={(e) => {
-                  pickFile("PDF", e.target.files?.[0] || null);
-                  e.target.value = "";
-                }}
-              />
-              {pdfFile ? (
-                <div className="flex items-center justify-between gap-2 text-sm">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <FileText className="h-4 w-4 shrink-0 text-content-muted" />
-                    <span className="truncate">{pdfFile.name}</span>
-                  </span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setPdfFile(null)}
-                    aria-label="Quitar PDF"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => pdfInputRef.current?.click()}
-                >
-                  Seleccionar PDF
-                </Button>
-              )}
-            </div>
-            <div className="rounded border border-border p-3">
-              <p className="mb-2 text-sm font-medium">XML</p>
-              <input
-                ref={xmlInputRef}
-                type="file"
-                accept=".xml,application/xml,text/xml"
-                className="hidden"
-                onChange={(e) => {
-                  pickFile("XML", e.target.files?.[0] || null);
-                  e.target.value = "";
-                }}
-              />
-              {xmlFile ? (
-                <div className="flex items-center justify-between gap-2 text-sm">
-                  <span className="flex min-w-0 items-center gap-2">
-                    <FileText className="h-4 w-4 shrink-0 text-content-muted" />
-                    <span className="truncate">{xmlFile.name}</span>
-                  </span>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setXmlFile(null)}
-                    aria-label="Quitar XML"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => xmlInputRef.current?.click()}
-                >
-                  Seleccionar XML
-                </Button>
-              )}
-            </div>
+            <InvoiceFileDrop
+              label="PDF"
+              accept=".pdf,application/pdf"
+              inputRef={pdfInputRef}
+              file={pdfFile}
+              onPick={(f) => pickFile("PDF", f)}
+              onClear={() => setPdfFile(null)}
+            />
+            <InvoiceFileDrop
+              label="XML"
+              accept=".xml,application/xml,text/xml"
+              inputRef={xmlInputRef}
+              file={xmlFile}
+              onPick={(f) => pickFile("XML", f)}
+              onClear={() => setXmlFile(null)}
+            />
           </CardBody>
         </Card>
 
@@ -785,6 +779,62 @@ export default function SalesInvoiceFormClient({
           </Button>
         </div>
       </form>
+    </div>
+  );
+}
+
+// Recuadro de archivo: acepta clic o arrastrar y soltar el archivo encima.
+function InvoiceFileDrop({ label, accept, inputRef, file, onPick, onClear }) {
+  const [over, setOver] = useState(false);
+  return (
+    <div
+      className={`rounded border-2 border-dashed p-3 transition-colors ${
+        over ? "border-brand-500 bg-brand-50" : "border-border"
+      }`}
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+        if (!over) setOver(true);
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) setOver(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        const dropped = e.dataTransfer.files?.[0];
+        if (dropped) onPick(dropped);
+      }}
+    >
+      <p className="mb-2 text-sm font-medium">{label}</p>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        className="hidden"
+        onChange={(e) => {
+          onPick(e.target.files?.[0] || null);
+          e.target.value = "";
+        }}
+      />
+      {file ? (
+        <div className="flex items-center justify-between gap-2 text-sm">
+          <span className="flex min-w-0 items-center gap-2">
+            <FileText className="h-4 w-4 shrink-0 text-content-muted" />
+            <span className="truncate">{file.name}</span>
+          </span>
+          <Button type="button" size="sm" variant="ghost" onClick={onClear} aria-label={`Quitar ${label}`}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap items-center gap-2 text-sm text-content-muted">
+          <Button type="button" size="sm" variant="secondary" onClick={() => inputRef.current?.click()}>
+            Seleccionar {label}
+          </Button>
+          <span>o arrastra el archivo aquí</span>
+        </div>
+      )}
     </div>
   );
 }

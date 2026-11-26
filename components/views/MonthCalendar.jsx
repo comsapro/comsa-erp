@@ -171,7 +171,9 @@ export function MonthCalendar({
                       "truncate rounded px-1 py-0.5 text-[10px] font-medium",
                       getTone?.(row) === "event"
                         ? "bg-warning-100 text-warning-800"
-                        : "bg-brand-100/80 text-brand-800"
+                        : getTone?.(row) === "manual"
+                          ? "bg-success-50 text-success-700"
+                          : "bg-brand-100/80 text-brand-800"
                     )}
                     title={getTitle(row)}
                   >

@@ -57,7 +57,7 @@ export async function listQualityErrors(request) {
   const orderId = url.searchParams.get("productionOrderId");
   const q = (url.searchParams.get("q") || "").trim();
 
-  const [rows, catalogs, settings, causes, areas] = await Promise.all([
+  const [rows, catalogs, settings, causes, areas, operators, processes] = await Promise.all([
     prisma.qualityError.findMany({
       where: {
         deletedAt: null,
@@ -87,6 +87,13 @@ export async function listQualityErrors(request) {
     getKpiSettings(),
     getCatalog("ERROR_CAUSE"),
     getCatalog("ERROR_AREA"),
+    getCatalog("OPERATOR"),
+    // Mano de obra del error = procesos del catalogo con su misma tarifa.
+    prisma.manufacturingProcess.findMany({
+      where: { deletedAt: null, status: "ACTIVE" },
+      select: { id: true, code: true, name: true, unit: true, defaultRate: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   const data = rows.map((r) => {
@@ -99,6 +106,8 @@ export async function listQualityErrors(request) {
     laborHourRate: settings.laborHourRate,
     causes,
     areas,
+    operators: operators.map((o) => ({ code: o.code, label: o.label })),
+    processes: processes.map((pr) => ({ ...pr, defaultRate: Number(pr.defaultRate) })),
     data,
   });
 }

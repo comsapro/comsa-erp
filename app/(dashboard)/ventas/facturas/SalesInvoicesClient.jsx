@@ -183,7 +183,12 @@ export default function SalesInvoicesClient({ initialPendingOnly = false, seller
                       <td className="px-2 py-2 font-medium">{r.invoiceNumber}</td>
                       <td className="px-2 py-2">{formatDate(r.invoiceDate)}</td>
                       <td className="px-2 py-2">{formatMoney(r.netAmount)}</td>
-                      <td className="px-2 py-2">{r.seller?.name}</td>
+                      <td className="px-2 py-2">
+                        {r.seller?.name}
+                        {r.team?.name && (
+                          <span className="block text-xs text-content-muted">Equipo: {r.team.name}</span>
+                        )}
+                      </td>
                       <td className="px-2 py-2">{r.clientPoNumber}</td>
                       <td className="px-2 py-2">
                         {(r.quotes || []).length
@@ -191,7 +196,14 @@ export default function SalesInvoicesClient({ initialPendingOnly = false, seller
                               .map((q) => q.quote?.folio)
                               .filter(Boolean)
                               .join(", ")
-                          : "—"}
+                          : (
+                            <span className="text-content-muted" title={r.description || ""}>
+                              Sin cotización
+                              {r.client?.commercialName && (
+                                <span className="block text-xs">{r.client.commercialName}</span>
+                              )}
+                            </span>
+                          )}
                       </td>
                       <td className="px-2 py-2">
                         <span className="flex flex-wrap gap-2">

@@ -37,6 +37,7 @@ export const quoteTemplateCreateSchema = z.object({
     z.enum(DELIVERY_DAYS_TYPES).nullable().optional()
   ),
   observations: optionalString,
+  clientObservations: optionalString,
   benefitPercentage: z.coerce.number().min(0).max(1000).default(30),
   itemId: optionalId,
   status: statusWithDefault,

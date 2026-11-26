@@ -35,8 +35,20 @@ const EMPTY = {
   status: "ACTIVE",
 };
 
+// "Torno CNC" -> "TORNO_CNC" (el codigo se puede ajustar a mano).
+function codeFromLabel(label) {
+  return String(label || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+}
+
 function EntryModal({ open, type, entry, onClose, onSaved }) {
   const [form, setForm] = useState(EMPTY);
+  const [codeTouched, setCodeTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -44,6 +56,7 @@ function EntryModal({ open, type, entry, onClose, onSaved }) {
     if (!open) return;
     /* eslint-disable react-hooks/set-state-in-effect */
     setForm(entry ? { ...EMPTY, ...entry, description: entry.description || "", requiredAction: entry.requiredAction || "" } : EMPTY);
+    setCodeTouched(false);
     setError("");
   }, [open, entry]);
 
@@ -80,10 +93,20 @@ function EntryModal({ open, type, entry, onClose, onSaved }) {
         {error && <Alert variant="danger">{error}</Alert>}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Nombre" htmlFor="cat-label" required>
-            <Input id="cat-label" value={form.label} onChange={(e) => set({ label: e.target.value })} required />
+            <Input
+              id="cat-label"
+              value={form.label}
+              onChange={(e) =>
+                set({ label: e.target.value, ...(entry || codeTouched ? {} : { code: codeFromLabel(e.target.value) }) })
+              }
+              required
+            />
           </Field>
           <Field label="Código" htmlFor="cat-code" required hint={entry ? "El código no se puede cambiar." : "Mayúsculas, sin espacios."}>
-            <Input id="cat-code" value={form.code} disabled={Boolean(entry)} onChange={(e) => set({ code: e.target.value.toUpperCase() })} required />
+            <Input id="cat-code" value={form.code} disabled={Boolean(entry)} onChange={(e) => {
+                setCodeTouched(true);
+                set({ code: e.target.value.toUpperCase() });
+              }} required />
           </Field>
           <Field label="Orden" htmlFor="cat-order">
             <Input id="cat-order" type="number" min="0" value={form.sortOrder} onChange={(e) => set({ sortOrder: e.target.value })} />
@@ -214,9 +237,14 @@ function SettingsCard() {
   );
 }
 
-export default function KpiCatalogsClient() {
+export default function KpiCatalogsClient({
+  types = Object.values(KPI_CATALOG_TYPES),
+  title = "Catálogos",
+  description = "Razones de paro, causas y áreas de error, operadores, condición de instrumentos, motivos de factura sin cotización y parámetros del Dashboard gerencial.",
+  showSettings = true,
+}) {
   const { toast } = useToast();
-  const [type, setType] = useState(KPI_CATALOG_TYPES.STOP_REASON);
+  const [type, setType] = useState(types[0]);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -246,15 +274,12 @@ export default function KpiCatalogsClient() {
 
   return (
     <div className="space-y-5">
-      <PageHeader
-        title="Catálogos KPI"
-        description="Razones de paro, causas y áreas de error, y parámetros del Dashboard gerencial."
-      />
-      <SettingsCard />
+      <PageHeader title={title} description={description} />
+      {showSettings && <SettingsCard />}
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-2 px-5 pt-3">
           <Tabs
-            tabs={Object.values(KPI_CATALOG_TYPES).map((k) => ({ key: k, label: KPI_CATALOG_TYPE_LABELS[k] }))}
+            tabs={types.map((k) => ({ key: k, label: KPI_CATALOG_TYPE_LABELS[k] }))}
             value={type}
             onChange={setType}
           />

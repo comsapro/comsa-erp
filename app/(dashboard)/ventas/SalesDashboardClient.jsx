@@ -146,7 +146,8 @@ export default function SalesDashboardClient({
             </Card>
             <PendingReceptionCard
               summary={data?.invoices?.pendingReception}
-              sellerId={scopeSellerId || undefined}
+              // Solo filtra si se eligio un vendedor: el conteo incluye al equipo.
+              sellerId={sellerId || data?.scope?.sellerId || undefined}
               canOpenInvoices={canCreateInvoice}
             />
           </div>

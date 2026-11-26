@@ -1004,11 +1004,6 @@ export async function saveQuoteItemToLibrary(request, quoteId, itemId) {
   });
   if (!item) throw new NotFoundError("Item de cotizacion no encontrado");
 
-  const observations = [item.internalObservations, item.clientObservations]
-    .filter(Boolean)
-    .join("\n")
-    .trim() || null;
-
   const template = await prisma.quoteItemTemplate.create({
     data: {
       name: item.description.slice(0, 200),
@@ -1019,7 +1014,8 @@ export async function saveQuoteItemToLibrary(request, quoteId, itemId) {
       deliveryTimeMax: item.deliveryTimeMax,
       deliveryTimeUnit: item.deliveryTimeUnit,
       deliveryDaysType: item.deliveryDaysType,
-      observations,
+      observations: item.internalObservations || null,
+      clientObservations: item.clientObservations || null,
       benefitPercentage: item.benefitPercentage,
       itemId: item.itemId,
       status: "ACTIVE",
@@ -1267,6 +1263,7 @@ export async function insertFromTemplate(request, quoteId, templateId) {
         deliveryTimeMax: template.deliveryTimeMax,
         deliveryTimeUnit: template.deliveryTimeUnit,
         deliveryDaysType: template.deliveryDaysType,
+        clientObservations: template.clientObservations,
         internalObservations: template.observations,
         benefitPercentage: template.benefitPercentage,
         manufacturing: {

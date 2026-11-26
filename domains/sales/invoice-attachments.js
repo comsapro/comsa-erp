@@ -11,7 +11,7 @@ import {
 } from "@/lib/permissions/errors";
 import { jsonOk } from "@/lib/api/http";
 import {
-  canAccessSellerId,
+  canAccessInvoice,
   resolveSalesScope,
 } from "@/domains/sales/scope";
 
@@ -62,7 +62,7 @@ async function findInvoiceOrThrow(id, request) {
   });
   if (!invoice) throw new NotFoundError("Factura no encontrada");
   const scope = await resolveSalesScope(request, {});
-  if (!canAccessSellerId(scope, invoice.sellerId)) {
+  if (!canAccessInvoice(scope, invoice)) {
     throw new NotFoundError("Factura no encontrada");
   }
   return invoice;
@@ -152,30 +152,22 @@ export async function handleInvoiceFileUpload(request, invoiceId) {
     );
   }
 
+  // El SDK de Blob envia { type, payload: { clientPayload | tokenPayload } };
+  // el tipo (PDF/XML) viaja dentro de clientPayload, no en la raiz del body.
   const body = await request.json();
-  let kind = null;
-  try {
-    const payload = body?.clientPayload
-      ? JSON.parse(body.clientPayload || "{}")
-      : body || {};
-    kind = normalizeKind(payload.kind);
-  } catch {
-    kind = null;
-  }
-  if (!kind) {
-    throw new ValidationError("Indica el tipo de archivo (PDF o XML)");
-  }
 
   const jsonResponse = await handleUpload({
     body,
     request,
     onBeforeGenerateToken: async (_pathname, clientPayload) => {
-      let payloadKind = kind;
+      let payloadKind = null;
       try {
-        const p = JSON.parse(clientPayload || "{}");
-        if (p.kind) payloadKind = normalizeKind(p.kind) || payloadKind;
+        payloadKind = normalizeKind(JSON.parse(clientPayload || "{}").kind);
       } catch {
-        /* ignore */
+        payloadKind = null;
+      }
+      if (!payloadKind) {
+        throw new ValidationError("Indica el tipo de archivo (PDF o XML)");
       }
       return {
         access: "private",
@@ -195,7 +187,7 @@ export async function handleInvoiceFileUpload(request, invoiceId) {
     onUploadCompleted: async ({ blob, tokenPayload }) => {
       try {
         const payload = JSON.parse(tokenPayload || "{}");
-        const fileKind = normalizeKind(payload.kind) || kind;
+        const fileKind = normalizeKind(payload.kind);
         const fileName = blob.pathname?.split("/").pop() || "archivo";
         if (!isAllowedInvoiceFile(fileKind, fileName, blob.contentType)) {
           try {
@@ -212,7 +204,7 @@ export async function handleInvoiceFileUpload(request, invoiceId) {
           );
         }
         await persistInvoiceFile({
-          actor: payload.userId ? { id: payload.userId } : actor,
+          actor: payload.userId ? { id: payload.userId } : null,
           invoiceId: payload.invoiceId || invoiceId,
           kind: fileKind,
           pathname: blob.pathname,

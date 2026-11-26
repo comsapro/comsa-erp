@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { requirePagePermission } from "@/lib/auth/guard";
 import { userHasPermission, userIsAdmin } from "@/lib/auth/session";
+import { loadInvoiceFormOptions } from "@/domains/sales/invoice-form-options";
 import { prisma } from "@/lib/db";
 import { serializeInvoiceForClient } from "@/domains/sales/invoice-form";
 import SalesInvoiceFormClient from "../nuevo/SalesInvoiceFormClient";
@@ -53,6 +54,7 @@ export default async function EditarFacturaVentasPage({ params }) {
       isAdmin={userIsAdmin(user)}
       currentUserId={user.id}
       currentUserName={user.name}
+      options={await loadInvoiceFormOptions(user)}
       invoice={serializeInvoiceForClient(invoice)}
     />
   );

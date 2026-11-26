@@ -5,6 +5,7 @@ import Link from "next/link";
 import { api, toQuery } from "@/lib/api/client";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { MonthCalendar } from "@/components/views/MonthCalendar";
+import { useCalendarCommitments } from "@/components/commitments/useCalendarCommitments";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -93,7 +94,9 @@ export default function SalesCalendarClient({ canEditCommitment, currentUserId }
     }
   }
 
+  const manualCommitments = useCalendarCommitments();
   const calendarRows = [
+    ...manualCommitments,
     ...rows.map((row) => ({
       ...row,
       kind: "commitment",
@@ -174,19 +177,25 @@ export default function SalesCalendarClient({ canEditCommitment, currentUserId }
         error={null}
         getDate={(r) => r.calendarDate}
         getHref={(r) =>
-          r.kind === "commitment" ? `/produccion/${r.productionOrderId}` : ""
+          r.kind === "manual"
+            ? r.href
+            : r.kind === "commitment"
+              ? `/produccion/${r.productionOrderId}`
+              : ""
         }
         getTitle={(r) =>
-          r.kind === "event"
+          r.kind === "event" || r.kind === "manual"
             ? r.title
             : `${r.productionFolio} · ${r.client}`
         }
         getSubtitle={(r) =>
-          r.kind === "event"
+          r.kind === "manual"
+            ? r.subtitle
+            : r.kind === "event"
             ? SALES_CALENDAR_EVENT_LABELS[r.type] || "Evento"
             : `Compromiso · P${r.position}: ${r.description}`
         }
-        getTone={(r) => (r.kind === "event" ? "event" : "commitment")}
+        getTone={(r) => (r.kind === "event" ? "event" : r.kind === "manual" ? "manual" : "commitment")}
         emptyTitle="Sin fechas"
         emptyDescription="Los compromisos aparecen al enviar cotizaciones a producción. También puedes agregar un evento."
       />
