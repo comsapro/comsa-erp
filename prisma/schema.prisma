@@ -354,6 +354,7 @@ model User {
   qualityErrorsAsOperator            QualityError[]              @relation("QualityErrorOperator")
   qualityErrorsCreated               QualityError[]              @relation("QualityErrorCreatedBy")
   instrumentsAssigned                MeasuringInstrument[]       @relation("MeasuringInstrumentAssignee")
+  historicalInvoicesSold             HistoricalInvoice[]         @relation("HistoricalInvoiceSeller")
   commitmentsCreated                 Commitment[]                @relation("CommitmentCreatedBy")
   commitmentsClosed                  Commitment[]                @relation("CommitmentClosedBy")
   commitmentParticipations           CommitmentParticipant[]
@@ -502,11 +503,12 @@ model Client {
   updatedBy String?   @map("updated_by")
   deletedAt DateTime? @map("deleted_at")
 
-  contacts         ClientContact[]
-  quotes           Quote[]
-  directOrders     DirectOrder[]
-  productionOrders ProductionOrder[]
-  salesInvoices    SalesInvoice[]
+  contacts           ClientContact[]
+  quotes             Quote[]
+  directOrders       DirectOrder[]
+  productionOrders   ProductionOrder[]
+  salesInvoices      SalesInvoice[]
+  historicalInvoices HistoricalInvoice[]
 
   @@index([status])
   @@index([deletedAt])
@@ -993,6 +995,7 @@ model Quote {
   items              QuoteItem[]
   purchaseOrders     PurchaseOrder[]
   salesInvoiceQuotes SalesInvoiceQuote[]
+  historicalInvoices HistoricalInvoice[]
   qualityDocuments   QualityDocument[]
   qualityErrors      QualityError[]
 
@@ -3098,4 +3101,55 @@ model CommitmentComment {
 
   @@index([commitmentId, createdAt])
   @@map("commitment_comments")
+}
+
+// -----------------------------------------------------------------------------
+// Historico de facturacion (consecutivo de facturas en Excel, 2008 en adelante).
+// Solo para analisis: no participa en recepcion ni cobranza. La numeracion se
+// reinicio en el pasado, por eso la llave es factura + anio.
+// -----------------------------------------------------------------------------
+model HistoricalInvoice {
+  id            String    @id @default(cuid())
+  invoiceNumber String    @map("invoice_number")
+  year          Int
+  invoiceDate   DateTime  @map("invoice_date") @db.Date
+  /// Monto con IVA tal como se capturo (0 en canceladas).
+  amount        Decimal   @db.Decimal(14, 2)
+  /// Serie: NUM (consecutivo COMSA), F, L u otra.
+  series        String    @default("NUM")
+  /// Reventa de material/consumibles (columna "ventas").
+  isResale      Boolean   @default(false) @map("is_resale")
+  cancelled     Boolean   @default(false)
+  clientName    String    @map("client_name")
+  clientId      String?   @map("client_id")
+  /// Vendedor como se capturo (edson, teo, pt...).
+  sellerAlias   String?   @map("seller_alias")
+  sellerId      String?   @map("seller_id")
+  description   String?
+  poNumber      String?   @map("po_number")
+  orderRef      String?   @map("order_ref")
+  laborAmount   Decimal?  @map("labor_amount") @db.Decimal(14, 2)
+  notes         String?
+  sourceSheet   String    @map("source_sheet")
+  /// La fecha venia vacia o con anio equivocado; se uso el mes de la hoja.
+  dateEstimated Boolean   @default(false) @map("date_estimated")
+  quoteId       String?   @map("quote_id")
+  /// PO_AUTO (coincidencia unica de PO) o MANUAL.
+  linkMethod    String?   @map("link_method")
+  linkedAt      DateTime? @map("linked_at")
+  linkedBy      String?   @map("linked_by")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  client Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  seller User?   @relation("HistoricalInvoiceSeller", fields: [sellerId], references: [id], onDelete: SetNull)
+  quote  Quote?  @relation(fields: [quoteId], references: [id], onDelete: SetNull)
+
+  @@unique([invoiceNumber, year])
+  @@index([invoiceDate])
+  @@index([clientId])
+  @@index([quoteId])
+  @@index([poNumber])
+  @@map("historical_invoices")
 }
