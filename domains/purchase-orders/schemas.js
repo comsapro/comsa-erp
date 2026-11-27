@@ -63,6 +63,8 @@ export const receiptCreateSchema = z.object({
         purchaseOrderItemId: z.string().min(1),
         receivedQuantity: z.coerce.number().positive(),
         unitCost: z.coerce.number().nonnegative().optional(),
+        // Item de catalogo para partidas capturadas como texto libre.
+        itemId: z.string().min(1).optional().nullable(),
       })
     )
     .min(1),

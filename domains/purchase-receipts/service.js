@@ -123,15 +123,37 @@ export async function createReceipt(request) {
     const byId = Object.fromEntries(poItems.map((i) => [i.id, i]));
 
     const receiptItemsData = [];
+    const linkedItems = [];
     for (const line of body.items) {
       const poi = byId[line.purchaseOrderItemId];
       if (!poi) {
         throw new ValidationError("Item de orden no pertenece a esta OC");
       }
       if (!poi.itemId) {
-        throw new ValidationError(
-          `La partida "${poi.descriptionSnapshot}" no tiene item de catalogo; vinculalo antes de recibir a inventario`
-        );
+        if (!line.itemId) {
+          throw new ValidationError(
+            `La partida "${poi.descriptionSnapshot}" no tiene item de catalogo; selecciona el item al recibir`
+          );
+        }
+        const item = await tx.item.findFirst({
+          where: { id: line.itemId, deletedAt: null },
+          select: { id: true },
+        });
+        if (!item) throw new ValidationError("Item de catalogo no encontrado");
+        // Se liga la partida de la OC (y el material de la cotizacion de origen,
+        // si seguia sin item) para que las siguientes compras ya lleguen ligadas.
+        await tx.purchaseOrderItem.update({
+          where: { id: poi.id },
+          data: { itemId: item.id },
+        });
+        if (poi.sourceMaterialId) {
+          await tx.quoteItemMaterial.updateMany({
+            where: { id: poi.sourceMaterialId, itemId: null },
+            data: { itemId: item.id },
+          });
+        }
+        poi.itemId = item.id;
+        linkedItems.push({ purchaseOrderItemId: poi.id, itemId: item.id });
       }
       const remaining = remainingQuantity(poi.quantity, poi.receivedQuantity);
       if (toNumberSafeLocal(line.receivedQuantity) > remaining + 1e-9) {
@@ -209,7 +231,7 @@ export async function createReceipt(request) {
       },
     });
 
-    return { receipt, nextStatus };
+    return { receipt, nextStatus, linkedItems };
   });
 
   await recordAudit({
@@ -222,6 +244,7 @@ export async function createReceipt(request) {
       folio: result.receipt.folio,
       purchaseOrderId: body.purchaseOrderId,
       status: result.nextStatus,
+      ...(result.linkedItems.length ? { linkedItems: result.linkedItems } : {}),
     },
   });
 

@@ -21,6 +21,7 @@ import { remainingQuantity } from "@/domains/purchase-orders/calculations";
 import { MaterialPreload } from "@/components/purchase-orders/MaterialPreload";
 import { PurchaseOrderEditor } from "@/components/purchase-orders/PurchaseOrderEditor";
 import { CostHint } from "@/components/purchase-orders/CostHint";
+import { ItemCatalogSelect } from "@/components/forms/catalog-selects";
 import {
   missingCostMessage,
   toPurchaseItemPayload,
@@ -36,6 +37,7 @@ export default function PurchaseOrderDetailClient({ id }) {
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [warehouseId, setWarehouseId] = useState("");
   const [recvQty, setRecvQty] = useState({});
+  const [recvItem, setRecvItem] = useState({});
   const [catalogItems, setCatalogItems] = useState([]);
 
   const load = useCallback(() => {
@@ -117,8 +119,19 @@ export default function PurchaseOrderDetailClient({ id }) {
           purchaseOrderItemId: it.id,
           receivedQuantity: Number(recvQty[it.id] || 0),
           unitCost: toNumber(it.unitPrice),
+          ...(!it.itemId && recvItem[it.id] ? { itemId: recvItem[it.id] } : {}),
         }))
         .filter((it) => it.receivedQuantity > 0);
+      const unlinked = (row.items || []).filter(
+        (it) => !it.itemId && Number(recvQty[it.id] || 0) > 0 && !recvItem[it.id]
+      );
+      if (unlinked.length) {
+        throw new Error(
+          `Selecciona el item de catalogo para: ${unlinked
+            .map((it) => it.descriptionSnapshot)
+            .join(", ")}`
+        );
+      }
       await api.post("/api/recepciones", {
         purchaseOrderId: id,
         warehouseId,
@@ -400,25 +413,53 @@ export default function PurchaseOrderDetailClient({ id }) {
           {row.items?.map((it) => {
             const rem = remainingQuantity(it.quantity, it.receivedQuantity);
             if (rem <= 0) return null;
+            const detail = [it.dimensions, it.presentation].filter(Boolean).join(" · ");
             return (
-              <label key={it.id} className="flex items-center gap-3 text-sm">
-                <span className="flex-1">{it.descriptionSnapshot}</span>
-                <span className="text-content-muted">Pend. {rem}</span>
-                <input
-                  type="number"
-                  min="0"
-                  max={rem}
-                  step="0.001"
-                  className="w-28 rounded-md border border-border px-2 py-1"
-                  value={recvQty[it.id] ?? ""}
-                  onChange={(e) =>
-                    setRecvQty((prev) => ({
-                      ...prev,
-                      [it.id]: e.target.value,
-                    }))
-                  }
-                />
-              </label>
+              <div key={it.id} className="space-y-2 border-b border-border pb-3 text-sm last:border-0">
+                <label className="flex items-center gap-3">
+                  <span className="flex-1">
+                    {it.descriptionSnapshot}
+                    {detail ? <span className="text-content-muted"> — {detail}</span> : null}
+                  </span>
+                  <span className="text-content-muted">Pend. {rem}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max={rem}
+                    step="0.001"
+                    className="w-28 rounded-md border border-border px-2 py-1"
+                    value={recvQty[it.id] ?? ""}
+                    onChange={(e) =>
+                      setRecvQty((prev) => ({
+                        ...prev,
+                        [it.id]: e.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                {!it.itemId && (
+                  <div className="max-w-xl">
+                    <ItemCatalogSelect
+                      label="Item de catalogo (requerido para entrar a inventario)"
+                      value={recvItem[it.id] || ""}
+                      onChange={(v) =>
+                        setRecvItem((prev) => ({ ...prev, [it.id]: v || "" }))
+                      }
+                      options={catalogItems}
+                      onOptionsChange={setCatalogItems}
+                      onSearch={searchItems}
+                      placeholder="Buscar o agregar item..."
+                      createDefaults={{
+                        name: [it.descriptionSnapshot, it.presentation, it.dimensions]
+                          .filter(Boolean)
+                          .join(" "),
+                        unit: it.unit || "",
+                        description: detail,
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
             );
           })}
           <div className="flex gap-2">
